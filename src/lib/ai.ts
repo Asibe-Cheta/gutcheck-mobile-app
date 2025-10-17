@@ -1,0 +1,1225 @@
+/**
+ * AI Analysis Service
+ * Handles AI-powered analysis of relationship interactions
+ * Supports both OpenAI and Anthropic Claude
+ */
+
+import { db } from './supabase';
+import { Pattern, Analysis } from '@/types';
+import Constants from 'expo-constants';
+
+export interface AIAnalysisResult {
+  analysis: {
+    id: string;
+    confidence_score: number;
+    risk_level: 'low' | 'medium' | 'high' | 'critical';
+    summary: string;
+    recommendations: string[];
+    educational_content: string;
+  };
+  patterns: Pattern[];
+  crisis_detected: boolean;
+  crisis_severity?: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface AIConfig {
+  provider: 'openai' | 'anthropic';
+  model: string;
+  max_tokens: number;
+  temperature: number;
+}
+
+export interface ConversationState {
+  stage: 'initial' | 'gathering' | 'analysis' | 'support';
+  messagesExchanged: number;
+  hasImage?: boolean;
+  imageAnalyzed?: boolean;
+  contextGathered: {
+    relationshipType?: string;
+    duration?: string;
+    specificIncident?: boolean;
+    emotionalImpact?: boolean;
+    patternHistory?: boolean;
+  };
+}
+
+export interface ConversationResponse {
+  response: string;
+  nextStage: ConversationState['stage'];
+  shouldAnalyze?: boolean;
+}
+
+class AIAnalysisService {
+  private config: AIConfig;
+
+  constructor() {
+    // Get API keys from Expo Constants
+    const hasAnthropic = !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const hasOpenAI = !!Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY;
+    
+    this.config = {
+      provider: hasAnthropic ? 'anthropic' : (hasOpenAI ? 'openai' : 'anthropic'),
+      model: hasAnthropic ? 'claude-sonnet-4-20250514' : (hasOpenAI ? 'gpt-4' : 'claude-sonnet-4-20250514'),
+      max_tokens: 2000,
+      temperature: 0.3,
+    };
+  }
+
+  // Main analysis function
+  async analyzeInteraction(
+    content: string,
+    userId: string | null,
+    context?: {
+      previousAnalyses?: any[];
+      userProfile?: any;
+      relationshipContext?: string;
+    }
+  ): Promise<AIAnalysisResult> {
+    try {
+      // Create initial analysis record
+      const analysis = await db.createAnalysis({
+        user_id: userId,
+        content,
+        status: 'processing',
+      });
+
+      // Get AI analysis
+      const aiResult = await this.getAIAnalysis(content, context);
+
+      // Update analysis with results
+      const updatedAnalysis = await db.updateAnalysis(analysis.id, {
+        status: 'completed',
+        confidence_score: aiResult.confidence_score,
+        risk_level: aiResult.risk_level,
+        summary: aiResult.summary,
+        recommendations: aiResult.recommendations,
+        educational_content: aiResult.educational_content,
+        completed_at: new Date().toISOString(),
+      });
+
+      // Create pattern records
+      const patterns = await this.createPatterns(analysis.id, aiResult.patterns);
+
+      // Check for crisis situations
+      const crisisResult = await this.checkCrisisSituation(
+        userId, 
+        analysis.id, 
+        aiResult.patterns, 
+        aiResult.risk_level
+      );
+
+      return {
+        analysis: updatedAnalysis,
+        patterns,
+        crisis_detected: crisisResult.detected,
+        crisis_severity: crisisResult.severity,
+      };
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      throw new Error('Failed to analyze interaction');
+    }
+  }
+
+  // Get AI analysis from provider
+  private async getAIAnalysis(
+    content: string, 
+    context?: any
+  ): Promise<{
+    confidence_score: number;
+    risk_level: 'low' | 'medium' | 'high' | 'critical';
+    summary: string;
+    recommendations: string[];
+    educational_content: string;
+    patterns: any[];
+  }> {
+
+    const prompt = this.buildAnalysisPrompt(content, context);
+
+    if (this.config.provider === 'openai') {
+      return await this.analyzeWithOpenAI(prompt);
+    } else {
+      return await this.analyzeWithAnthropic(prompt);
+    }
+  }
+
+
+  // Build analysis prompt
+  private buildAnalysisPrompt(content: string, context?: any): string {
+    return `
+You are an expert relationship counselor and manipulation detection specialist. Analyze the following interaction for potential manipulation patterns and provide insights.
+
+INTERACTION TO ANALYZE:
+"${content}"
+
+CONTEXT:
+${context?.relationshipContext || 'No specific relationship context provided'}
+
+ANALYSIS REQUIREMENTS:
+1. Identify manipulation patterns from this list: gaslighting, love-bombing, isolation, coercion, negging, guilt-tripping, triangulation, stonewalling, projection, darvo
+2. Assess risk level: low, medium, high, or critical
+3. Provide confidence score (0.0 to 1.0)
+4. Give actionable recommendations
+5. Include educational content about detected patterns
+
+RESPONSE FORMAT (JSON):
+{
+  "confidence_score": 0.85,
+  "risk_level": "medium",
+  "summary": "Brief summary of the interaction and key concerns",
+  "recommendations": [
+    "Specific actionable advice 1",
+    "Specific actionable advice 2"
+  ],
+  "educational_content": "Educational explanation of detected patterns",
+  "patterns": [
+    {
+      "type": "gaslighting",
+      "confidence": 0.8,
+      "description": "Description of how this pattern appears",
+      "examples": ["Specific examples from the text"],
+      "severity": "medium"
+    }
+  ]
+}
+
+IMPORTANT:
+- Be empathetic and supportive
+- Focus on the user's well-being
+- Provide practical, actionable advice
+- Use clear, non-technical language
+- If no manipulation is detected, still provide supportive guidance
+- Always prioritize the user's safety and mental health
+`;
+  }
+
+  // OpenAI analysis
+  private async analyzeWithOpenAI(prompt: string): Promise<any> {
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY;
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert relationship counselor specializing in manipulation detection. Always respond with valid JSON.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        max_tokens: this.config.max_tokens,
+        temperature: this.config.temperature,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    
+    try {
+      return JSON.parse(content);
+    } catch (error) {
+      console.error('Failed to parse OpenAI response:', content);
+      throw new Error('Invalid response from AI service');
+    }
+  }
+
+  // Anthropic Claude analysis (for JSON responses)
+  private async analyzeWithAnthropic(prompt: string): Promise<any> {
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    console.log('Anthropic API Key Status:', apiKey ? 'PRESENT' : 'MISSING');
+    console.log('Anthropic API Key Preview:', apiKey ? `${apiKey.substring(0, 10)}...` : 'NONE');
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey || '',
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        max_tokens: this.config.max_tokens,
+        temperature: this.config.temperature,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Anthropic API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING'
+      });
+      throw new Error(`Anthropic API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.content[0].text;
+    
+    try {
+      // Handle markdown code blocks that Anthropic sometimes returns
+      let jsonContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      if (jsonContent.startsWith('```json')) {
+        jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      return JSON.parse(jsonContent);
+    } catch (error) {
+      console.error('Failed to parse Anthropic response:', content);
+      throw new Error('Invalid response from AI service');
+    }
+  }
+
+  // Anthropic Claude conversational response (for plain text responses)
+  private async getConversationalResponse(prompt: string): Promise<string> {
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey || '',
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        max_tokens: this.config.max_tokens,
+        temperature: this.config.temperature,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Anthropic Conversational API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+      });
+      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.content[0].text.trim();
+  }
+
+  // Create pattern records
+  private async createPatterns(analysisId: string, patterns: any[]): Promise<Pattern[]> {
+    const createdPatterns: Pattern[] = [];
+
+    for (const pattern of patterns) {
+      try {
+        const createdPattern = await db.createPattern({
+          analysis_id: analysisId,
+          type: pattern.type,
+          confidence: pattern.confidence,
+          description: pattern.description,
+          educational_content: pattern.educational_content || '',
+          examples: pattern.examples || [],
+        });
+
+        createdPatterns.push(createdPattern);
+      } catch (error) {
+        console.error('Failed to create pattern:', error);
+      }
+    }
+
+    return createdPatterns;
+  }
+
+  // Check for crisis situations
+  private async checkCrisisSituation(
+    userId: string | null,
+    analysisId: string,
+    patterns: any[],
+    riskLevel: string
+  ): Promise<{ detected: boolean; severity?: 'low' | 'medium' | 'high' | 'critical' }> {
+    // Crisis indicators
+    const crisisIndicators = [
+      'threats of self-harm',
+      'suicidal ideation',
+      'extreme isolation',
+      'severe emotional abuse',
+      'physical threats',
+      'stalking behavior',
+      'financial control',
+      'complete social isolation',
+    ];
+
+    const highRiskPatterns = [
+      'gaslighting',
+      'coercion',
+      'isolation',
+      'stonewalling',
+    ];
+
+    // Check for crisis indicators in patterns
+    const hasCrisisIndicators = patterns.some(pattern => 
+      crisisIndicators.some(indicator => 
+        pattern.description.toLowerCase().includes(indicator)
+      )
+    );
+
+    const hasHighRiskPatterns = patterns.some(pattern => 
+      highRiskPatterns.includes(pattern.type) && pattern.confidence > 0.7
+    );
+
+    const isCriticalRisk = riskLevel === 'critical';
+
+    if (hasCrisisIndicators || hasHighRiskPatterns || isCriticalRisk) {
+      const severity = isCriticalRisk ? 'critical' : 
+                      hasCrisisIndicators ? 'high' : 'medium';
+
+      // Create crisis report
+      await db.createCrisisReport({
+        user_id: userId,
+        analysis_id: analysisId,
+        severity,
+        patterns: patterns.map(p => p.type),
+        emergency_contacts_notified: false,
+        resources_provided: this.getCrisisResources(severity),
+      });
+
+      return { detected: true, severity };
+    }
+
+    return { detected: false };
+  }
+
+  // Get crisis resources based on severity
+  private getCrisisResources(severity: string): string[] {
+    const baseResources = [
+      'National Domestic Abuse Helpline: 0808 2000 247',
+      'Samaritans: 116 123',
+      'Childline: 0800 1111',
+    ];
+
+    if (severity === 'critical') {
+      return [
+        'Emergency Services: 999',
+        ...baseResources,
+        'NSPCC: 0808 800 5000',
+      ];
+    }
+
+    return baseResources;
+  }
+
+  // Get educational content
+  async getEducationalContent(category?: string): Promise<any[]> {
+    try {
+      return await db.getEducationalContent(category);
+    } catch (error) {
+      console.error('Failed to get educational content:', error);
+      return [];
+    }
+  }
+
+  // Analyze pattern trends
+  async analyzePatternTrends(userId: string | null, timeframe: 'week' | 'month' | 'year' = 'month'): Promise<{
+    totalAnalyses: number;
+    patternCounts: Record<string, number>;
+    riskTrend: 'improving' | 'stable' | 'worsening';
+    recommendations: string[];
+  }> {
+    try {
+      const analyses = await db.getAnalyses(userId, 50);
+      
+      const patternCounts: Record<string, number> = {};
+      let totalAnalyses = 0;
+      let highRiskCount = 0;
+
+      for (const analysis of analyses) {
+        if (analysis.status === 'completed') {
+          totalAnalyses++;
+          
+          if (analysis.risk_level === 'high' || analysis.risk_level === 'critical') {
+            highRiskCount++;
+          }
+
+          const patterns = await db.getPatterns(analysis.id);
+          for (const pattern of patterns) {
+            patternCounts[pattern.type] = (patternCounts[pattern.type] || 0) + 1;
+          }
+        }
+      }
+
+      const highRiskPercentage = totalAnalyses > 0 ? highRiskCount / totalAnalyses : 0;
+      const riskTrend = highRiskPercentage > 0.3 ? 'worsening' : 
+                       highRiskPercentage < 0.1 ? 'improving' : 'stable';
+
+      const recommendations = this.generateTrendRecommendations(patternCounts, riskTrend);
+
+      return {
+        totalAnalyses,
+        patternCounts,
+        riskTrend,
+        recommendations,
+      };
+    } catch (error) {
+      console.error('Failed to analyze pattern trends:', error);
+      return {
+        totalAnalyses: 0,
+        patternCounts: {},
+        riskTrend: 'stable',
+        recommendations: [],
+      };
+    }
+  }
+
+  // Generate recommendations based on trends
+  private generateTrendRecommendations(
+    patternCounts: Record<string, number>, 
+    riskTrend: 'improving' | 'stable' | 'worsening'
+  ): string[] {
+    const recommendations: string[] = [];
+
+    if (riskTrend === 'worsening') {
+      recommendations.push('Consider seeking professional counseling support');
+      recommendations.push('Focus on building stronger boundaries');
+    }
+
+    const topPattern = Object.entries(patternCounts)
+      .sort(([,a], [,b]) => b - a)[0];
+
+    if (topPattern) {
+      const [pattern, count] = topPattern;
+      recommendations.push(`Focus on recognizing and addressing ${pattern} patterns`);
+    }
+
+    if (Object.keys(patternCounts).length > 3) {
+      recommendations.push('Consider taking a break from this relationship');
+      recommendations.push('Seek support from trusted friends or family');
+    }
+
+    return recommendations;
+  }
+
+  // Humanistic Conversation Methods
+
+  /**
+   * Determines if we should respond immediately or ask questions first
+   */
+  private shouldRespondImmediately(userMessage: string, hasImage: boolean): boolean {
+    // Check for uploaded screenshot/image
+    if (hasImage) {
+      return true; // Screenshots show full context
+    }
+    
+    // Check for explicit manipulation quotes
+    const manipulationQuotes = [
+      'you\'re crazy',
+      'that never happened',
+      'you\'re too sensitive',
+      'if you loved me you\'d',
+      'everyone thinks you\'re',
+      'no one else would want you',
+      'I\'ll kill myself if you leave',
+      'you\'re making it up',
+      'that\'s not what happened',
+      'you\'re overreacting'
+    ];
+    
+    const hasExplicitManipulation = manipulationQuotes.some(
+      quote => userMessage.toLowerCase().includes(quote)
+    );
+    
+    // Check for danger keywords
+    const dangerKeywords = [
+      'threatened to',
+      'said he\'d hurt',
+      'showed me a weapon',
+      'followed me home',
+      'won\'t leave me alone',
+      'meet me alone',
+      'don\'t tell anyone',
+      'hurt myself',
+      'kill myself'
+    ];
+    
+    const hasDanger = dangerKeywords.some(
+      keyword => userMessage.toLowerCase().includes(keyword)
+    );
+    
+    return hasExplicitManipulation || hasDanger;
+  }
+
+  /**
+   * Handles the first message with humanistic approach
+   */
+  async handleInitialMessage(
+    userMessage: string, 
+    hasImage: boolean = false
+  ): Promise<ConversationResponse> {
+    // For initial messages, be more direct and analytical
+    const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations.
+
+Your approach:
+- Be DIRECT and ANALYTICAL - don't beat around the bush
+- Identify red flags and manipulation patterns immediately
+- Give specific, actionable advice with clear next steps
+- Use real-world examples and scenarios
+- Challenge people when they're rationalizing bad behavior
+- Be empathetic but firm - you care enough to tell the truth
+
+TONE: Like a smart, caring friend who's not afraid to call out BS. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp.
+
+STRUCTURE your responses:
+1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
+2. RED FLAGS (bullet points) - Specific concerning behaviors
+3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
+4. ACTION STEPS (specific steps) - What to do next
+5. REALITY CHECK (1 sentence) - The hard truth they need to hear
+
+Always respond naturally and conversationally.`;
+
+    const messages = [
+      { role: 'user', content: userMessage.trim() }
+    ];
+
+    try {
+      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage);
+      
+      return {
+        response,
+        nextStage: 'support'
+      };
+    } catch (error) {
+      console.error('Claude initial message error:', error);
+      return {
+        response: "I'm here to help. What's going on?",
+        nextStage: 'initial'
+      };
+    }
+  }
+
+  /**
+   * Gets immediate response for clear evidence
+   */
+  private async getImmediateResponse(userMessage: string, hasImage: boolean): Promise<ConversationResponse> {
+    const prompt = `You are GutCheck. The user has provided CLEAR EVIDENCE of manipulation or is in potential danger.
+
+SITUATION:
+${userMessage}
+${hasImage ? 'User provided screenshot/image of conversation - analyze this evidence carefully' : ''}
+
+Your task: Respond IMMEDIATELY with comprehensive analysis and action steps.
+
+STRUCTURE YOUR RESPONSE:
+
+1. IMMEDIATE RECOGNITION (2-3 sentences)
+   Express shock/concern appropriately
+   Name the pattern clearly
+   Validate their instincts
+
+2. DETAILED ANALYSIS (3-4 sentences)
+   Explain exactly what's happening
+   Why this pattern is dangerous/harmful
+   Give specific examples from what they shared
+
+3. SEVERITY ASSESSMENT (1-2 sentences)
+   Use 1-10 scale: "This is showing serious red flags - about an 8 out of 10"
+   Explain what that means
+
+4. IMMEDIATE ACTION STEPS (2-3 sentences)
+   Give 1-2 specific protective actions
+   Include timeline: "For the next week, [specific action], then get back to me and let me know how it goes"
+
+5. SUPPORTIVE CLOSING (1-2 sentences)
+   Validate their feelings
+   End with: "Want to talk about what you could do next?"
+
+TONE OPTIONS based on situation:
+
+1. SHOCKED/PROTECTIVE (for clear gaslighting/manipulation):
+   "Wait, what? [Pattern]. That's [name it]. This is manipulation."
+   
+2. URGENT WARNING (for danger):
+   "STOP. [Red flag]. Do NOT [action]. This is [why it's dangerous]."
+   
+3. VALIDATING ANGER (for abuse):
+   "This is [PATTERN NAME]. [Why it's wrong]. You deserve better."
+   
+4. CLEAR RECOGNITION (for obvious patterns):
+   "Okay, looking at this... [observation]. That's [pattern]. Not okay."
+
+RULES:
+- Be ELABORATE (200-250 words)
+- Be DIRECT, not gentle
+- Use caps for emphasis when needed (STOP, NOT okay, MANIPULATION)
+- Name the pattern clearly
+- Express appropriate emotion (shock, concern, anger)
+- ALWAYS include specific timelines and follow-up requests
+- End with supportive question
+
+EXAMPLES:
+
+Input: "He said 'that never happened, you're imagining things'"
+Output: "I hear you, and I need you to know - you're not crazy. That's gaslighting. He's making you question what you KNOW happened. Red flags - about an 8 out of 10. For the next week, write down what happens versus what he later says happened. Get back to me with what you find. This stays between us, but you need to see this pattern. Also, check out my detailed analysis [View Analysis]."
+
+Input: [Screenshot of 20 guilt messages]
+Output: "Okay, I'm seeing guilt-tripping in every message here. 'You don't care', 'you're selfish' - that's manipulation, and you're not wrong for feeling overwhelmed by it. Red flags - about a 9 out of 10. For the next few days, don't respond to guilt messages. Get back to me with how they react. You're not a bad person for setting this boundary. Also, check out my detailed analysis [View Analysis]."
+
+Input: "Wants to meet me alone, said don't tell my parents"
+Output: "Listen carefully - 'alone' + 'don't tell' = danger. Do NOT meet them. This is grooming. Red flags - 10 out of 10. Keep everything public and tell a trusted adult TODAY. Get back to me and let me know who you told. You did the right thing asking about this. Trust your gut. Also, check out my detailed analysis [View Analysis]."
+
+Input: "She only texts when she needs money"
+Output: "I can see you care about her. Here's what I'm seeing: She only shows up when she needs something. That's using you. Red flags - about a 7 out of 10. For the next week, say no once and watch what happens. Get back to me with her reaction. You're not wrong for questioning this. Also, check out my detailed analysis [View Analysis]."`;
+
+    const response = await this.getConversationalResponse(prompt);
+    
+    return {
+      response: response || "This sounds concerning. Let me help you understand what's happening.",
+      nextStage: 'analysis',
+      shouldAnalyze: true
+    };
+  }
+
+  /**
+   * Checks if user wants to stop questioning
+   */
+  private shouldStopQuestioning(userMessage: string): boolean {
+    const stopPhrases = [
+      'stop asking',
+      'too many questions',
+      'just tell me',
+      'stop questioning',
+      'enough questions',
+      'dont ask',
+      "don't ask",
+      'no more questions',
+      'stop asking questions',
+      'conversation is getting too long',
+      'tell me what you think',
+      'give me your opinion',
+      'what do you think'
+    ];
+    
+    const lowerMessage = userMessage.toLowerCase();
+    return stopPhrases.some(phrase => lowerMessage.includes(phrase));
+  }
+
+  /**
+   * Handles follow-up questions during context gathering
+   */
+  async handleFollowUpMessage(
+    userMessage: string,
+    conversationState: ConversationState,
+    conversationHistory: string[]
+  ): Promise<ConversationResponse> {
+    
+    // Check if user wants to stop questioning
+    if (this.shouldStopQuestioning(userMessage)) {
+      // Provide analysis immediately
+      return await this.provideConversationalAnalysis(conversationHistory, conversationState);
+    }
+    
+    // Check if user is complaining about the AI's behavior
+    if (this.isComplainingAboutAI(userMessage)) {
+      return await this.handleAIComplaint(userMessage, conversationHistory);
+    }
+    
+    const prompt = `You are GutCheck, a relationship mentor who's seen these patterns before.
+
+CONVERSATION SO FAR:
+${conversationHistory.join('\n')}
+
+CONTEXT I HAVE:
+- Relationship: ${conversationState.contextGathered.relationshipType || 'unknown'}
+- Duration: ${conversationState.contextGathered.duration || 'unknown'}
+- Specific incident: ${conversationState.contextGathered.specificIncident ? 'yes' : 'no'}
+- Pattern: ${conversationState.contextGathered.patternHistory ? 'yes' : 'no'}
+
+Your task: Ask ONE question that moves toward the REAL issue.
+
+NOT: "How does that make you feel?"
+YES: "Does this happen a lot?" or "What did they say exactly?"
+
+Keep it under 15 words. Be direct. You're trying to see the full picture, not comfort them yet.
+
+Examples based on context:
+- If they mention someone's behavior: "How long has this been going on?"
+- If they're rationalizing: "But does SHE show up for YOU?"
+- If they seem stuck: "What are you actually getting out of this?"
+
+Your question should cut to what matters.`;
+
+    const response = await this.getConversationalResponse(prompt + `\n\nUser just said: "${userMessage}"\n\nAsk ONE sharp, focused question.`);
+    
+    // Check if we have enough context to move to analysis
+    const shouldAnalyze = this.shouldProvideAnalysis(userMessage, conversationHistory.length);
+    
+    return {
+      response: response || "Tell me more about what happened.",
+      nextStage: shouldAnalyze ? 'analysis' : 'gathering',
+      shouldAnalyze
+    };
+  }
+
+  /**
+   * Provides conversational analysis after gathering context
+   */
+  async provideConversationalAnalysis(
+    conversationHistory: string[],
+    conversationState: ConversationState
+  ): Promise<ConversationResponse> {
+    
+    const prompt = `You are GutCheck, a relationship mentor who sees patterns others miss.
+
+CORE PRINCIPLES:
+- Firm but respectful and empathetic
+- Truth over comfort, but non-judgmental
+- This stays between you and them - private and safe
+- Reassure their worth while challenging the situation
+- Gradually add warmth/humor after multiple exchanges (but not yet if this is early conversation)
+
+FULL CONVERSATION:
+${conversationHistory.join('\n')}
+
+WHAT I KNOW:
+- Relationship: ${conversationState.contextGathered.relationshipType || 'unclear'}
+- Duration: ${conversationState.contextGathered.duration || 'unclear'}
+- Incident: ${conversationState.contextGathered.specificIncident ? 'specific situation' : 'ongoing pattern'}
+- History: ${conversationState.contextGathered.patternHistory ? 'repeated behavior' : 'first time'}
+- Impact: ${conversationState.contextGathered.emotionalImpact ? 'affecting them emotionally' : 'unclear'}
+- Evidence: ${conversationState.hasImage ? 'they sent screenshots/proof' : 'text description only'}
+- Messages exchanged: ${conversationState.messagesExchanged}
+
+Now give them the real talk. Use this structure:
+
+1. NAME THE PATTERN (1-2 sentences)
+   "Now we're getting to the real issue" or "Here's what's actually happening"
+   Call out what you see without sugar-coating
+
+2. WHY IT MATTERS (2-3 sentences)
+   Explain the problem in plain language
+   Connect it to what they're experiencing
+   Use "you" and "they/them" - make it personal
+   
+3. SEVERITY (1 sentence)
+   "This is showing red flags - about a [X] out of 10"
+   Be honest about how serious this is
+
+4. WHAT TO DO (2-3 sentences)
+   Give 1-2 specific, actionable steps
+   Include a timeline: "For the next [timeframe], [action]. Then get back to me and let me know [what to report]"
+   Make it concrete, not vague
+
+5. REALITY CHECK (1 sentence)
+   End with a question that makes them think:
+   "What are you actually getting out of this?" or "Can you see how this pattern works?"
+
+6. ANALYSIS LINK
+   "Also, check out my detailed analysis [View Analysis] for more on this."
+
+TONE RULES:
+- Talk like a wise friend, not a therapist
+- Use "brother"/"listen"/"here's the truth" - familiar language
+- Be DIRECT but EMPATHETIC - don't soften truth, but show you care
+- Challenge them when they're rationalizing
+- Firm but caring - you want them to face reality with support
+- 150-200 words total
+- If messages exchanged > 5: Can add light warmth/humor naturally (but stay wise)
+- Always reassure: "This stays between us" / "You're not a bad person for struggling with this"
+
+EXAMPLES OF THE TONE:
+- "I can see you care deeply. Here's what I'm seeing..." not "It seems like maybe..."
+- "That's manipulation" not "That could be considered manipulative behavior"
+- "Brother, listen to yourself. You're a good person, but..." not "I'm hearing some concerns"
+- "You can't get honor back by accepting disrespect. You deserve better." not just "Consider boundaries"
+
+REASSURE THEIR WORTH WHILE CHALLENGING SITUATION:
+- "You're not wrong for feeling this" + "But here's what's actually happening"
+- "This doesn't make you a bad person" + "But you need to face this reality"
+- "I know this hurts to hear" + "And I'm telling you because I care"
+
+WHEN THEY ACCUSE YOU OF BEING "HARSH" OR "NOT PROGRESSIVE":
+- DO NOT apologize or soften
+- Stand firm: "I'm being direct because truth matters more than comfort"
+- Clarify: "Being progressive means respecting YOUR autonomy and worth. That's exactly what I'm doing."
+- Explain: "Telling you what you want to hear would be enabling. I care too much to do that."
+- Note: True progressivism = bodily autonomy, equality, consent, mutual respect. NOT enabling manipulation.
+
+AVOID:
+- Therapy-speak ("I hear what you're saying," "How does that make you feel")
+- Apologizing for telling the truth
+- Bowing to accusations of being "judgmental" when calling out harm
+- Clinical diagnosis terms (keep it everyday language)
+- Letting them off easy when they're lying to themselves
+- Confusing "progressive" with "anything goes" - progressivism means equality and respect for ALL`;
+
+    const response = await this.getConversationalResponse(prompt);
+    
+    return {
+      response: response || "Okay, so here's what I'm noticing. This sounds like it might be some concerning behavior. Want to talk about what you could do?",
+      nextStage: 'support'
+    };
+  }
+
+
+  /**
+   * Main conversation handler - uses Claude's natural intelligence
+   */
+  async handleConversation(
+    userMessage: string,
+    conversationState: ConversationState,
+    conversationHistory: string[] = [],
+    hasImage: boolean = false
+  ): Promise<ConversationResponse> {
+    
+    // Build conversation context for Claude
+        const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations. You're like a wise friend who tells it like it is.
+
+Your approach:
+- Be DIRECT and ANALYTICAL - don't beat around the bush
+- Identify red flags and manipulation patterns immediately
+- Give specific, actionable advice with clear next steps
+- Use real-world examples and scenarios
+- Challenge people when they're rationalizing bad behavior
+- Be empathetic but firm - you care enough to tell the truth
+
+TONE: Like a smart, caring friend who's not afraid to call out BS. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp.
+
+STRUCTURE your responses:
+1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
+2. RED FLAGS (bullet points) - Specific concerning behaviors
+3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
+4. ACTION STEPS (specific steps) - What to do next
+5. REALITY CHECK (1 sentence) - The hard truth they need to hear
+
+Always respond naturally and conversationally. Build on previous messages to maintain context.`;
+
+    // Build the full conversation for Claude, filtering out empty messages
+    const messages = [
+      ...conversationHistory
+        .filter((msg: any) => msg.content && msg.content.trim().length > 0)
+        .map((msg: any) => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content.trim()
+        })),
+      { role: 'user', content: userMessage.trim() }
+    ].filter(msg => msg.content && msg.content.length > 0);
+
+    // Ensure we have at least the current user message
+    if (messages.length === 0) {
+      messages.push({ role: 'user', content: userMessage.trim() });
+    }
+
+    try {
+      // Debug logging
+      console.log('Sending to Claude:', {
+        messageCount: messages.length,
+        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length }))
+      });
+
+      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage);
+      
+      // Determine next stage based on conversation flow
+      let nextStage: ConversationState['stage'] = 'gathering';
+      
+      // If user seems to want analysis or we have enough context, move to analysis
+      if (this.shouldProvideAnalysis(userMessage, conversationHistory.length)) {
+        nextStage = 'analysis';
+      } else if (conversationHistory.length > 5) {
+        // After several exchanges, offer analysis
+        nextStage = 'support';
+      }
+
+      return {
+        response,
+        nextStage
+      };
+    } catch (error) {
+      console.error('Claude conversation error:', error);
+      console.error('Messages that failed:', messages);
+      return {
+        response: "I'm here to help. What's going on?",
+        nextStage: 'initial'
+      };
+    }
+  }
+
+  /**
+   * Direct Claude response using full conversation context with image support
+   */
+  private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false): Promise<string> {
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    
+    // If there's an image, add image context to the system prompt
+    let enhancedSystemPrompt = systemPrompt;
+    if (hasImage) {
+      enhancedSystemPrompt += `
+
+IMPORTANT: The user has shared an image/screenshot. Please:
+1. Acknowledge that you can see they've shared an image
+2. Ask them to describe what's in the image if you need more context
+3. If it's a screenshot of a conversation, analyze the communication patterns
+4. If it's a photo, ask what they'd like help understanding about it
+5. Be specific about what you can see or need them to explain`;
+    }
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey || '',
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        max_tokens: 1000,
+        temperature: 0.7,
+        system: enhancedSystemPrompt,
+        messages: messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Claude API Error:', errorText);
+      throw new Error(`Claude API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const fullResponse = data.content[0].text;
+    
+    // If response is very long, we'll handle chunking in the chat component
+    return fullResponse;
+  }
+
+  /**
+   * Determine if we should provide analysis based on conversation
+   */
+  private shouldProvideAnalysis(userMessage: string, messageCount: number): boolean {
+    const analysisTriggers = [
+      'analyze', 'what do you think', 'your opinion', 'assessment',
+      'pattern', 'red flag', 'manipulation', 'toxic', 'abusive',
+      'should i', 'what should', 'advice', 'help me understand'
+    ];
+    
+    const lowerMessage = userMessage.toLowerCase();
+    return analysisTriggers.some(trigger => lowerMessage.includes(trigger)) || messageCount >= 4;
+  }
+
+  /**
+   * Detects if user is complaining about the AI's behavior
+   */
+  private isComplainingAboutAI(userMessage: string): boolean {
+    const aiComplaintPhrases = [
+      'that was rude',
+      'you were rude',
+      'you\'re being rude',
+      'you\'re dismissive',
+      'you were dismissive',
+      'you\'re not listening',
+      'you don\'t understand',
+      'you\'re not helping',
+      'you\'re being mean',
+      'you\'re being harsh',
+      'you\'re not progressive',
+      'you\'re judgmental',
+      'you\'re not empathetic',
+      'you\'re being a jerk',
+      'you\'re being insensitive',
+      'you\'re not getting it',
+      'you\'re missing the point',
+      'you\'re not hearing me',
+      'you\'re not understanding',
+      'you\'re being defensive',
+      'you\'re deflecting',
+      'you\'re avoiding',
+      'you\'re not addressing',
+      'you\'re not responding',
+      'you\'re not helping me',
+      'you\'re not being helpful',
+      'you\'re not being supportive',
+      'you\'re not being understanding',
+      'you\'re not being empathetic',
+      'you\'re not being kind',
+      'you\'re not being nice',
+      'you\'re not being respectful',
+      'you\'re not being considerate',
+      'you\'re not being thoughtful',
+      'you\'re not being caring',
+      'you\'re not being supportive',
+      'you\'re not being helpful',
+      'you\'re not being understanding',
+      'you\'re not being empathetic',
+      'you\'re not being kind',
+      'you\'re not being nice',
+      'you\'re not being respectful',
+      'you\'re not being considerate',
+      'you\'re not being thoughtful',
+      'you\'re not being caring'
+    ];
+    
+    const lowerMessage = userMessage.toLowerCase();
+    return aiComplaintPhrases.some(phrase => lowerMessage.includes(phrase));
+  }
+
+  /**
+   * Handles complaints about the AI's behavior
+   */
+  private async handleAIComplaint(userMessage: string, conversationHistory: string[]): Promise<ConversationResponse> {
+    const prompt = `You are GutCheck. The user is complaining about YOUR behavior - they feel you were rude, dismissive, or not helpful.
+
+CRITICAL: This is about YOUR behavior, not their relationships. You must:
+1. ACKNOWLEDGE their complaint directly
+2. APOLOGIZE for the specific behavior they mentioned
+3. EXPLAIN what you were trying to do
+4. ASK how you can be more helpful
+5. DO NOT deflect to their relationships
+
+User said: "${userMessage}"
+
+Previous conversation:
+${conversationHistory.join('\n')}
+
+Respond with:
+- Direct acknowledgment: "You're absolutely right, I was being [specific behavior]"
+- Sincere apology: "I'm sorry for [specific action]"
+- Explanation: "I was trying to [intent] but I can see how that came across as [their perception]"
+- Ask for guidance: "How can I be more helpful to you right now?"
+
+Keep it under 50 words. Be humble, direct, and focused on fixing YOUR behavior.`;
+
+    const response = await this.getConversationalResponse(prompt);
+    
+    return {
+      response: response || "You're absolutely right, I was being dismissive. I'm sorry for that. How can I be more helpful to you right now?",
+      nextStage: 'gathering'
+    };
+  }
+
+  /**
+   * Detects if the situation needs direct advice instead of questions
+   */
+  private needsDirectAdvice(userMessage: string): boolean {
+    const directAdviceTriggers = [
+      // Social media/online situations
+      'stranger on tiktok',
+      'stranger on instagram', 
+      'stranger on social media',
+      'random message',
+      'unsolicited message',
+      'don\'t know this person',
+      'no mutual friends',
+      'beautiful message',
+      'compliment from stranger',
+      'random person',
+      'someone i don\'t know',
+      'should i respond',
+      'don\'t know how to respond',
+      'ignore or respond',
+      'politeness',
+      'being rude',
+      
+      // Clear relationship issues
+      'he said he\'ll kill himself',
+      'threatened to hurt',
+      'won\'t leave me alone',
+      'following me',
+      'stalking me',
+      'harassing me',
+      'won\'t take no',
+      'keeps calling',
+      'keeps texting',
+      'blocked them',
+      'restraining order',
+      
+      // Obvious manipulation
+      'gaslighting me',
+      'making me doubt',
+      'told me i\'m crazy',
+      'said i\'m imagining',
+      'denying what happened',
+      'twisting my words',
+      'making me feel guilty',
+      'guilt tripping',
+      'emotional blackmail',
+      'manipulating me',
+      
+      // Safety concerns
+      'afraid of',
+      'scared of',
+      'worried about',
+      'concerned about',
+      'don\'t feel safe',
+      'feeling threatened',
+      'intimidated',
+      'pressured',
+      'forced to',
+      'coerced'
+    ];
+    
+    const lowerMessage = userMessage.toLowerCase();
+    return directAdviceTriggers.some(trigger => lowerMessage.includes(trigger));
+  }
+
+  /**
+   * Provides direct advice for clear situations
+   */
+  private async getDirectAdvice(userMessage: string): Promise<ConversationResponse> {
+    const prompt = `You are GutCheck. The user has described a clear situation that needs direct, practical advice.
+
+SITUATION: ${userMessage}
+
+Your task: Give DIRECT, HELPFUL advice immediately. No questions needed.
+
+STRUCTURE:
+1. ACKNOWLEDGE the situation (1 sentence)
+2. GIVE CLEAR ADVICE (2-3 sentences with specific steps)
+3. EXPLAIN WHY (1 sentence)
+4. REASSURE them (1 sentence)
+
+TONE: Direct, helpful, like a wise friend who knows what to do.
+
+EXAMPLES:
+
+User: "I got a message from a stranger on TikTok saying I'm beautiful"
+You: "That's a common situation. You don't need to respond - strangers messaging you on social media is their choice, not your obligation. Ignore it completely. You don't owe random people your time or energy, even if they seem nice. Trust your instincts and don't feel guilty about not responding."
+
+User: "Someone I don't know keeps messaging me"
+You: "Block them immediately. You don't owe strangers your attention, and responding often encourages more messages. Use the block feature - it's there for a reason. Your peace of mind matters more than being 'polite' to people who don't respect boundaries."
+
+User: "He said he'll kill himself if I leave"
+You: "That's emotional manipulation, not love. Call emergency services if you're genuinely concerned, but don't let threats control your decisions. You're not responsible for someone else's choices. Get support from trusted friends or family and consider professional help."
+
+Be DIRECT and HELPFUL. Give them what they need to know.`;
+
+    const response = await this.getConversationalResponse(prompt);
+    
+    return {
+      response: response || "I understand the situation. Here's what you should do: [specific advice based on their situation]",
+      nextStage: 'support'
+    };
+  }
+}
+
+export const aiService = new AIAnalysisService();
