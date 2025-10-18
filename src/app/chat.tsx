@@ -875,6 +875,22 @@ export default function ChatScreen() {
       backgroundColor: colors.textSecondary,
       marginHorizontal: 2,
     },
+    disclaimerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    disclaimerText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginLeft: 6,
+      fontStyle: 'italic',
+    },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1150,6 +1166,12 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Disclaimer */}
+        <View style={styles.disclaimerContainer}>
+          <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.disclaimerText}>This is guidance, not authority.</Text>
+        </View>
 
         {/* Input Area */}
         <View style={styles.inputContainer}>

@@ -37,6 +37,62 @@ export default function SubscriptionScreen() {
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
 
+  // Simulate payment for development mode
+  const simulatePayment = async (planId: string) => {
+    try {
+      // Get the plan details
+      const plan = stripeService.getPlan(planId);
+      if (!plan) {
+        Alert.alert('Error', 'Plan not found.');
+        return;
+      }
+
+      // Simulate payment processing
+      Alert.alert(
+        'Processing Payment...',
+        'Simulating payment processing...',
+        [],
+        { cancelable: false }
+      );
+
+      // Simulate delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Set subscription in store
+      const subscriptionStore = useSubscriptionStore.getState();
+      await subscriptionStore.setSubscription({
+        id: `sub_sim_${Date.now()}`,
+        planId: planId,
+        status: 'active',
+        trialEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+        cancelAtPeriodEnd: false
+      });
+
+      // Save to local storage
+      await AsyncStorage.setItem('current_subscription_plan', planId);
+      await AsyncStorage.setItem('subscription_status', 'active');
+      await AsyncStorage.setItem('trial_end_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
+
+      Alert.alert(
+        'Payment Successful!',
+        'Your 7-day free trial has started. You now have access to all premium features.',
+        [
+          {
+            text: 'Continue to App',
+            onPress: () => router.push('/(tabs)')
+          }
+        ]
+      );
+
+    } catch (error) {
+      console.error('Error simulating payment:', error);
+      Alert.alert('Error', 'Failed to process payment simulation.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load plans from Stripe service
   useEffect(() => {
     const loadPlans = () => {
@@ -80,6 +136,29 @@ export default function SubscriptionScreen() {
     setIsLoading(true);
     
     try {
+      // Check if we're in development mode (Expo Go)
+      const isDevelopment = __DEV__ || Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'development';
+      
+      if (isDevelopment) {
+        // Development mode - simulate payment
+        Alert.alert(
+          'Development Mode',
+          'This is a development build. Payment simulation will be used.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            },
+            {
+              text: 'Simulate Payment',
+              onPress: () => simulatePayment(planId)
+            }
+          ]
+        );
+        return;
+      }
+
+      // Production mode - real Stripe payment
       // Check if Stripe keys are configured
       const publishableKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
       if (!publishableKey || publishableKey.includes('your_')) {

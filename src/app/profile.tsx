@@ -48,9 +48,9 @@ export default function ProfileScreen() {
       const dbProfile = await profileService.getProfile();
       if (dbProfile) {
         setProfileData({
-          username: dbProfile.username,
-          age: dbProfile.age.toString(),
-          region: dbProfile.region,
+          username: dbProfile.username || '',
+          age: dbProfile.age ? dbProfile.age.toString() : '',
+          region: dbProfile.region || '',
           avatarUri: dbProfile.avatar_url,
           struggles: dbProfile.struggles || '',
           goals: dbProfile.goals || ''
@@ -62,6 +62,22 @@ export default function ProfileScreen() {
       const savedProfile = await AsyncStorage.getItem('user_profile');
       if (savedProfile) {
         setProfileData(JSON.parse(savedProfile));
+      } else {
+        // Check if username was saved in AsyncStorage from onboarding
+        const username = await AsyncStorage.getItem('username');
+        const ageRange = await AsyncStorage.getItem('user_age_range');
+        const goal = await AsyncStorage.getItem('user_goal');
+        
+        if (username) {
+          setProfileData(prev => ({
+            ...prev,
+            username: username,
+            age: ageRange || '',
+            region: prev.region,
+            struggles: goal || '',
+            goals: goal || ''
+          }));
+        }
       }
     } catch (error) {
       console.error('Error loading profile:', error);

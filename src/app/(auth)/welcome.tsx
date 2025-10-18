@@ -7,14 +7,52 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'react-native';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme, getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
+import { profileService } from '@/lib/profileService';
 
 const { width, height } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+
+  const handleAnonymousAccess = async () => {
+    try {
+      // Generate anonymous user ID
+      const anonymousId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Save anonymous ID to storage
+      await AsyncStorage.setItem('anonymous_user_id', anonymousId);
+      await AsyncStorage.setItem('user_id', anonymousId);
+      await AsyncStorage.setItem('user_type', 'anonymous');
+      
+      // Ensure onboarding is not marked as completed for new users
+      await AsyncStorage.removeItem('onboarding_completed');
+      
+      // Try to create anonymous profile in database
+      try {
+        await profileService.createAnonymousProfile(anonymousId);
+        console.log('Anonymous profile created successfully');
+      } catch (dbError) {
+        console.log('Database profile creation failed, continuing with local storage only:', dbError);
+        // Continue without database profile - user can still use the app
+      }
+      
+      // Navigate to onboarding
+      router.push('/(tabs)');
+    } catch (error) {
+      console.error('Error creating anonymous user:', error);
+      // Still navigate to app even if profile creation fails
+      router.push('/(tabs)');
+    }
+  };
+
+  const handleUsernameSignUp = () => {
+    // Navigate to username creation screen
+    router.push('/(auth)/username');
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
@@ -41,7 +79,7 @@ export default function WelcomeScreen() {
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.primaryButton, { backgroundColor: currentTheme.primary }]}
-            onPress={() => router.push('/(auth)/register')}
+            onPress={() => handleAnonymousAccess()}
             activeOpacity={0.8}
           >
             <Text style={[styles.primaryButtonText, { color: currentTheme.background }]}>Get Started Anonymously</Text>
@@ -52,10 +90,10 @@ export default function WelcomeScreen() {
               backgroundColor: `${currentTheme.primary}20`,
               borderColor: `${currentTheme.primary}50`
             }]}
-            onPress={() => router.push('/(auth)/login')}
+            onPress={() => handleUsernameSignUp()}
             activeOpacity={0.8}
           >
-            <Text style={[styles.secondaryButtonText, { color: currentTheme.primary }]}>Sign In</Text>
+            <Text style={[styles.secondaryButtonText, { color: currentTheme.primary }]}>Create Username Only</Text>
           </TouchableOpacity>
         </View>
         

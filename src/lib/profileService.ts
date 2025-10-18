@@ -8,16 +8,107 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ProfileData {
   id?: string;
-  username: string;
-  age: number;
-  region: string;
+  username?: string;
+  age?: number;
+  region?: string;
   avatar_url?: string;
   user_id?: string;
   struggles?: string;
   goals?: string;
+  age_range?: string;
+  goal?: string;
+  user_type?: 'anonymous' | 'username' | 'email';
+  created_at?: string;
+  updated_at?: string;
 }
 
 class ProfileService {
+  /**
+   * Create anonymous profile
+   */
+  async createAnonymousProfile(anonymousId: string): Promise<void> {
+    try {
+      // First check if the profiles table exists by trying to select from it
+      const { data: testData, error: testError } = await supabase
+        .from('profiles')
+        .select('id')
+        .limit(1);
+
+      if (testError && testError.code === 'PGRST116') {
+        console.log('Profiles table does not exist, skipping database profile creation');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: anonymousId,
+          user_type: 'anonymous',
+          username: `Anonymous_${anonymousId.slice(-6)}`, // Generate a unique anonymous username
+          age: null,
+          region: null,
+          avatar_url: null,
+          struggles: null,
+          goals: null,
+          age_range: null,
+          goal: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error('Error creating anonymous profile:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error creating anonymous profile:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create username-only profile
+   */
+  async createUsernameProfile(userId: string, username: string): Promise<void> {
+    try {
+      // First check if the profiles table exists by trying to select from it
+      const { data: testData, error: testError } = await supabase
+        .from('profiles')
+        .select('id')
+        .limit(1);
+
+      if (testError && testError.code === 'PGRST116') {
+        console.log('Profiles table does not exist, skipping database profile creation');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: userId,
+          user_type: 'username',
+          username: username,
+          age: null,
+          region: null,
+          avatar_url: null,
+          struggles: null,
+          goals: null,
+          age_range: null,
+          goal: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error('Error creating username profile:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error creating username profile:', error);
+      throw error;
+    }
+  }
+
   /**
    * Get or create anonymous user ID
    */
@@ -115,7 +206,12 @@ class ProfileService {
    */
   async getProfile(): Promise<ProfileData | null> {
     try {
-      const userId = await this.getAnonymousUserId();
+      // Get user ID from storage (works for both anonymous and username users)
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        console.log('No user ID found in storage');
+        return null;
+      }
       
       const { data, error } = await supabase
         .from('profiles')
@@ -131,7 +227,7 @@ class ProfileService {
         // Also save to local storage for offline access
         await AsyncStorage.setItem('user_profile', JSON.stringify({
           username: data.username,
-          age: data.age.toString(),
+          age: data.age ? data.age.toString() : '',
           region: data.region,
           avatarUri: data.avatar_url,
           struggles: data.struggles,
@@ -149,7 +245,7 @@ class ProfileService {
           const parsed = JSON.parse(localProfile);
           return {
             username: parsed.username,
-            age: parseInt(parsed.age),
+            age: parsed.age ? parseInt(parsed.age) : undefined,
             region: parsed.region,
             avatar_url: parsed.avatarUri,
             struggles: parsed.struggles,
@@ -160,6 +256,48 @@ class ProfileService {
         console.error('Error getting local profile:', localError);
       }
       return null;
+    }
+  }
+
+  /**
+   * Update profile data
+   */
+  async updateProfile(updates: Partial<ProfileData>): Promise<void> {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        throw new Error('No user ID found');
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        throw error;
+      }
+
+      // Also update local storage
+      const currentProfile = await this.getProfile();
+      if (currentProfile) {
+        const updatedProfile = { ...currentProfile, ...updates };
+        await AsyncStorage.setItem('user_profile', JSON.stringify({
+          username: updatedProfile.username,
+          age: updatedProfile.age ? updatedProfile.age.toString() : '',
+          region: updatedProfile.region,
+          avatarUri: updatedProfile.avatar_url,
+          struggles: updatedProfile.struggles,
+          goals: updatedProfile.goals
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
     }
   }
 

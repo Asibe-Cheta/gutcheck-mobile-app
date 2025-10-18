@@ -11,17 +11,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { Button } from '@/components/ui/Button';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+import Onboarding from '../onboarding';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -46,6 +50,24 @@ export default function HomeScreen() {
     }, [])
   );
 
+  // Check if onboarding is completed
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
+        if (!onboardingCompleted) {
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        console.error('Error checking onboarding:', error);
+      } finally {
+        setIsCheckingOnboarding(false);
+      }
+    };
+
+    checkOnboarding();
+  }, []);
+
   // Reset form when conversation is cleared
   useEffect(() => {
     if (conversationHistory.length === 0) {
@@ -55,6 +77,10 @@ export default function HomeScreen() {
       setIsAnalyzing(false);
     }
   }, [conversationHistory.length]);
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+  };
 
   const handlePromptSelect = (prompt: string) => {
     setSelectedPrompt(prompt);
@@ -176,6 +202,20 @@ export default function HomeScreen() {
 
   const styles = createStyles(currentTheme);
   
+  // Show onboarding for new users
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
+
+  // Show loading while checking onboarding
+  if (isCheckingOnboarding) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={currentTheme.primary} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

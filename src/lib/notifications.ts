@@ -444,7 +444,7 @@ export class NotificationService {
    * Setup notification listeners
    */
   setupNotificationListeners(
-    onNotificationTap: (chatPrompt: string) => void
+    onNotificationTap: (notificationData: { title: string; body: string; type: string; chatPrompt: string }) => void
   ): void {
     // Listener for when notification is received while app is foregrounded
     this.notificationListener = Notifications.addNotificationReceivedListener(
@@ -460,10 +460,10 @@ export class NotificationService {
         const notificationData = {
           title: response.notification.request.content.title || '',
           body: response.notification.request.content.body || '',
-          type: data.type || '',
-          chatPrompt: data.chatPrompt || '',
+          type: (data?.type as string) || '',
+          chatPrompt: (data?.chatPrompt as string) || '',
         };
-        if (notificationData.chatPrompt && onNotificationTap) {
+        if (onNotificationTap) {
           onNotificationTap(notificationData);
         }
       }
