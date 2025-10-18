@@ -75,12 +75,12 @@ export default function HomeScreen() {
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
 
     if (!result.canceled && result.assets[0]) {
       setUploadedImage(result.assets[0].uri);
@@ -96,6 +96,7 @@ export default function HomeScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -110,12 +111,24 @@ export default function HomeScreen() {
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'image/*',
+        type: ['image/*', 'application/pdf'],
         copyToCacheDirectory: true,
       });
 
       if (!result.canceled && result.assets[0]) {
-        setUploadedImage(result.assets[0].uri);
+        console.log('Document picked from home screen:', {
+          uri: result.assets[0].uri,
+          mimeType: result.assets[0].mimeType,
+          name: result.assets[0].name,
+          size: result.assets[0].size
+        });
+        
+        // Handle both images and PDFs
+        if (result.assets[0].mimeType?.startsWith('image/') || result.assets[0].mimeType === 'application/pdf') {
+          setUploadedImage(result.assets[0].uri);
+        } else {
+          Alert.alert('Document Type', 'Please select an image or PDF file.');
+        }
         setShowUploadModal(false);
       }
     } catch (error) {
@@ -131,7 +144,7 @@ export default function HomeScreen() {
 
   const handleAnalyze = async () => {
     if (!analysisText.trim() && !uploadedImage) {
-      Alert.alert('Input Required', 'Please describe what happened, how someone made you feel, or upload an image.');
+      Alert.alert('Input Required', 'Please describe what happened, how someone made you feel, or upload an image/document.');
       return;
     }
     
@@ -147,7 +160,8 @@ export default function HomeScreen() {
         pathname: '/chat',
         params: { 
           initialMessage: analysisText || 'I uploaded an image to analyze',
-          hasImage: uploadedImage ? 'true' : 'false'
+          hasImage: uploadedImage ? 'true' : 'false',
+          imageData: uploadedImage || undefined
         }
       });
       
@@ -168,7 +182,14 @@ export default function HomeScreen() {
         <View style={styles.content}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.appTitle}>GutCheck</Text>
+          <View style={styles.headerLeft}>
+            <Image 
+              source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.appTitle}>Home</Text>
+          </View>
           <TouchableOpacity style={styles.settingsButton}>
             <Ionicons name="settings-outline" size={24} color={currentTheme.textSecondary} />
           </TouchableOpacity>
@@ -352,6 +373,15 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16, // py-4
     paddingHorizontal: 16, // p-4
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerLogo: {
+    width: 43,
+    height: 43,
   },
   appTitle: {
     fontSize: 20, // text-xl

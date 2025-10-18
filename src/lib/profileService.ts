@@ -13,6 +13,8 @@ export interface ProfileData {
   region: string;
   avatar_url?: string;
   user_id?: string;
+  struggles?: string;
+  goals?: string;
 }
 
 class ProfileService {
@@ -61,6 +63,8 @@ class ProfileService {
             age: profileData.age,
             region: profileData.region,
             avatar_url: profileData.avatar_url,
+            struggles: profileData.struggles,
+            goals: profileData.goals,
             updated_at: new Date().toISOString()
           })
           .eq('user_id', userId)
@@ -78,7 +82,9 @@ class ProfileService {
             username: profileData.username,
             age: profileData.age,
             region: profileData.region,
-            avatar_url: profileData.avatar_url
+            avatar_url: profileData.avatar_url,
+            struggles: profileData.struggles,
+            goals: profileData.goals
           })
           .select()
           .single();
@@ -92,7 +98,9 @@ class ProfileService {
         username: result.username,
         age: result.age.toString(),
         region: result.region,
-        avatarUri: result.avatar_url
+        avatarUri: result.avatar_url,
+        struggles: result.struggles,
+        goals: result.goals
       }));
 
       return result;
@@ -125,7 +133,9 @@ class ProfileService {
           username: data.username,
           age: data.age.toString(),
           region: data.region,
-          avatarUri: data.avatar_url
+          avatarUri: data.avatar_url,
+          struggles: data.struggles,
+          goals: data.goals
         }));
       }
 
@@ -141,7 +151,9 @@ class ProfileService {
             username: parsed.username,
             age: parseInt(parsed.age),
             region: parsed.region,
-            avatar_url: parsed.avatarUri
+            avatar_url: parsed.avatarUri,
+            struggles: parsed.struggles,
+            goals: parsed.goals
           };
         }
       } catch (localError) {

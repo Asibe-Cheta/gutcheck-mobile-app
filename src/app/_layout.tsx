@@ -31,19 +31,22 @@ function AppContent() {
           const notificationsScheduled = await AsyncStorage.getItem('notifications_scheduled');
           
           if (notificationsScheduled !== 'true') {
-            // Schedule weekly notifications
-            await notificationService.scheduleWeeklyNotifications();
+            // Schedule daily notifications
+            await notificationService.scheduleDailyNotifications();
             console.log('Motivational notifications enabled');
           }
 
           // Setup listener for when user taps notification
-          notificationService.setupNotificationListeners((chatPrompt) => {
-            // Navigate to chat with the prompt
+          notificationService.setupNotificationListeners((notificationData) => {
+            // Navigate to chat with notification data
             router.push({
               pathname: '/chat',
               params: {
-                initialMessage: chatPrompt,
                 fromNotification: 'true',
+                notificationTitle: notificationData.title,
+                notificationBody: notificationData.body,
+                notificationType: notificationData.type,
+                chatPrompt: notificationData.chatPrompt,
               },
             });
           });

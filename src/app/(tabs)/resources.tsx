@@ -11,11 +11,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
+import { HELPLINES } from '@/lib/helplineService';
 
 // Crisis Resource Component
 const CrisisResource = ({ 
   name, 
   number, 
+  rawNumber,
   description, 
   icon, 
   color,
@@ -24,6 +26,7 @@ const CrisisResource = ({
 }: {
   name: string;
   number: string;
+  rawNumber?: string;
   description: string;
   icon: string;
   color: string;
@@ -31,12 +34,13 @@ const CrisisResource = ({
   colors: any;
 }) => {
   const handleCall = () => {
+    const dialNumber = rawNumber || number.replace(/\s/g, '');
     Alert.alert(
       `Call ${name}`,
       `This will dial ${number}. Continue?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => Linking.openURL(`tel:${number}`) }
+        { text: 'Call', onPress: () => Linking.openURL(`tel:${dialNumber}`) }
       ]
     );
   };
@@ -95,77 +99,58 @@ export default function ResourcesScreen() {
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
   
-  const crisisResources = [
-    { 
-      name: 'Childline', 
-      number: '0800 1111', 
-      description: 'For under 19s', 
-      icon: 'people',
-      color: currentTheme.warning
-    },
-    { 
-      name: 'Samaritans', 
-      number: '116 123', 
-      description: '24/7 support', 
-      icon: 'heart',
-      color: currentTheme.success
-    },
-    { 
-      name: 'NSPCC', 
-      number: '0808 800 5000', 
-      description: 'Child protection', 
-      icon: 'shield-checkmark',
-      color: currentTheme.primary
-    },
-    { 
-      name: 'National Domestic Abuse', 
-      number: '0808 2000 247', 
-      description: '24/7 helpline', 
-      icon: 'call',
-      color: currentTheme.warning
-    },
-  ];
+  // Format phone number with spaces for display
+  const formatPhoneNumber = (number: string): string => {
+    const cleaned = number.replace(/\s/g, '');
+    
+    if (cleaned.length === 7) {
+      return `${cleaned.slice(0, 4)} ${cleaned.slice(4)}`;
+    } else if (cleaned.length === 6) {
+      return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
+    } else if (cleaned.length === 11) {
+      return `${cleaned.slice(0, 4)} ${cleaned.slice(4, 7)} ${cleaned.slice(7)}`;
+    }
+    
+    return cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
+  };
+  
+  // Map helplines with colors for display
+  const crisisResources = HELPLINES.map((helpline, index) => ({
+    name: helpline.name,
+    number: formatPhoneNumber(helpline.number),
+    rawNumber: helpline.number, // Keep raw number for calling
+    description: helpline.description,
+    icon: helpline.icon,
+    color: [currentTheme.warning, currentTheme.success, currentTheme.primary, currentTheme.error][index % 4]
+  }));
 
   const safetyGuides = [
     { 
       title: 'Recognizing Gaslighting', 
       description: 'Learn to identify when someone is making you question your reality',
-      icon: 'warning'
+      icon: 'warning',
+      route: '/guides/gaslighting'
     },
     { 
       title: 'Dealing with Manipulation', 
       description: 'Strategies to protect yourself from emotional manipulation',
-      icon: 'shield'
+      icon: 'shield',
+      route: '/guides/manipulation'
     },
     { 
       title: 'Setting Boundaries', 
       description: 'How to establish and maintain healthy relationship boundaries',
-      icon: 'lock-closed'
+      icon: 'lock-closed',
+      route: '/guides/boundaries'
     },
     { 
       title: 'When to Seek Help', 
       description: 'Recognizing when you need professional support',
-      icon: 'medical'
+      icon: 'medical',
+      route: '/guides/seek-help'
     },
   ];
 
-  const educationalContent = [
-    { 
-      title: 'Understanding Manipulation', 
-      description: 'Deep dive into manipulation tactics and how they work',
-      icon: 'book'
-    },
-    { 
-      title: 'Healthy Relationships 101', 
-      description: 'What healthy relationships look like and how to build them',
-      icon: 'heart-circle'
-    },
-    { 
-      title: 'Trusting Your Intuition', 
-      description: 'Learning to recognize and trust your gut feelings',
-      icon: 'bulb'
-    },
-  ];
 
   const handleCrisisSupport = () => {
     Alert.alert(
@@ -179,9 +164,10 @@ export default function ResourcesScreen() {
     );
   };
 
-  const handleGuidePress = (title: string) => {
-    // TODO: Navigate to guide content
-    console.log(`Opening guide: ${title}`);
+  const handleGuidePress = (route?: string) => {
+    if (route) {
+      router.push(route as any);
+    }
   };
 
   // Create styles directly with current theme colors
@@ -347,6 +333,7 @@ export default function ResourcesScreen() {
               key={index}
               name={resource.name}
               number={resource.number}
+              rawNumber={resource.rawNumber}
               description={resource.description}
               icon={resource.icon}
               color={resource.color}
@@ -365,23 +352,7 @@ export default function ResourcesScreen() {
               title={guide.title}
               description={guide.description}
               icon={guide.icon}
-              onPress={() => handleGuidePress(guide.title)}
-              styles={styles}
-              colors={currentTheme}
-            />
-          ))}
-        </View>
-        
-        {/* Educational Content */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Educational Content</Text>
-          {educationalContent.map((content, index) => (
-            <GuideItem
-              key={index}
-              title={content.title}
-              description={content.description}
-              icon={content.icon}
-              onPress={() => handleGuidePress(content.title)}
+              onPress={() => handleGuidePress(guide.route)}
               styles={styles}
               colors={currentTheme}
             />

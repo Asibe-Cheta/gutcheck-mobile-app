@@ -7,6 +7,13 @@
 import { db } from './supabase';
 import { Pattern, Analysis } from '@/types';
 import Constants from 'expo-constants';
+import { 
+  getRelevantHelplines, 
+  isCrisisSituation, 
+  isImmediateDanger, 
+  getHelplineRecommendationMessage 
+} from './helplineService';
+import { profileService } from './profileService';
 
 export interface AIAnalysisResult {
   analysis: {
@@ -63,6 +70,64 @@ class AIAnalysisService {
       max_tokens: 2000,
       temperature: 0.3,
     };
+  }
+
+  /**
+   * Get user profile context for AI
+   * Returns basic context (username, age, location) always
+   * Returns struggles/goals only when includePersonalContext is true
+   */
+  private async getUserProfileContext(includePersonalContext: boolean = false): Promise<string> {
+    try {
+      const profile = await profileService.getProfile();
+      
+      if (!profile) {
+        return '';
+      }
+
+      // Always include basic information
+      let context = `\n\nUSER PROFILE CONTEXT:\n`;
+      context += `- Username: ${profile.username}\n`;
+      context += `- Age: ${profile.age}\n`;
+      context += `- Location: ${profile.region}\n`;
+
+      // Only include personal struggles/goals if requested
+      if (includePersonalContext) {
+        if (profile.struggles && profile.struggles.trim()) {
+          context += `- Personal challenges: ${profile.struggles}\n`;
+        }
+        if (profile.goals && profile.goals.trim()) {
+          context += `- Working on: ${profile.goals}\n`;
+        }
+      }
+
+      return context;
+    } catch (error) {
+      console.error('Error getting profile context:', error);
+      return '';
+    }
+  }
+
+  /**
+   * Determine if personal context (struggles/goals) is relevant
+   * Based on conversation content and keywords
+   */
+  private shouldIncludePersonalContext(conversationText: string): boolean {
+    const lowerText = conversationText.toLowerCase();
+    
+    // Keywords that indicate personal context might be relevant
+    const relevantKeywords = [
+      'struggle', 'struggling', 'difficult', 'hard time', 'challenge',
+      'anxious', 'anxiety', 'depressed', 'depression', 'self-esteem',
+      'confidence', 'trust', 'trauma', 'past', 'afraid', 'scared',
+      'insecure', 'worth', 'worthless', 'good enough', 'not enough',
+      'addiction', 'substance', 'drinking', 'drugs', 'cope', 'coping',
+      'therapy', 'counseling', 'help', 'support', 'advice',
+      'work on', 'improve', 'better', 'change', 'grow', 'growth'
+    ];
+
+    // Check if any relevant keywords are present
+    return relevantKeywords.some(keyword => lowerText.includes(keyword));
   }
 
   // Main analysis function
@@ -575,10 +640,15 @@ IMPORTANT:
    */
   async handleInitialMessage(
     userMessage: string, 
-    hasImage: boolean = false
+    hasImage: boolean = false,
+    imageData?: string
   ): Promise<ConversationResponse> {
+    // Get user profile context
+    const includePersonalContext = this.shouldIncludePersonalContext(userMessage);
+    const profileContext = await this.getUserProfileContext(includePersonalContext);
+    
     // For initial messages, be more direct and analytical
-    const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations.
+    const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations.${profileContext}
 
 Your approach:
 - Be DIRECT and ANALYTICAL - don't beat around the bush
@@ -604,10 +674,22 @@ Always respond naturally and conversationally.`;
     ];
 
     try {
-      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage);
+      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
+      
+      // Check if helplines should be recommended for initial message
+      const isCrisis = isCrisisSituation(userMessage);
+      const isDanger = isImmediateDanger(userMessage);
+      const relevantHelplines = getRelevantHelplines(userMessage);
+      
+      // Add helpline recommendations if appropriate
+      let enhancedResponse = response;
+      if (isCrisis || isDanger || relevantHelplines.length > 0) {
+        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines);
+        enhancedResponse = response + helplineMessage;
+      }
       
       return {
-        response,
+        response: enhancedResponse,
         nextStage: 'support'
       };
     } catch (error) {
@@ -884,17 +966,90 @@ AVOID:
 
 
   /**
+   * Handle notification responses - AI elaborates on notification content
+   */
+  async handleNotificationResponse(
+    notificationTitle: string,
+    notificationBody: string,
+    notificationType: string,
+    chatPrompt?: string
+  ): Promise<ConversationResponse> {
+    try {
+      console.log('handleNotificationResponse called with:', {
+        title: notificationTitle,
+        body: notificationBody,
+        type: notificationType,
+        chatPrompt
+      });
+
+      // Create a specialized prompt for notification responses
+      const systemPrompt = `You are GutCheck, a supportive AI companion. The user received a notification with the title "${notificationTitle}" and message "${notificationBody}". This is a ${notificationType} notification.
+
+Your task is to:
+1. Acknowledge the notification they received
+2. Elaborate on the message in a helpful, supportive way
+3. Keep your response concise but meaningful (2-3 sentences)
+4. Be encouraging and actionable
+5. Don't ask too many questions - just provide helpful insight
+
+The notification was: "${notificationBody}"
+
+Respond as if you're continuing the conversation from that notification.`;
+
+      const messages = [
+        { role: 'user', content: `The user tapped on a ${notificationType} notification: "${notificationTitle}" - "${notificationBody}". Please elaborate on this message.` }
+      ];
+
+      const response = await this.getDirectClaudeResponse(
+        messages,
+        systemPrompt,
+        false,
+        undefined
+      );
+
+      return {
+        response: response,
+        nextStage: 'support'
+      };
+    } catch (error) {
+      console.error('Error handling notification response:', error);
+      return {
+        response: "I see you received a notification. How can I help you with that?",
+        nextStage: 'support'
+      };
+    }
+  }
+
+  /**
    * Main conversation handler - uses Claude's natural intelligence
    */
   async handleConversation(
     userMessage: string,
     conversationState: ConversationState,
     conversationHistory: string[] = [],
-    hasImage: boolean = false
+    hasImage: boolean = false,
+    imageData?: string
   ): Promise<ConversationResponse> {
     
+    console.log('handleConversation called with:', {
+      userMessage: userMessage.substring(0, 50) + '...',
+      hasImage,
+      imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
+      imageDataType: typeof imageData,
+      conversationHistoryLength: conversationHistory.length
+    });
+    
+    // Get user profile context
+    const fullConversationText = [
+      ...conversationHistory.map((msg: any) => msg.content),
+      userMessage
+    ].join(' ');
+    
+    const includePersonalContext = this.shouldIncludePersonalContext(fullConversationText);
+    const profileContext = await this.getUserProfileContext(includePersonalContext);
+    
     // Build conversation context for Claude
-        const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations. You're like a wise friend who tells it like it is.
+        const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations. You're like a wise friend who tells it like it is.${profileContext}
 
 Your approach:
 - Be DIRECT and ANALYTICAL - don't beat around the bush
@@ -935,10 +1090,30 @@ Always respond naturally and conversationally. Build on previous messages to mai
       // Debug logging
       console.log('Sending to Claude:', {
         messageCount: messages.length,
-        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length }))
+        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length })),
+        hasImage,
+        imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
+        imageDataType: typeof imageData
       });
 
-      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage);
+      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
+      
+      // Check if helplines should be recommended based on conversation content
+      const fullConversationText = [
+        ...conversationHistory.map((msg: any) => msg.content),
+        userMessage
+      ].join(' ');
+      
+      const isCrisis = isCrisisSituation(fullConversationText);
+      const isDanger = isImmediateDanger(fullConversationText);
+      const relevantHelplines = getRelevantHelplines(fullConversationText);
+      
+      // Add helpline recommendations if appropriate
+      let enhancedResponse = response;
+      if (isCrisis || isDanger || relevantHelplines.length > 0) {
+        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines);
+        enhancedResponse = response + helplineMessage;
+      }
       
       // Determine next stage based on conversation flow
       let nextStage: ConversationState['stage'] = 'gathering';
@@ -952,7 +1127,7 @@ Always respond naturally and conversationally. Build on previous messages to mai
       }
 
       return {
-        response,
+        response: enhancedResponse,
         nextStage
       };
     } catch (error) {
@@ -966,24 +1141,211 @@ Always respond naturally and conversationally. Build on previous messages to mai
   }
 
   /**
+   * Convert local file URI to base64 data
+   */
+  private async convertFileToBase64(fileUri: string): Promise<{ base64: string; mediaType: string; contentType: 'image' | 'document' }> {
+    try {
+      // For React Native, we'll use a different approach
+      // First, let's try to read the file as a blob and convert it
+      const response = await fetch(fileUri);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Convert ArrayBuffer to base64
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      
+      // Convert to base64
+      const base64 = btoa(binary);
+      
+      // Detect media type from file signature (magic numbers)
+      let mediaType = 'image/jpeg'; // default
+      let contentType: 'image' | 'document' = 'image';
+      
+      if (bytes.length >= 4) {
+        // PDF signature: 25 50 44 46 (%PDF)
+        if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+          mediaType = 'application/pdf';
+          contentType = 'document';
+        }
+        // PNG signature: 89 50 4E 47
+        else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+          mediaType = 'image/png';
+          contentType = 'image';
+        }
+        // JPEG signature: FF D8 FF
+        else if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+          mediaType = 'image/jpeg';
+          contentType = 'image';
+        }
+        // WebP signature: 52 49 46 46 ... 57 45 42 50
+        else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+                 bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+          mediaType = 'image/webp';
+          contentType = 'image';
+        }
+        // GIF signature: 47 49 46 38
+        else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+          mediaType = 'image/gif';
+          contentType = 'image';
+        }
+      }
+      
+      console.log('Detected media type:', mediaType, 'content type:', contentType);
+      return { base64, mediaType, contentType };
+    } catch (error) {
+      console.error('Error converting file to base64:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Direct Claude response using full conversation context with image support
    */
-  private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false): Promise<string> {
+  private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false, imageData?: string): Promise<string> {
     const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
-    // If there's an image, add image context to the system prompt
+    console.log('getDirectClaudeResponse called with:', {
+      hasImage,
+      imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
+      imageDataType: typeof imageData,
+      messagesCount: messages.length
+    });
+    
+    // If there's an image or document, add context to the system prompt
     let enhancedSystemPrompt = systemPrompt;
-    if (hasImage) {
-      enhancedSystemPrompt += `
+    if (hasImage && imageData) {
+      if (imageData.startsWith('file://')) {
+        enhancedSystemPrompt += `
 
-IMPORTANT: The user has shared an image/screenshot. Please:
-1. Acknowledge that you can see they've shared an image
-2. Ask them to describe what's in the image if you need more context
-3. If it's a screenshot of a conversation, analyze the communication patterns
-4. If it's a photo, ask what they'd like help understanding about it
-5. Be specific about what you can see or need them to explain`;
+IMPORTANT: The user has shared an image/screenshot or document. You can see the actual content. Please:
+1. Acknowledge that you can see the file (image, screenshot, or PDF document)
+2. Analyze the content directly - look for text conversations, manipulation patterns, red flags
+3. If it's a screenshot of messages, analyze the communication patterns and manipulation tactics
+4. If it's a photo, analyze what you can see and provide insights
+5. If it's a PDF document, read and analyze the text content
+6. Focus on relationship dynamics and red flags visible in the content
+7. Look for patterns like gaslighting, guilt-tripping, manipulation, or concerning behavior
+8. Be specific about what you see in the file and provide direct analysis`;
+      } else {
+        enhancedSystemPrompt += `
+
+IMPORTANT: The user has shared an image/screenshot or document. Please:
+1. Acknowledge that you can see they've shared a file
+2. If it's a screenshot of a conversation, analyze the communication patterns and manipulation tactics
+3. If it's a photo, ask what they'd like help understanding about it
+4. If it's a document, analyze the text content for relationship red flags
+5. Be specific about what you can see or need them to explain
+6. Focus on relationship dynamics and red flags in the content
+7. Look for patterns like gaslighting, guilt-tripping, manipulation, or concerning behavior in any text`;
+      }
     }
     
+    // Prepare messages with image data if available
+    let messagesWithImage = messages;
+    if (hasImage && imageData) {
+      console.log('Processing image for Claude:', {
+        hasImage,
+        imageDataLength: imageData.length,
+        imageDataPreview: imageData.substring(0, 50) + '...',
+        messagesCount: messages.length,
+        isLocalFile: imageData.startsWith('file://')
+      });
+      
+      // Check if it's a local file URI that needs to be converted to base64
+      if (imageData.startsWith('file://')) {
+        console.log('Local file URI detected - converting to base64...');
+        try {
+          // Convert local file to base64 and detect media type
+          const { base64, mediaType, contentType } = await this.convertFileToBase64(imageData);
+          console.log('File converted to base64, length:', base64.length, 'media type:', mediaType, 'content type:', contentType);
+          
+          // Add file to the last user message with base64 data
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage && lastMessage.role === 'user') {
+            const fileContent = contentType === 'document' 
+              ? {
+                  type: 'document',
+                  source: {
+                    type: 'base64',
+                    media_type: mediaType,
+                    data: base64
+                  }
+                }
+              : {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mediaType,
+                    data: base64
+                  }
+                };
+            
+            messagesWithImage = [
+              ...messages.slice(0, -1),
+              {
+                ...lastMessage,
+                content: [
+                  {
+                    type: 'text',
+                    text: lastMessage.content
+                  },
+                  fileContent
+                ]
+              }
+            ];
+            console.log(`${contentType === 'document' ? 'Document' : 'Image'} added to message with base64 data and media type:`, mediaType);
+          }
+        } catch (error) {
+          console.error('Error processing image:', error);
+          // Fallback to asking for description
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage && lastMessage.role === 'user') {
+            messagesWithImage = [
+              ...messages.slice(0, -1),
+              {
+                ...lastMessage,
+                content: lastMessage.content + '\n\n[User has shared an image/screenshot that I can see]'
+              }
+            ];
+            console.log('Image conversion failed - using fallback approach');
+          }
+        }
+      } else {
+        // If it's already a proper URL or base64, use it directly
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.role === 'user') {
+          messagesWithImage = [
+            ...messages.slice(0, -1),
+            {
+              ...lastMessage,
+              content: [
+                {
+                  type: 'text',
+                  text: lastMessage.content
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageData
+                  }
+                }
+              ]
+            }
+          ];
+          console.log('Image added to message:', {
+            originalContent: lastMessage.content,
+            newContentType: 'array',
+            hasImageUrl: true
+          });
+        }
+      }
+    } else {
+      console.log('No image data provided:', { hasImage, imageData: imageData, imageDataType: typeof imageData });
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -996,7 +1358,7 @@ IMPORTANT: The user has shared an image/screenshot. Please:
         max_tokens: 1000,
         temperature: 0.7,
         system: enhancedSystemPrompt,
-        messages: messages,
+        messages: messagesWithImage,
       }),
     });
 

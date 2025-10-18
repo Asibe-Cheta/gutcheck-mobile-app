@@ -24,13 +24,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { theme } from '@/lib/theme';
+import { getThemeColors } from '@/lib/theme';
+import { useTheme } from '@/lib/themeContext';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+import { aiService } from '@/lib/ai';
 
 // Animated Typing Indicator Component
-const AnimatedTypingIndicator = () => {
+const AnimatedTypingIndicator = ({ colors }: { colors: any }) => {
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
   const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -65,18 +67,51 @@ const AnimatedTypingIndicator = () => {
     animateDots();
   }, []);
 
+  const indicatorStyles = {
+    typingIndicator: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      padding: 12,
+      backgroundColor: colors.border,
+      borderRadius: 16,
+      maxWidth: '80%',
+      marginBottom: 16,
+    },
+    typingDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.textSecondary,
+      marginHorizontal: 2,
+    },
+  };
+
   return (
-    <View style={styles.typingIndicator}>
-      <Animated.View style={[styles.typingDot, { opacity: dot1 }]} />
-      <Animated.View style={[styles.typingDot, { opacity: dot2 }]} />
-      <Animated.View style={[styles.typingDot, { opacity: dot3 }]} />
+    <View style={indicatorStyles.typingIndicator}>
+      <Animated.View style={[indicatorStyles.typingDot, { opacity: dot1 }]} />
+      <Animated.View style={[indicatorStyles.typingDot, { opacity: dot2 }]} />
+      <Animated.View style={[indicatorStyles.typingDot, { opacity: dot3 }]} />
     </View>
   );
 };
 
 export default function ChatScreen() {
-  const { initialMessage, hasImage, fromNotification, chatId, isFromHistory } = useLocalSearchParams();
+  const { 
+    initialMessage, 
+    hasImage, 
+    fromNotification, 
+    chatId, 
+    isFromHistory, 
+    imageData,
+    notificationTitle,
+    notificationBody,
+    notificationType,
+    chatPrompt
+  } = useLocalSearchParams();
   const router = useRouter();
+  const { isDark } = useTheme();
+  const colors = getThemeColors(isDark);
+  
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -124,11 +159,25 @@ export default function ChatScreen() {
           }
         });
       }
+    } else if (fromNotification === 'true' && notificationTitle && notificationBody) {
+      // Handle notification-triggered conversation
+      console.log('Starting conversation from notification:', {
+        title: notificationTitle,
+        body: notificationBody,
+        type: notificationType
+      });
+      handleNotificationResponse(notificationTitle, notificationBody, notificationType, chatPrompt);
     } else if (initialMessage && typeof initialMessage === 'string') {
       // Handle new conversation - always start fresh if we have an initial message
       console.log('Starting new conversation with initial message:', initialMessage);
       const imageFlag = hasImage === 'true';
-      sendInitialMessage(initialMessage, imageFlag);
+      const imageUri = imageData as string | undefined;
+      console.log('Image data from params:', {
+        hasImage,
+        imageData: imageUri ? imageUri.substring(0, 50) + '...' : 'none',
+        imageFlag
+      });
+      sendInitialMessage(initialMessage, imageFlag, imageUri);
     }
   }, [initialMessage, hasImage, chatId, isFromHistory]);
 
@@ -139,12 +188,51 @@ export default function ChatScreen() {
     }, 100);
   }, [conversationHistory]);
 
-  const sendInitialMessage = async (message: string, hasImageFlag: boolean = false) => {
+  const handleNotificationResponse = async (title: string, body: string, type: string, chatPrompt?: string) => {
     setIsTyping(true);
 
     try {
+      console.log('handleNotificationResponse called with:', {
+        title,
+        body,
+        type,
+        chatPrompt
+      });
+
+      // Use the AI service's notification handler
+      const response = await aiService.handleNotificationResponse(
+        title,
+        body,
+        type,
+        chatPrompt
+      );
+
+      // Add assistant response
+      addAssistantResponse(response.response);
+
+      // Update conversation state
+      updateConversationState({ stage: response.nextStage });
+
+    } catch (error) {
+      console.error('Notification response error:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const sendInitialMessage = async (message: string, hasImageFlag: boolean = false, imageData?: string) => {
+    setIsTyping(true);
+
+    try {
+      console.log('sendInitialMessage called with:', {
+        message: message.substring(0, 50) + '...',
+        hasImageFlag,
+        imageData: imageData ? imageData.substring(0, 50) + '...' : 'none'
+      });
+
       // Add user message to conversation
-      addUserMessage(message);
+      addUserMessage(message, imageData);
 
       // Update conversation state with image context
       updateConversationState({ 
@@ -152,12 +240,21 @@ export default function ChatScreen() {
         imageAnalyzed: hasImageFlag 
       });
 
-      // Handle the conversation - pass raw conversation history
+      // Get the updated conversation history after adding the user message
+      const updatedHistory = useConversationStore.getState().conversationHistory;
+      console.log('Updated conversation history:', {
+        messageCount: updatedHistory.length,
+        lastMessage: updatedHistory[updatedHistory.length - 1]?.content?.substring(0, 50) + '...',
+        hasImageInLastMessage: !!updatedHistory[updatedHistory.length - 1]?.imageUri
+      });
+
+      // Handle the conversation - pass updated conversation history
       const response = await handleConversation(
         message,
         conversationState,
-        conversationHistory,
-        hasImageFlag
+        updatedHistory,
+        hasImageFlag,
+        imageData
       );
 
       // Add assistant response
@@ -204,12 +301,16 @@ export default function ChatScreen() {
         });
       }
 
-      // Handle the conversation with image - pass raw conversation history
+      // Get the updated conversation history after adding the user message
+      const updatedHistory = useConversationStore.getState().conversationHistory;
+
+      // Handle the conversation with image - pass updated conversation history
       const response = await handleConversation(
         userMessage,
         conversationState,
-        conversationHistory,
-        !!imageToSend
+        updatedHistory,
+        !!imageToSend,
+        imageToSend || undefined
       );
 
       // Handle long responses with chunking and typing animation
@@ -492,11 +593,18 @@ export default function ChatScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        // For now, we'll handle images only
-        if (result.assets[0].mimeType?.startsWith('image/')) {
+        console.log('Document picked:', {
+          uri: result.assets[0].uri,
+          mimeType: result.assets[0].mimeType,
+          name: result.assets[0].name,
+          size: result.assets[0].size
+        });
+        
+        // Handle both images and PDFs
+        if (result.assets[0].mimeType?.startsWith('image/') || result.assets[0].mimeType === 'application/pdf') {
           setUploadedImage(result.assets[0].uri);
         } else {
-          Alert.alert('Document Type', 'Please select an image file for now.');
+          Alert.alert('Document Type', 'Please select an image or PDF file.');
         }
         setShowUploadModal(false);
       }
@@ -510,23 +618,82 @@ export default function ChatScreen() {
     setUploadedImage(null);
   };
 
-  // Function to render text with bold formatting
+  // Function to render text with bold formatting and clickable phone numbers
   const renderFormattedText = (text: string, textStyle: any) => {
-    const parts = text.split(/(\*\*.*?\*\*)/g);
+    // First split by bold markers, then check each part for phone numbers
+    const boldParts = text.split(/(\*\*.*?\*\*)/g);
     
     return (
       <Text style={textStyle}>
-        {parts.map((part, index) => {
+        {boldParts.map((part, index) => {
+          // Handle bold text
           if (part.startsWith('**') && part.endsWith('**')) {
-            // Bold text
             const boldText = part.slice(2, -2);
+            
+            // Check if bold text contains a phone number
+            const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4})/g;
+            const phoneParts = boldText.split(phoneRegex);
+            
             return (
               <Text key={index} style={[textStyle, { fontWeight: 'bold' }]}>
-                {boldText}
+                {phoneParts.map((phonePart, phoneIndex) => {
+                  if (phoneRegex.test(phonePart)) {
+                    // Make phone number clickable
+                    const phoneNumber = phonePart.replace(/\s/g, '');
+                    return (
+                      <Text
+                        key={phoneIndex}
+                        style={[textStyle, { fontWeight: 'bold', color: '#4A90E2', textDecorationLine: 'underline' }]}
+                        onPress={() => {
+                          Alert.alert(
+                            'Call Helpline',
+                            `Would you like to call ${phonePart}?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) }
+                            ]
+                          );
+                        }}
+                      >
+                        {phonePart}
+                      </Text>
+                    );
+                  }
+                  return phonePart;
+                })}
               </Text>
             );
           }
-          return part;
+          
+          // Check regular text for phone numbers
+          const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4})/g;
+          const phoneParts = part.split(phoneRegex);
+          
+          return phoneParts.map((phonePart, phoneIndex) => {
+            if (phoneRegex.test(phonePart)) {
+              // Make phone number clickable
+              const phoneNumber = phonePart.replace(/\s/g, '');
+              return (
+                <Text
+                  key={`${index}-${phoneIndex}`}
+                  style={[textStyle, { color: '#4A90E2', textDecorationLine: 'underline' }]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Call Helpline',
+                      `Would you like to call ${phonePart}?`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) }
+                      ]
+                    );
+                  }}
+                >
+                  {phonePart}
+                </Text>
+              );
+            }
+            return phonePart;
+          });
         })}
       </Text>
     );
@@ -580,8 +747,299 @@ export default function ChatScreen() {
     );
   };
 
+  // Dynamic styles based on theme
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backButton: {
+      padding: 8,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    newChatButton: {
+      padding: 8,
+    },
+    headerCenter: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    subtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    saveButton: {
+      padding: 8,
+    },
+    welcomeContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 32,
+    },
+    welcomeTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: colors.text,
+      marginTop: 16,
+      marginBottom: 12,
+      textAlign: 'center',
+    },
+    welcomeText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 24,
+    },
+    chatContainer: {
+      flex: 1,
+    },
+    messagesContainer: {
+      flex: 1,
+      padding: 16,
+      paddingBottom: 20,
+    },
+    messageContainer: {
+      marginBottom: 16,
+    },
+    userMessage: {
+      alignItems: 'flex-end',
+    },
+    assistantMessage: {
+      alignItems: 'flex-start',
+    },
+    messageBubble: {
+      maxWidth: '80%',
+      padding: 12,
+      borderRadius: 16,
+    },
+    userBubble: {
+      backgroundColor: colors.primary,
+      borderBottomRightRadius: 4,
+    },
+    assistantBubble: {
+      backgroundColor: colors.surface,
+      borderBottomLeftRadius: 4,
+    },
+    messageText: {
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    userText: {
+      color: '#FFFFFF',
+    },
+    assistantText: {
+      color: colors.textPrimary,
+    },
+    userMessageText: {
+      color: '#FFFFFF',
+    },
+    assistantMessageText: {
+      color: colors.text,
+    },
+    typingIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+      backgroundColor: colors.border,
+      borderRadius: 16,
+      maxWidth: '80%',
+      marginBottom: 16,
+    },
+    typingDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.textSecondary,
+      marginHorizontal: 2,
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    inputWrapper: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginHorizontal: 8,
+    },
+    uploadButton: {
+      padding: 8,
+      marginRight: 8,
+    },
+    attachButton: {
+      padding: 8,
+      marginRight: 8,
+    },
+    imagePreviewContainer: {
+      position: 'relative',
+      marginRight: 8,
+    },
+    imagePreview: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+    },
+    removeImageButton: {
+      position: 'absolute',
+      top: -5,
+      right: -5,
+      backgroundColor: colors.error,
+      borderRadius: 10,
+      width: 20,
+      height: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    textInputContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.border,
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    textInput: {
+      flex: 1,
+      fontSize: 15,
+      color: colors.text,
+      maxHeight: 100,
+    },
+    sendButton: {
+      marginLeft: 8,
+      padding: 8,
+      backgroundColor: colors.primary,
+      borderRadius: 20,
+      width: 40,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    uploadModal: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingBottom: 40,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    uploadOptions: {
+      padding: 20,
+    },
+    uploadOptionsContainer: {
+      backgroundColor: colors.background,
+      borderRadius: 16,
+      padding: 20,
+      width: '80%',
+      maxWidth: 300,
+    },
+    uploadOptionsTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    uploadOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      backgroundColor: colors.border,
+      borderRadius: 12,
+      marginBottom: 12,
+    },
+    uploadOptionText: {
+      fontSize: 16,
+      color: colors.text,
+      marginLeft: 12,
+    },
+    cancelButton: {
+      padding: 12,
+      alignItems: 'center',
+    },
+    cancelButtonText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    imagePreviewModal: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    closePreviewButton: {
+      position: 'absolute',
+      top: 50,
+      right: 20,
+      zIndex: 1,
+    },
+    fullImagePreview: {
+      width: '100%',
+      height: '100%',
+    },
+    messageImageContainer: {
+      marginBottom: 8,
+      borderRadius: 8,
+      overflow: 'hidden',
+    },
+    messageImage: {
+      width: 200,
+      height: 150,
+      borderRadius: 8,
+    },
+  });
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -614,7 +1072,7 @@ export default function ChatScreen() {
             router.back();
           }}
         >
-          <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>GutCheck</Text>
@@ -622,10 +1080,10 @@ export default function ChatScreen() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.saveButton} onPress={saveCurrentChat}>
-            <Ionicons name="bookmark-outline" size={20} color={theme.colors.primary} />
+            <Ionicons name="bookmark-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.newChatButton} onPress={startNewChat}>
-            <Ionicons name="add" size={20} color={theme.colors.primary} />
+            <Ionicons name="add" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -634,16 +1092,18 @@ export default function ChatScreen() {
       <KeyboardAvoidingView 
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView 
           ref={scrollViewRef}
           style={styles.messagesContainer}
           showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic"
+          automaticallyAdjustContentInsets={false}
         >
           {conversationHistory.length === 0 && (
             <View style={styles.welcomeContainer}>
-              <Ionicons name="chatbubbles" size={48} color={theme.colors.primary} />
+              <Ionicons name="chatbubbles" size={48} color={colors.primary} />
               <Text style={styles.welcomeTitle}>Hey there! 👋</Text>
               <Text style={styles.welcomeText}>
                 I'm here to help you understand what's happening in your relationships. 
@@ -659,7 +1119,7 @@ export default function ChatScreen() {
             <View style={[styles.messageContainer, styles.assistantMessage]}>
               <View style={[styles.messageBubble, styles.assistantBubble]}>
                 {renderFormattedText(streamingMessage, styles.messageText)}
-                <AnimatedTypingIndicator />
+                <AnimatedTypingIndicator colors={colors} />
               </View>
             </View>
           )}
@@ -667,7 +1127,7 @@ export default function ChatScreen() {
           {isLoading && !isStreaming && (
             <View style={[styles.messageContainer, styles.assistantMessage]}>
               <View style={[styles.messageBubble, styles.assistantBubble]}>
-                <AnimatedTypingIndicator />
+                <AnimatedTypingIndicator colors={colors} />
               </View>
             </View>
           )}
@@ -686,7 +1146,7 @@ export default function ChatScreen() {
               <Image source={{ uri: uploadedImage }} style={styles.imagePreview} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
-              <Ionicons name="close-circle" size={24} color={theme.colors.warning} />
+              <Ionicons name="close-circle" size={24} color={colors.error} />
             </TouchableOpacity>
           </View>
         )}
@@ -702,14 +1162,14 @@ export default function ChatScreen() {
               <Ionicons 
                 name="add-circle-outline" 
                 size={24} 
-                color={isLoading ? theme.colors.textSecondary : theme.colors.primary} 
+                color={isLoading ? colors.textSecondary : colors.primary} 
               />
             </TouchableOpacity>
             
             <TextInput
               style={styles.textInput}
               placeholder="What's on your mind?"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               value={message}
               onChangeText={setMessage}
               multiline
@@ -728,7 +1188,7 @@ export default function ChatScreen() {
               <Ionicons 
                 name="send" 
                 size={20} 
-                color={(message.trim() || uploadedImage) && !isLoading ? 'white' : theme.colors.textSecondary} 
+                color={(message.trim() || uploadedImage) && !isLoading ? 'white' : colors.textSecondary} 
               />
             </TouchableOpacity>
           </View>
@@ -746,23 +1206,23 @@ export default function ChatScreen() {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Add Media</Text>
                 <TouchableOpacity onPress={() => setShowUploadModal(false)}>
-                  <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
+                  <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
               
               <View style={styles.uploadOptions}>
                 <TouchableOpacity style={styles.uploadOption} onPress={pickImage}>
-                  <Ionicons name="image-outline" size={32} color={theme.colors.primary} />
+                  <Ionicons name="image-outline" size={32} color={colors.primary} />
                   <Text style={styles.uploadOptionText}>Choose from Library</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.uploadOption} onPress={takePhoto}>
-                  <Ionicons name="camera-outline" size={32} color={theme.colors.primary} />
+                  <Ionicons name="camera-outline" size={32} color={colors.primary} />
                   <Text style={styles.uploadOptionText}>Take Photo</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.uploadOption} onPress={pickDocument}>
-                  <Ionicons name="document-outline" size={32} color={theme.colors.primary} />
+                  <Ionicons name="document-outline" size={32} color={colors.primary} />
                   <Text style={styles.uploadOptionText}>Choose Document</Text>
                 </TouchableOpacity>
               </View>
@@ -797,289 +1257,3 @@ export default function ChatScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.glassBorder,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    fontFamily: 'Inter',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    fontFamily: 'Inter',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  saveButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(79, 209, 199, 0.1)',
-  },
-  newChatButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(79, 209, 199, 0.1)',
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  messagesContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  welcomeContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-  },
-  welcomeTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 12,
-    fontFamily: 'Inter',
-    textAlign: 'center',
-  },
-  welcomeText: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    fontFamily: 'Inter',
-  },
-  messageContainer: {
-    marginVertical: 4,
-  },
-  userMessage: {
-    alignItems: 'flex-end',
-  },
-  assistantMessage: {
-    alignItems: 'flex-start',
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 18,
-  },
-  userBubble: {
-    backgroundColor: theme.colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  assistantBubble: {
-    backgroundColor: theme.colors.surface,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: theme.colors.glassBorder,
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontFamily: 'Inter',
-  },
-  userText: {
-    color: 'white',
-  },
-  assistantText: {
-    color: theme.colors.textPrimary,
-  },
-  analysisLinkButton: {
-    marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(79, 209, 199, 0.15)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 209, 199, 0.3)',
-    alignItems: 'center',
-  },
-  analysisLinkText: {
-    color: theme.colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'Inter',
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-  },
-  typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.textSecondary,
-    marginHorizontal: 2,
-  },
-  errorContainer: {
-    backgroundColor: theme.colors.warning + '20',
-    padding: 12,
-    borderRadius: 8,
-    marginVertical: 8,
-  },
-  errorText: {
-    color: theme.colors.warning,
-    fontSize: 14,
-    fontFamily: 'Inter',
-    textAlign: 'center',
-  },
-  inputContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.glassBorder,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: theme.colors.glassBorder,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 16,
-    color: theme.colors.textPrimary,
-    fontFamily: 'Inter',
-    maxHeight: 100,
-    paddingVertical: 8,
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  sendButtonDisabled: {
-    backgroundColor: theme.colors.textSecondary + '30',
-  },
-  uploadButton: {
-    padding: 8,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-  imagePreviewContainer: {
-    position: 'relative',
-    margin: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  imagePreview: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    backgroundColor: theme.colors.surface,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: theme.colors.background,
-    borderRadius: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  uploadModal: {
-    backgroundColor: theme.colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 34, // Safe area
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.glassBorder,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-    fontFamily: 'Inter',
-  },
-  uploadOptions: {
-    padding: 20,
-    gap: 16,
-  },
-  uploadOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.glassBorder,
-  },
-  uploadOptionText: {
-    fontSize: 16,
-    color: theme.colors.textPrimary,
-    marginLeft: 16,
-    fontFamily: 'Inter',
-  },
-  imageModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageModalClose: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 1,
-  },
-  fullImagePreview: {
-    width: Dimensions.get('window').width * 0.9,
-    height: Dimensions.get('window').height * 0.7,
-  },
-  messageImageContainer: {
-    marginBottom: 8,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  messageImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-  },
-});

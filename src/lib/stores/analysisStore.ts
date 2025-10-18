@@ -31,7 +31,8 @@ interface AnalysisState {
     userMessage: string,
     conversationState: ConversationState,
     conversationHistory: string[],
-    hasImage?: boolean
+    hasImage?: boolean,
+    imageData?: string
   ) => Promise<ConversationResponse>;
   
   clearError: () => void;
@@ -139,16 +140,25 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     userMessage: string,
     conversationState: ConversationState,
     conversationHistory: string[],
-    hasImage: boolean = false
+    hasImage: boolean = false,
+    imageData?: string
   ) => {
     try {
       set({ isLoading: true, error: null });
+
+      console.log('AnalysisStore handleConversation called with:', {
+        userMessage: userMessage.substring(0, 50) + '...',
+        hasImage,
+        imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
+        imageDataType: typeof imageData
+      });
 
       const response = await aiService.handleConversation(
         userMessage,
         conversationState,
         conversationHistory,
-        hasImage
+        hasImage,
+        imageData
       );
 
       set({ isLoading: false });

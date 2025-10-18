@@ -13,6 +13,7 @@ const darkColors = {
   surface: '#2d3748', // Charcoal
   textPrimary: '#f7fafc', // Soft White
   textSecondary: '#a0aec0', // Warm Gray
+  border: '#4a5568', // Medium Gray
   
   // Accent Colors
   accentTeal: '#4fd1c7',
@@ -42,6 +43,7 @@ const lightColors = {
   surface: '#f7fafc', // Light Gray
   textPrimary: '#1a1d29', // Dark Navy
   textSecondary: '#4a5568', // Medium Gray
+  border: '#e2e8f0', // Light Gray
   
   // Accent Colors
   accentTeal: '#4fd1c7',

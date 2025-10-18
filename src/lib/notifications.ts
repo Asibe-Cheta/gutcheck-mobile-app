@@ -15,7 +15,7 @@ Notifications.setNotificationHandler({
 
 export interface MotivationalNotification {
   id: string;
-  type: 'encouragement' | 'check-in' | 'reminder' | 'affirmation' | 'goal-prompt';
+  type: 'encouragement' | 'check-in' | 'reminder' | 'affirmation' | 'goal-prompt' | 'digital-wellness' | 'health-safety' | 'addiction-recovery' | 'life-ethics' | 'toxic-awareness';
   title: string;
   body: string;
   chatPrompt?: string; // What to say when they tap to chat
@@ -158,6 +158,156 @@ const MOTIVATIONAL_MESSAGES: MotivationalNotification[] = [
     body: 'You can\'t control others, but you can control your response. What will you choose today?',
     chatPrompt: 'What\'s something you have control over that you want to work on?'
   },
+
+  // Digital Wellness & Social Media Safety
+  {
+    id: 'digital_1',
+    type: 'digital-wellness',
+    title: '📱 Social Media Check',
+    body: 'How\'s your social media consumption today? Remember, you control what you see.',
+    chatPrompt: 'How are you feeling about your social media use lately?'
+  },
+  {
+    id: 'digital_2',
+    type: 'digital-wellness',
+    title: '🛡️ Protect Your Mind',
+    body: 'Not everything online is worth your attention. What content serves you today?',
+    chatPrompt: 'What kind of content makes you feel better vs. worse?'
+  },
+  {
+    id: 'digital_3',
+    type: 'digital-wellness',
+    title: '⚡ Dopamine Awareness',
+    body: 'Social media is designed to be addictive. Take breaks and connect with real life.',
+    chatPrompt: 'How do you feel when you step away from social media?'
+  },
+  {
+    id: 'digital_4',
+    type: 'digital-wellness',
+    title: '🔍 Content Quality',
+    body: 'Ask yourself: Does this content add value to my life or just fill time?',
+    chatPrompt: 'What kind of content actually makes you feel good about yourself?'
+  },
+
+  // Health & Safety
+  {
+    id: 'health_1',
+    type: 'health-safety',
+    title: '🏥 Health Check',
+    body: 'Your physical health affects your mental health. How are you taking care of your body?',
+    chatPrompt: 'How are you feeling physically today? Any concerns?'
+  },
+  {
+    id: 'health_2',
+    type: 'health-safety',
+    title: '🚨 Scam Alert',
+    body: 'If it sounds too good to be true, it probably is. Trust your instincts.',
+    chatPrompt: 'Have you encountered any suspicious offers or messages lately?'
+  },
+  {
+    id: 'health_3',
+    type: 'health-safety',
+    title: '💊 Substance Awareness',
+    body: 'Your body is your temple. What you put into it affects everything else.',
+    chatPrompt: 'How are you taking care of your physical and mental health?'
+  },
+  {
+    id: 'health_4',
+    type: 'health-safety',
+    title: '🛡️ Safety First',
+    body: 'Your safety matters more than anyone\'s opinion. Trust your gut feelings.',
+    chatPrompt: 'Are there any situations where you feel unsafe or uncomfortable?'
+  },
+
+  // Addiction Recovery & Dopamine Management
+  {
+    id: 'recovery_1',
+    type: 'addiction-recovery',
+    title: '🔄 Recovery Check',
+    body: 'Every day is a new chance to choose yourself. How are you doing today?',
+    chatPrompt: 'How are you feeling about your recovery journey today?'
+  },
+  {
+    id: 'recovery_2',
+    type: 'addiction-recovery',
+    title: '⚡ Dopamine Reset',
+    body: 'Your brain needs real rewards, not artificial ones. What brings you genuine joy?',
+    chatPrompt: 'What activities make you feel truly satisfied, not just temporarily stimulated?'
+  },
+  {
+    id: 'recovery_3',
+    type: 'addiction-recovery',
+    title: '🎯 Healthy Rewards',
+    body: 'Find joy in real connections, not just digital ones. What matters most to you?',
+    chatPrompt: 'What are some healthy ways you like to reward yourself?'
+  },
+  {
+    id: 'recovery_4',
+    type: 'addiction-recovery',
+    title: '💪 Progress Over Perfection',
+    body: 'Recovery isn\'t linear. Every small step counts. How are you growing?',
+    chatPrompt: 'What\'s one small positive change you\'ve made recently?'
+  },
+
+  // Life Navigation & Ethics
+  {
+    id: 'ethics_1',
+    type: 'life-ethics',
+    title: '🧭 Moral Compass',
+    body: 'What values guide your decisions? Stay true to what you believe is right.',
+    chatPrompt: 'What values are most important to you in how you live your life?'
+  },
+  {
+    id: 'ethics_2',
+    type: 'life-ethics',
+    title: '🤝 Human Connection',
+    body: 'Real relationships require real effort. Invest in people who invest in you.',
+    chatPrompt: 'Who are the people in your life that truly support and care about you?'
+  },
+  {
+    id: 'ethics_3',
+    type: 'life-ethics',
+    title: '⚖️ Right vs Easy',
+    body: 'The right thing isn\'t always the easy thing. What feels right to you today?',
+    chatPrompt: 'What\'s a decision you\'re facing where you know what\'s right but it\'s hard?'
+  },
+  {
+    id: 'ethics_4',
+    type: 'life-ethics',
+    title: '🌟 Authentic Living',
+    body: 'Be yourself. Everyone else is already taken. What makes you uniquely you?',
+    chatPrompt: 'What are the things about yourself that you\'re most proud of?'
+  },
+
+  // Toxic Environment Awareness
+  {
+    id: 'toxic_1',
+    type: 'toxic-awareness',
+    title: '🚫 Toxic Patterns',
+    body: 'You can\'t change toxic people, but you can change how you respond to them.',
+    chatPrompt: 'Are there any relationships or situations that feel draining to you?'
+  },
+  {
+    id: 'toxic_2',
+    type: 'toxic-awareness',
+    title: '🛡️ Boundary Check',
+    body: 'Healthy boundaries aren\'t walls, they\'re doors with locks. You decide who enters.',
+    chatPrompt: 'What boundaries do you need to set to protect your wellbeing?'
+  },
+  {
+    id: 'toxic_3',
+    type: 'toxic-awareness',
+    title: '💎 Self-Worth',
+    body: 'You don\'t have to prove your worth to anyone. You\'re valuable just as you are.',
+    chatPrompt: 'What makes you feel most confident and secure in yourself?'
+  },
+  {
+    id: 'toxic_4',
+    type: 'toxic-awareness',
+    title: '🌱 Growth Environment',
+    body: 'Surround yourself with people who want to see you grow, not just grow around you.',
+    chatPrompt: 'Who in your life genuinely wants the best for you?'
+  },
 ];
 
 export class NotificationService {
@@ -211,15 +361,15 @@ export class NotificationService {
   }
 
   /**
-   * Schedule motivational notifications (3x per week)
+   * Schedule motivational notifications (daily)
    */
-  async scheduleWeeklyNotifications(): Promise<void> {
+  async scheduleDailyNotifications(): Promise<void> {
     try {
       // Cancel existing notifications first
       await Notifications.cancelAllScheduledNotificationsAsync();
 
-      // Schedule for Monday, Wednesday, Friday
-      const days = [1, 3, 5]; // 0 = Sunday, 1 = Monday, etc.
+      // Schedule for every day of the week (0 = Sunday, 1 = Monday, etc.)
+      const days = [0, 1, 2, 3, 4, 5, 6]; // All days of the week
 
       for (const day of days) {
         // Random time between 8 AM and 10 PM (varies each notification)
@@ -253,7 +403,7 @@ export class NotificationService {
 
       // Store that we've scheduled notifications
       await AsyncStorage.setItem('notifications_scheduled', 'true');
-      console.log('Weekly motivational notifications scheduled');
+      console.log('Daily motivational notifications scheduled');
     } catch (error) {
       console.error('Error scheduling notifications:', error);
     }
@@ -306,9 +456,15 @@ export class NotificationService {
     // Listener for when user taps on notification
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const chatPrompt = response.notification.request.content.data.chatPrompt as string;
-        if (chatPrompt && onNotificationTap) {
-          onNotificationTap(chatPrompt);
+        const data = response.notification.request.content.data;
+        const notificationData = {
+          title: response.notification.request.content.title || '',
+          body: response.notification.request.content.body || '',
+          type: data.type || '',
+          chatPrompt: data.chatPrompt || '',
+        };
+        if (notificationData.chatPrompt && onNotificationTap) {
+          onNotificationTap(notificationData);
         }
       }
     );

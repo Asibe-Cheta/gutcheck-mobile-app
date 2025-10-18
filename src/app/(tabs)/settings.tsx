@@ -112,11 +112,11 @@ export default function SettingsScreen() {
         // Enable notifications
         const hasPermission = await notificationService.requestPermissions();
         if (hasPermission) {
-          await notificationService.scheduleWeeklyNotifications();
+          await notificationService.scheduleDailyNotifications();
           setNotificationsEnabled(true);
           Alert.alert(
             '🎉 Notifications Enabled',
-            'You\'ll receive motivational tips 3 times a week to remind you of your worth and keep you moving forward!',
+            'You\'ll receive motivational tips every day between 8 AM and 10 PM to remind you of your worth and keep you moving forward!',
             [{ text: 'Great!', style: 'default' }]
           );
         } else {
@@ -201,7 +201,14 @@ export default function SettingsScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={currentTheme.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
+        <View style={styles.headerCenter}>
+          <Image 
+            source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.title}>Settings</Text>
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -243,7 +250,7 @@ export default function SettingsScreen() {
               <View style={styles.settingsTextContainer}>
                 <Text style={styles.settingsTitle}>Motivational Tips</Text>
                 <Text style={styles.settingsDescription}>
-                  Get encouraging reminders 3x per week
+                  Get encouraging reminders every day
                 </Text>
               </View>
               <Switch
@@ -388,6 +395,15 @@ const createStyles = (isDark: boolean) => {
     borderRadius: 20, // rounded-full
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerLogo: {
+    width: 24,
+    height: 24,
   },
   title: {
     fontSize: 18, // text-lg

@@ -9,11 +9,11 @@ You now have a **complete motivational notification system** that sends encourag
 ## 📱 How It Works
 
 ### **1. Notification Schedule**
-- **Frequency**: 3 times per week (Monday, Wednesday, Friday)
+- **Frequency**: Every day (7 days per week)
 - **Time**: Random between 8 AM - 10 PM (varies each notification for natural feel)
 - **Automatic**: Once enabled, runs in background automatically
 
-### **2. Types of Messages (20+ variations)**
+### **2. Types of Messages (40+ variations)**
 
 #### **💪 Encouragement** (4 messages)
 - "Yo! Wherever you are right now, keep moving forward. You are important and you matter."
@@ -41,6 +41,36 @@ You now have a **complete motivational notification system** that sends encourag
 - "What's one thing you can do today to move closer to where you want to be?"
 - "Where do you want to be in 3 months? Small steps today, big changes tomorrow."
 - "What's one boundary you could set this week that would improve your life?"
+
+#### **📱 Digital Wellness & Social Media Safety** (4 messages)
+- "How's your social media consumption today? Remember, you control what you see."
+- "Not everything online is worth your attention. What content serves you today?"
+- "Social media is designed to be addictive. Take breaks and connect with real life."
+- "Ask yourself: Does this content add value to my life or just fill time?"
+
+#### **🏥 Health & Safety** (4 messages)
+- "Your physical health affects your mental health. How are you taking care of your body?"
+- "If it sounds too good to be true, it probably is. Trust your instincts."
+- "Your body is your temple. What you put into it affects everything else."
+- "Your safety matters more than anyone's opinion. Trust your gut feelings."
+
+#### **🔄 Addiction Recovery & Dopamine Management** (4 messages)
+- "Every day is a new chance to choose yourself. How are you doing today?"
+- "Your brain needs real rewards, not artificial ones. What brings you genuine joy?"
+- "Find joy in real connections, not just digital ones. What matters most to you?"
+- "Recovery isn't linear. Every small step counts. How are you growing?"
+
+#### **🧭 Life Navigation & Ethics** (4 messages)
+- "What values guide your decisions? Stay true to what you believe is right."
+- "Real relationships require real effort. Invest in people who invest in you."
+- "The right thing isn't always the easy thing. What feels right to you today?"
+- "Be yourself. Everyone else is already taken. What makes you uniquely you?"
+
+#### **🚫 Toxic Environment Awareness** (4 messages)
+- "You can't change toxic people, but you can change how you respond to them."
+- "Healthy boundaries aren't walls, they're doors with locks. You decide who enters."
+- "You don't have to prove your worth to anyone. You're valuable just as you are."
+- "Surround yourself with people who want to see you grow, not just grow around you."
 - "You can't control others, but you can control your response. What will you choose today?"
 
 ---
@@ -157,11 +187,16 @@ Get encouraging reminders 3x per week
 Each notification picks a random message from the 20+ library, so users get variety and don't see the same message repeatedly.
 
 ### **Message Categories:**
-- **40% Encouragement** - General motivation
-- **20% Check-Ins** - How are you doing?
-- **20% Self-Care** - Prayer, meditation, breathing
-- **20% Affirmations** - Worth, hope, strength
-- **20% Goal Prompts** - Forward movement, boundaries
+- **20% Encouragement** - General motivation
+- **15% Check-Ins** - How are you doing?
+- **15% Self-Care** - Prayer, meditation, breathing
+- **15% Affirmations** - Worth, hope, strength
+- **15% Goal Prompts** - Forward movement, boundaries
+- **10% Digital Wellness** - Social media safety, content awareness
+- **10% Health & Safety** - Physical health, scam awareness
+- **10% Addiction Recovery** - Dopamine management, healthy rewards
+- **10% Life Ethics** - Values, authentic living
+- **10% Toxic Awareness** - Boundaries, self-worth
 
 ---
 
@@ -361,7 +396,7 @@ Want to add more later?
 
 - ✅ Notification service created
 - ✅ 20+ motivational messages library
-- ✅ 3x per week scheduling (Mon, Wed, Fri)
+- ✅ Daily scheduling (7 days per week)
 - ✅ Random time 8 AM - 10 PM
 - ✅ Tap-to-chat integration
 - ✅ Settings toggle for enable/disable

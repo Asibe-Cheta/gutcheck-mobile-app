@@ -7,7 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '@/lib/theme';
+import { getThemeColors } from '@/lib/theme';
+import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,15 +19,22 @@ interface LocalProfileData {
   age: string;
   region: string;
   avatarUri?: string;
+  struggles?: string;
+  goals?: string;
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { isDark } = useTheme();
+  const colors = getThemeColors(isDark);
+  
   const [profileData, setProfileData] = useState<LocalProfileData>({
     username: '',
     age: '',
     region: '',
-    avatarUri: undefined
+    avatarUri: undefined,
+    struggles: '',
+    goals: ''
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -43,7 +51,9 @@ export default function ProfileScreen() {
           username: dbProfile.username,
           age: dbProfile.age.toString(),
           region: dbProfile.region,
-          avatarUri: dbProfile.avatar_url
+          avatarUri: dbProfile.avatar_url,
+          struggles: dbProfile.struggles || '',
+          goals: dbProfile.goals || ''
         });
         return;
       }
@@ -65,7 +75,9 @@ export default function ProfileScreen() {
         username: data.username,
         age: parseInt(data.age),
         region: data.region,
-        avatar_url: data.avatarUri
+        avatar_url: data.avatarUri,
+        struggles: data.struggles,
+        goals: data.goals
       });
       
       setProfileData(data);
@@ -151,6 +163,170 @@ export default function ProfileScreen() {
     );
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 16,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: `${colors.background}CC`,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      fontFamily: 'Inter',
+    },
+    saveButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+    },
+    saveButtonText: {
+      color: 'white',
+      fontSize: 14,
+      fontWeight: '600',
+      fontFamily: 'Inter',
+    },
+    saveButtonDisabled: {
+      opacity: 0.5,
+    },
+    content: {
+      flex: 1,
+      padding: 16,
+    },
+    section: {
+      marginBottom: 32,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 16,
+      fontFamily: 'Inter',
+    },
+    avatarSection: {
+      alignItems: 'center',
+    },
+    avatarContainer: {
+      marginBottom: 16,
+    },
+    avatar: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+    },
+    avatarPlaceholder: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarActions: {
+      flexDirection: 'row',
+      gap: 16,
+    },
+    avatarButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: `${colors.primary}15`,
+      borderWidth: 1,
+      borderColor: `${colors.primary}30`,
+    },
+    avatarButtonText: {
+      color: colors.primary,
+      fontSize: 14,
+      fontWeight: '600',
+      marginLeft: 8,
+      fontFamily: 'Inter',
+    },
+    removeButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: `${colors.error}15`,
+      borderWidth: 1,
+      borderColor: `${colors.error}30`,
+    },
+    removeButtonText: {
+      color: colors.error,
+      fontSize: 13,
+      fontWeight: '600',
+      marginLeft: 6,
+      fontFamily: 'Inter',
+    },
+    inputGroup: {
+      marginBottom: 20,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 8,
+      fontFamily: 'Inter',
+    },
+    textInput: {
+      backgroundColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: colors.text,
+      fontFamily: 'Inter',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    textArea: {
+      minHeight: 100,
+      paddingTop: 12,
+    },
+    sectionDescription: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      lineHeight: 20,
+      marginBottom: 16,
+      fontFamily: 'Inter',
+    },
+    privacyNote: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      padding: 16,
+      backgroundColor: `${colors.primary}15`,
+      borderRadius: 8,
+      marginBottom: 20,
+    },
+    privacyText: {
+      flex: 1,
+      marginLeft: 12,
+      fontSize: 13,
+      color: colors.text,
+      lineHeight: 18,
+      fontFamily: 'Inter',
+    },
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -159,7 +335,7 @@ export default function ProfileScreen() {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Profile</Text>
         <TouchableOpacity 
@@ -184,18 +360,18 @@ export default function ProfileScreen() {
                 <Image source={{ uri: profileData.avatarUri }} style={styles.avatar} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="person" size={40} color={theme.colors.textSecondary} />
+                  <Ionicons name="person" size={40} color={colors.textSecondary} />
                 </View>
               )}
             </View>
             <View style={styles.avatarActions}>
               <TouchableOpacity style={styles.avatarButton} onPress={handleImagePicker}>
-                <Ionicons name="camera" size={20} color={theme.colors.primary} />
+                <Ionicons name="camera" size={20} color={colors.primary} />
                 <Text style={styles.avatarButtonText}>Upload Photo</Text>
               </TouchableOpacity>
               {profileData.avatarUri && (
                 <TouchableOpacity style={styles.removeButton} onPress={handleRemoveAvatar}>
-                  <Ionicons name="trash" size={16} color={theme.colors.warning} />
+                  <Ionicons name="trash" size={16} color={colors.error} />
                   <Text style={styles.removeButtonText}>Remove</Text>
                 </TouchableOpacity>
               )}
@@ -215,7 +391,7 @@ export default function ProfileScreen() {
               value={profileData.username}
               onChangeText={(text) => setProfileData({ ...profileData, username: text })}
               placeholder="Enter your username"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
             />
           </View>
 
@@ -227,7 +403,7 @@ export default function ProfileScreen() {
               value={profileData.age}
               onChangeText={(text) => setProfileData({ ...profileData, age: text })}
               placeholder="Enter your age"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="numeric"
             />
           </View>
@@ -240,14 +416,53 @@ export default function ProfileScreen() {
               value={profileData.region}
               onChangeText={(text) => setProfileData({ ...profileData, region: text })}
               placeholder="Enter your region/country"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={colors.textSecondary}
+            />
+          </View>
+        </View>
+
+        {/* Optional Personal Context Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Personal Context (Optional)</Text>
+          <Text style={styles.sectionDescription}>
+            This information helps the AI provide more personalized support. It's completely optional and will only be 
+            referenced when relevant to your conversations.
+          </Text>
+          
+          {/* Struggles */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Things I'm Struggling With</Text>
+            <TextInput
+              style={[styles.textInput, styles.textArea]}
+              value={profileData.struggles}
+              onChangeText={(text) => setProfileData({ ...profileData, struggles: text })}
+              placeholder="E.g., low self-esteem, anxiety, trust issues, past trauma..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+
+          {/* Goals */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Things I Want to Work On</Text>
+            <TextInput
+              style={[styles.textInput, styles.textArea]}
+              value={profileData.goals}
+              onChangeText={(text) => setProfileData({ ...profileData, goals: text })}
+              placeholder="E.g., setting better boundaries, building confidence, recognizing red flags..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
             />
           </View>
         </View>
 
         {/* Privacy Note */}
         <View style={styles.privacyNote}>
-          <Ionicons name="shield-checkmark" size={20} color={theme.colors.primary} />
+          <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
           <Text style={styles.privacyText}>
             Your profile information is stored locally on your device and is not shared with third parties.
           </Text>
@@ -256,157 +471,3 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(148, 163, 184, 0.1)',
-    backgroundColor: `${theme.colors.background}CC`,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    fontFamily: 'Inter',
-  },
-  saveButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: theme.colors.primary,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'Inter',
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-    marginBottom: 16,
-    fontFamily: 'Inter',
-  },
-  avatarSection: {
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(148, 163, 184, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarActions: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  avatarButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(79, 209, 199, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(79, 209, 199, 0.3)',
-  },
-  avatarButtonText: {
-    color: theme.colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-    fontFamily: 'Inter',
-  },
-  removeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-  },
-  removeButtonText: {
-    color: theme.colors.warning,
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-    fontFamily: 'Inter',
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.textPrimary,
-    marginBottom: 8,
-    fontFamily: 'Inter',
-  },
-  textInput: {
-    backgroundColor: 'rgba(148, 163, 184, 0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: theme.colors.textPrimary,
-    fontFamily: 'Inter',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.2)',
-  },
-  privacyNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 16,
-    backgroundColor: 'rgba(79, 209, 199, 0.1)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 209, 199, 0.3)',
-  },
-  privacyText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    lineHeight: 20,
-    fontFamily: 'Inter',
-  },
-});
