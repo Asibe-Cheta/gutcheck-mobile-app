@@ -55,7 +55,18 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'org.mygutcheck.app',
+      bundleIdentifier: 'com.gutcheck.app',
+      buildNumber: '1',
+      infoPlist: {
+        NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
+        NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
+        NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
+        NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
+        NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
+        ITSAppUsesNonExemptEncryption: false,
+        CFBundleDisplayName: 'GutCheck',
+        CFBundleShortVersionString: '1.0.0',
+      },
     },
     android: {
       adaptiveIcon: {
@@ -74,6 +85,13 @@ module.exports = {
     extra: {
       // Inject environment variables into the app
       ...envVars,
+      // App metadata
+      websiteUrl: 'https://mygutcheck.org',
+      supportEmail: 'support@mygutcheck.org',
+      eas: {
+        // Set by EAS init output so CLI can link the project
+        projectId: '8e8f5512-18b9-489d-9b05-ee5c0379ea29',
+      },
     },
   },
 };

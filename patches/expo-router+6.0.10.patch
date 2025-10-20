@@ -1,0 +1,18 @@
+diff --git a/node_modules/expo-router/ios/ExpoHead.podspec b/node_modules/expo-router/ios/ExpoHead.podspec
+index 0000000..0000000 100644
+--- a/node_modules/expo-router/ios/ExpoHead.podspec
++++ b/node_modules/expo-router/ios/ExpoHead.podspec
+@@ -27,7 +27,11 @@ Pod::Spec.new do |s|
+   s.dependency 'ExpoModulesCore'
+ 
+-  add_dependency(s, "RNScreens")
++  # Guard RNScreens injection to avoid failures on certain SDK/pod combos
++  begin
++    add_dependency(s, "RNScreens")
++  rescue
++    Pod::UI.puts "[expo-router] Skipping RNScreens dependency injection"
++  end
+ 
+   # Swift/Objective-C compatibility
+   s.pod_target_xcconfig = {
+
