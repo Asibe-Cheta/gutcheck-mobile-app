@@ -157,7 +157,7 @@ class AuthService {
           networkInfo: 'Testing network connectivity...'
         });
 
-        // Send debug info to remote logging service
+        // Store debug info in AsyncStorage for later inspection
         try {
           const debugData = {
             type: 'auth_debug',
@@ -167,20 +167,19 @@ class AuthService {
             supabaseUrl: supabase.supabaseUrl,
             isTestFlight: __DEV__ === false,
             platform: Platform.OS,
-            buildNumber: '54'
+            buildNumber: '56',
+            allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
+            fullExtra: Constants.expoConfig?.extra
           };
           
-          console.log('Sending debug data to remote logging:', debugData);
+          console.log('Debug data:', debugData);
           
-          await fetch('https://httpbin.org/post', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(debugData)
-          });
+          // Store in AsyncStorage so we can retrieve it later
+          await AsyncStorage.setItem('debug_auth_data', JSON.stringify(debugData));
           
-          console.log('Remote logging sent successfully');
+          console.log('Debug data stored in AsyncStorage');
         } catch (e) {
-          console.log('Remote logging failed:', e);
+          console.log('Debug storage failed:', e);
         }
 
         // First try with all columns

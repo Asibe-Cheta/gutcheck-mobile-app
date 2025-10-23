@@ -417,6 +417,14 @@ export default function SettingsScreen() {
             styles={styles}
             colors={currentTheme}
           />
+          <SettingsItem
+            icon="bug"
+            title="Debug Info"
+            description="View debug information and logs"
+            onPress={() => router.push('/debug')}
+            styles={styles}
+            colors={currentTheme}
+          />
         </View>
 
         {/* Log Out Button */}
