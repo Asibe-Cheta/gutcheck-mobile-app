@@ -1405,7 +1405,9 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       environment: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV,
       isTestFlight: __DEV__ === false,
       networkTest: 'Testing network connectivity to Claude API...',
-      platform: Platform.OS
+      platform: Platform.OS,
+      allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
+      fullExtra: Constants.expoConfig?.extra
     });
 
     // Send debug info to remote logging service

@@ -17,7 +17,9 @@ console.log('Supabase Configuration:', {
   hasKey: !!supabaseAnonKey,
   urlPreview: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'MISSING',
   keyPreview: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 10)}...` : 'MISSING',
-  isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production'
+  isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
+  allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
+  fullExtra: Constants.expoConfig?.extra
 });
 
 // Create Supabase client with AsyncStorage for session persistence
