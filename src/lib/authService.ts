@@ -97,6 +97,22 @@ class AuthService {
    */
   async createUsernameAccount(username: string, pin: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
     try {
+      // Test remote logging first
+      try {
+        await fetch('https://httpbin.org/post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'test_connection',
+            timestamp: new Date().toISOString(),
+            message: 'Testing remote logging connection from TestFlight'
+          })
+        });
+        console.log('Remote logging test successful');
+      } catch (e) {
+        console.log('Remote logging test failed:', e);
+      }
+
       // Validate username
       if (!username || username.length < 3) {
         return { success: false, error: 'Username must be at least 3 characters' };
@@ -143,19 +159,26 @@ class AuthService {
 
         // Send debug info to remote logging service
         try {
+          const debugData = {
+            type: 'auth_debug',
+            timestamp: new Date().toISOString(),
+            user_id: userId,
+            username,
+            supabaseUrl: supabase.supabaseUrl,
+            isTestFlight: __DEV__ === false,
+            platform: Platform.OS,
+            buildNumber: '54'
+          };
+          
+          console.log('Sending debug data to remote logging:', debugData);
+          
           await fetch('https://httpbin.org/post', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'auth_debug',
-              timestamp: new Date().toISOString(),
-              user_id: userId,
-              username,
-              supabaseUrl: supabase.supabaseUrl,
-              isTestFlight: __DEV__ === false,
-              platform: Platform.OS
-            })
+            body: JSON.stringify(debugData)
           });
+          
+          console.log('Remote logging sent successfully');
         } catch (e) {
           console.log('Remote logging failed:', e);
         }
