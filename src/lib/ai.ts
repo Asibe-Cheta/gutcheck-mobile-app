@@ -1400,7 +1400,9 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'React Native',
       navigatorProduct: typeof navigator !== 'undefined' ? navigator.product : 'undefined',
       windowType: typeof window,
-      isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative'
+      isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative',
+      isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
+      environment: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV
     });
 
     const response = await fetch(apiUrl, {
