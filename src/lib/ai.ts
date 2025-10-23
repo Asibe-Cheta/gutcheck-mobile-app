@@ -1098,6 +1098,11 @@ Always respond naturally and conversationally. Build on previous messages to mai
 
       const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
       
+      console.log('Claude response received:', {
+        responseLength: response.length,
+        responsePreview: response.substring(0, 100) + '...'
+      });
+      
       // Check if helplines should be recommended based on conversation content
       const fullConversationText = [
         ...conversationHistory.map((msg: any) => msg.content),
@@ -1132,9 +1137,25 @@ Always respond naturally and conversationally. Build on previous messages to mai
       };
     } catch (error) {
       console.error('Claude conversation error:', error);
-      console.error('Messages that failed:', messages);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length })),
+        isWeb: typeof window !== 'undefined',
+        apiKeyPresent: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+        model: this.config.model
+      });
+      
+      // More specific error message based on error type
+      let errorMessage = "I'm here to help. What's going on?";
+      if (error.message.includes('API error')) {
+        errorMessage = "I'm having trouble connecting to my AI service right now. Please try again in a moment.";
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        errorMessage = "I'm having network issues. Please check your connection and try again.";
+      }
+      
       return {
-        response: "I'm here to help. What's going on?",
+        response: errorMessage,
         nextStage: 'initial'
       };
     }
@@ -1346,30 +1367,74 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       console.log('No image data provided:', { hasImage, imageData: imageData, imageDataType: typeof imageData });
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // Use proxy for web builds to avoid CORS issues
+    // Fix: Better detection for React Native vs Web
+    const isWeb = typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.product !== 'ReactNative';
+    const apiUrl = isWeb 
+      ? 'http://localhost:3001/api/v1/messages'  // Local proxy server
+      : 'https://api.anthropic.com/v1/messages';
+    
+    const requestBody = {
+      model: this.config.model,
+      max_tokens: 1000,
+      temperature: 0.7,
+      system: enhancedSystemPrompt,
+      messages: messagesWithImage,
+    };
+
+    // For web, we don't include the API key in headers (it's handled by the proxy)
+    const headers = isWeb 
+      ? { 'Content-Type': 'application/json' }
+      : {
+          'x-api-key': apiKey || '',
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+        };
+
+    console.log('Making API request:', {
+      url: apiUrl,
+      isWeb,
+      hasApiKey: !!apiKey,
+      messageCount: messagesWithImage.length,
+      apiKeyPreview: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'React Native',
+      navigatorProduct: typeof navigator !== 'undefined' ? navigator.product : 'undefined',
+      windowType: typeof window,
+      isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative'
+    });
+
+    const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey || '',
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: this.config.model,
-        max_tokens: 1000,
-        temperature: 0.7,
-        system: enhancedSystemPrompt,
-        messages: messagesWithImage,
-      }),
+      headers,
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Claude API Error:', errorText);
-      throw new Error(`Claude API error: ${response.status}`);
+      console.error('Claude API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        url: apiUrl,
+        isWeb,
+        hasApiKey: !!apiKey,
+        headers: headers
+      });
+      throw new Error(`Claude API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Claude API response data:', {
+      hasContent: !!data.content,
+      contentLength: data.content?.length,
+      firstContentType: data.content?.[0]?.type
+    });
+    
     const fullResponse = data.content[0].text;
+    console.log('Extracted response text:', {
+      length: fullResponse.length,
+      preview: fullResponse.substring(0, 100) + '...'
+    });
     
     // If response is very long, we'll handle chunking in the chat component
     return fullResponse;

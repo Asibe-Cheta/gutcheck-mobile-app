@@ -12,7 +12,10 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EAS_ENABLE_EXPO_DOCTOR": "0"
+      }
     }
   },
   "submit": {

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+// import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import Onboarding from '../onboarding';
 
 export default function HomeScreen() {
@@ -35,6 +36,7 @@ export default function HomeScreen() {
   const analysisStore = useAnalysisStore();
   const { conversationHistory, startNewConversation } = useConversationStore();
   const { saveChat } = useChatHistoryStore();
+  // const { checkLifetimePro } = useSubscriptionStore();
 
   const quickPrompts = [
     "Someone made me feel guilty",
@@ -50,22 +52,28 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Check if onboarding is completed
+  // Check if onboarding is completed and check for lifetime pro
   useEffect(() => {
-    const checkOnboarding = async () => {
+    const checkOnboardingAndLifetimePro = async () => {
       try {
         const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
         if (!onboardingCompleted) {
           setShowOnboarding(true);
+        } else {
+          // Check for lifetime pro status if onboarding is completed
+          // const userId = await AsyncStorage.getItem('user_id');
+          // if (userId) {
+          //   await checkLifetimePro(userId);
+          // }
         }
       } catch (error) {
-        console.error('Error checking onboarding:', error);
+        console.error('Error checking onboarding and lifetime pro:', error);
       } finally {
         setIsCheckingOnboarding(false);
       }
     };
 
-    checkOnboarding();
+    checkOnboardingAndLifetimePro();
   }, []);
 
   // Reset form when conversation is cleared

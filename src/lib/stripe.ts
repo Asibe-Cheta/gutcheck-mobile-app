@@ -47,13 +47,13 @@ class StripeService {
     // Silent initialization
   }
 
-  // Available subscription plans
+  // Available subscription plans (DEPRECATED - Using Apple IAP now)
   private plans: SubscriptionPlan[] = [
     {
       id: 'premium',
       name: 'Premium Monthly',
-      description: 'Just for 32p a day',
-      price: 9.92,
+      description: 'Just for 33p a day',
+      price: 9.99,
       currency: 'gbp',
       interval: 'month',
       features: [
@@ -72,7 +72,7 @@ class StripeService {
       id: 'premium-yearly',
       name: 'Premium Yearly',
       description: 'Just for 27p a day',
-      price: 98.55,
+      price: 99.99,
       currency: 'gbp',
       interval: 'year',
       features: [
@@ -83,7 +83,7 @@ class StripeService {
         'Pattern tracking',
         'Export conversations',
         'Crisis detection',
-        'Save 15% vs monthly',
+        'Save 17% vs monthly',
       ],
       stripe_price_id: Constants.expoConfig?.extra?.EXPO_PUBLIC_STRIPE_PREMIUM_YEARLY_PRICE_ID || '',
     },

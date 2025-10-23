@@ -1,6 +1,6 @@
 /**
  * Authentication Stack Layout
- * Handles login, register, and onboarding screens
+ * Handles welcome, login, username, PIN setup, and onboarding screens
  */
 
 import React from 'react';
@@ -11,7 +11,9 @@ export default function AuthLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="welcome" />
       <Stack.Screen name="login" />
-      <Stack.Screen name="register" />
+      <Stack.Screen name="login-pin" />
+      <Stack.Screen name="username" />
+      <Stack.Screen name="pin-setup" />
       <Stack.Screen name="onboarding" />
     </Stack>
   );

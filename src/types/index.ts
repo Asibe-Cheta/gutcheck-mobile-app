@@ -76,14 +76,14 @@ export interface Subscription {
 export type RootStackParamList = {
   Welcome: undefined;
   Login: undefined;
-  Register: undefined;
+  Username: undefined;
   Onboarding: undefined;
   Main: undefined;
 };
 
 export type AuthStackParamList = {
   Login: undefined;
-  Register: undefined;
+  Username: undefined;
   Onboarding: undefined;
 };
 

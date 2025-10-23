@@ -41,38 +41,11 @@ export default function UsernameScreen() {
       return;
     }
 
-    setIsLoading(true);
-
-    try {
-      // Generate user ID
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Save user data to storage
-      await AsyncStorage.setItem('user_id', userId);
-      await AsyncStorage.setItem('user_type', 'username');
-      await AsyncStorage.setItem('username', username.trim());
-      
-      // Ensure onboarding is not marked as completed for new users
-      await AsyncStorage.removeItem('onboarding_completed');
-      
-      // Try to create profile in database
-      try {
-        await profileService.createUsernameProfile(userId, username.trim());
-        console.log('Username profile created successfully');
-      } catch (dbError) {
-        console.log('Database profile creation failed, continuing with local storage only:', dbError);
-        // Continue without database profile - user can still use the app
-      }
-      
-      // Navigate to onboarding (not directly to app)
-      // The home screen will detect no onboarding_completed and show onboarding
-      router.push('/(tabs)');
-    } catch (error) {
-      console.error('Error creating username profile:', error);
-      Alert.alert('Error', 'Failed to create account. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    // Navigate to PIN setup screen
+    router.push({
+      pathname: '/(auth)/pin-setup',
+      params: { username: username.trim() }
+    });
   };
 
   const styles = StyleSheet.create({

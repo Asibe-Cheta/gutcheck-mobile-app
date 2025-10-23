@@ -37,11 +37,11 @@ export default function LoginScreen() {
   const colors = getThemeColors(isDark);
   
   const handleEmailSignUp = () => {
-    router.push('/(auth)/register');
+    router.push('/(auth)/username');
   };
 
   const handleUsernameSignUp = () => {
-    router.push('/(auth)/register');
+    router.push('/(auth)/username');
   };
 
   const handleAnonymousAccess = () => {

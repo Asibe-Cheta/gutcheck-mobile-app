@@ -1,29 +1,40 @@
 /**
  * Subscription Store
- * Manages subscription state and operations using Zustand
+ * Manages subscription state and operations using Zustand with Apple In-App Purchases
  */
 
 import { create } from 'zustand';
-import { stripeService, SubscriptionPlan, SubscriptionStatus, PaymentMethod } from '@/lib/stripe';
-import { db } from '@/lib/supabase';
-import { useAuthStore } from './authStore';
+import { lifetimeProService } from '@/lib/lifetimeProService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Import Apple IAP service (with graceful fallback for development)
+import { appleIAPService, AppleSubscription, PRODUCT_IDS } from '@/lib/appleIAPService';
+
+interface AppleSubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  interval: 'month' | 'year';
+  productId: string;
+  description: string;
+}
 
 interface SubscriptionState {
-  plans: SubscriptionPlan[];
-  currentPlan: SubscriptionPlan | null;
-  subscription: SubscriptionStatus | null;
-  paymentMethods: PaymentMethod[];
+  plans: AppleSubscriptionPlan[];
+  currentPlan: AppleSubscriptionPlan | null;
+  subscription: AppleSubscription | null;
+  isLifetimePro: boolean;
+  lifetimeProCount: number;
   isLoading: boolean;
   error: string | null;
   
   // Actions
   loadPlans: () => Promise<void>;
-  loadSubscription: (userId: string) => Promise<void>;
-  loadPaymentMethods: (customerId: string) => Promise<void>;
-  subscribeToPlan: (planId: string, customerId?: string) => Promise<{ success: boolean; error?: string; clientSecret?: string }>;
-  cancelSubscription: (subscriptionId: string, immediately?: boolean) => Promise<{ success: boolean; error?: string }>;
-  updateSubscription: (subscriptionId: string, newPlanId: string) => Promise<{ success: boolean; error?: string }>;
-  createPaymentIntent: (amount: number, currency: string, customerId?: string) => Promise<{ clientSecret: string; error?: string }>;
+  loadSubscription: () => Promise<void>;
+  checkLifetimePro: (userId: string) => Promise<void>;
+  subscribeToPlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
+  restorePurchases: () => Promise<{ success: boolean; error?: string }>;
   clearError: () => void;
   reset: () => void;
 }
@@ -32,7 +43,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   plans: [],
   currentPlan: null,
   subscription: null,
-  paymentMethods: [],
+  isLifetimePro: false,
+  lifetimeProCount: 0,
   isLoading: false,
   error: null,
 
@@ -40,7 +52,45 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      const plans = stripeService.getPlans();
+      // Define our subscription plans
+      const plans: AppleSubscriptionPlan[] = [
+        {
+          id: 'monthly',
+          name: 'Premium Monthly',
+          price: 9.99,
+          currency: 'GBP',
+          interval: 'month',
+          productId: PRODUCT_IDS.PREMIUM_MONTHLY,
+          description: 'Full access to all features',
+          features: [
+            'Unlimited AI conversations',
+            'Image and document analysis',
+            'Personalized guidance',
+            'Priority support',
+            'Advanced insights'
+          ],
+          popular: false,
+        },
+        {
+          id: 'yearly',
+          name: 'Premium Yearly',
+          price: 99.99,
+          currency: 'GBP',
+          interval: 'year',
+          productId: PRODUCT_IDS.PREMIUM_YEARLY,
+          description: 'Full access to all features - Save 17%',
+          features: [
+            'Unlimited AI conversations',
+            'Image and document analysis',
+            'Personalized guidance',
+            'Priority support',
+            'Advanced insights',
+            'Exclusive yearly features'
+          ],
+          popular: true,
+        },
+      ];
+      
       set({ plans, isLoading: false });
     } catch (error) {
       console.error('Load plans error:', error);
@@ -51,25 +101,50 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     }
   },
 
-  loadSubscription: async (userId: string) => {
+  loadSubscription: async () => {
     try {
       set({ isLoading: true, error: null });
       
-      const subscription = await db.getSubscription(userId);
+      // First check for lifetime pro status
+      const userId = await AsyncStorage.getItem('user_id');
+      if (userId) {
+        try {
+          const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
+          if (isLifetimePro) {
+            set({ 
+              isLifetimePro: true, 
+              subscription: null, 
+              currentPlan: null, 
+              isLoading: false 
+            });
+            return;
+          }
+        } catch (lifetimeProError) {
+          console.warn('Lifetime pro check failed (non-critical):', lifetimeProError);
+          // Continue with regular subscription check
+        }
+      }
+      
+      // If not lifetime pro, check for regular subscription
+      // Note: Apple IAP service doesn't have getActiveSubscription method
+      // We'll check subscription status from local storage for now
+      const subscriptionStatus = await AsyncStorage.getItem('subscription_status');
+      const subscriptionPlan = await AsyncStorage.getItem('subscription_plan');
+      const subscription = subscriptionStatus === 'active' ? {
+        productId: subscriptionPlan === 'monthly' ? PRODUCT_IDS.PREMIUM_MONTHLY : PRODUCT_IDS.PREMIUM_YEARLY,
+        transactionId: 'local_storage',
+        purchaseDate: new Date().toISOString(),
+        isActive: true
+      } : null;
       
       if (subscription) {
-        const { status } = await stripeService.getSubscriptionStatus(subscription.stripe_subscription_id);
+        set({ subscription, isLoading: false });
         
-        if (status) {
-          set({ subscription: status, isLoading: false });
-          
-          // Find current plan
-          const plan = stripeService.getPlan(subscription.plan);
-          if (plan) {
-            set({ currentPlan: plan });
-          }
-        } else {
-          set({ subscription: null, currentPlan: null, isLoading: false });
+        // Find current plan based on product ID
+        const plans = get().plans;
+        const plan = plans.find(p => p.productId === subscription.productId);
+        if (plan) {
+          set({ currentPlan: plan });
         }
       } else {
         set({ subscription: null, currentPlan: null, isLoading: false });
@@ -83,70 +158,66 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     }
   },
 
-  loadPaymentMethods: async (customerId: string) => {
+  checkLifetimePro: async (userId: string) => {
     try {
       set({ isLoading: true, error: null });
       
-      const { methods, error } = await stripeService.getPaymentMethods(customerId);
+      // Check if user is eligible for lifetime pro
+      const { isEligible, isLifetimePro, count } = await lifetimeProService.checkLifetimeProEligibility(userId);
       
-      if (error) {
-        set({ isLoading: false, error });
-        return;
+      set({ 
+        isLifetimePro, 
+        lifetimeProCount: count, 
+        isLoading: false 
+      });
+      
+      // If eligible and not already lifetime pro, grant it
+      if (isEligible && !isLifetimePro) {
+        const result = await lifetimeProService.grantLifetimePro(userId);
+        if (result.success) {
+          set({ isLifetimePro: true });
+          
+          // Save to local storage
+          await AsyncStorage.setItem('subscription_status', 'active');
+          await AsyncStorage.setItem('subscription_plan', 'lifetime_pro');
+        }
       }
-      
-      set({ paymentMethods: methods, isLoading: false });
     } catch (error) {
-      console.error('Load payment methods error:', error);
+      console.error('Check lifetime pro error:', error);
       set({
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load payment methods',
+        error: error instanceof Error ? error.message : 'Failed to check lifetime pro status',
       });
     }
   },
 
-  subscribeToPlan: async (planId: string, customerId?: string) => {
+  subscribeToPlan: async (planId: string) => {
     try {
       set({ isLoading: true, error: null });
       
-      const plan = stripeService.getPlan(planId);
+      const plans = get().plans;
+      const plan = plans.find(p => p.id === planId);
       if (!plan) {
         set({ isLoading: false, error: 'Plan not found' });
         return { success: false, error: 'Plan not found' };
       }
 
-      if (plan.price === 0) {
-        // Free plan - no payment required
-        const user = useAuthStore.getState().user;
-        if (user) {
-          await db.updateUser(user.id, {
-            subscription_plan: planId,
-            subscription_status: 'active',
-            analysis_limit: 10,
-          });
-        }
-        set({ isLoading: false });
+      // Try to purchase through Apple IAP
+      const result = await appleIAPService.purchaseProduct(plan.productId);
+      const subscription = result.success ? result.subscription : null;
+      
+      if (subscription) {
+        set({ subscription, currentPlan: plan, isLoading: false });
+        
+        // Save subscription status to AsyncStorage
+        await AsyncStorage.setItem('subscription_status', 'active');
+        await AsyncStorage.setItem('subscription_plan', planId);
+        
         return { success: true };
+      } else {
+        set({ isLoading: false, error: result.error || 'Purchase failed' });
+        return { success: false, error: result.error || 'Purchase failed' };
       }
-
-      if (!customerId) {
-        set({ isLoading: false, error: 'Customer ID required for paid plans' });
-        return { success: false, error: 'Customer ID required for paid plans' };
-      }
-
-      // Create subscription with 7-day trial
-      const { subscriptionId, clientSecret, error } = await stripeService.createSubscription(
-        customerId,
-        plan.stripe_price_id,
-        7 // 7-day trial
-      );
-
-      if (error) {
-        set({ isLoading: false, error });
-        return { success: false, error };
-      }
-
-      set({ isLoading: false });
-      return { success: true, clientSecret };
     } catch (error) {
       console.error('Subscribe to plan error:', error);
       set({
@@ -157,78 +228,47 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     }
   },
 
-  cancelSubscription: async (subscriptionId: string, immediately = false) => {
+  restorePurchases: async () => {
     try {
       set({ isLoading: true, error: null });
       
-      const { success, error } = await stripeService.cancelSubscription(subscriptionId, immediately);
+      // Restore purchases through Apple IAP
+      const result = await appleIAPService.restorePurchases();
+      const subscriptions = result.success ? result.subscriptions || [] : [];
       
-      if (error) {
-        set({ isLoading: false, error });
-        return { success: false, error };
+      if (subscriptions && subscriptions.length > 0) {
+        const activeSubscription = subscriptions.find(sub => sub.isActive);
+        
+        if (activeSubscription) {
+          set({ subscription: activeSubscription, isLoading: false });
+          
+          // Find current plan
+          const plans = get().plans;
+          const plan = plans.find(p => p.productId === activeSubscription.productId);
+          if (plan) {
+            set({ currentPlan: plan });
+          }
+          
+          // Save subscription status
+          await AsyncStorage.setItem('subscription_status', 'active');
+          await AsyncStorage.setItem('subscription_plan', plan?.id || '');
+          
+          return { success: true };
+        } else {
+          set({ subscription: null, currentPlan: null, isLoading: false });
+          return { success: true };
+        }
+      } else {
+        set({ subscription: null, currentPlan: null, isLoading: false });
+        return { success: true };
       }
-
-      set({ isLoading: false });
-      return { success: true };
     } catch (error) {
-      console.error('Cancel subscription error:', error);
+      console.error('Restore purchases error:', error);
       set({
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to cancel subscription',
+        error: error instanceof Error ? error.message : 'Failed to restore purchases',
       });
-      return { success: false, error: 'Failed to cancel subscription' };
-    }
-  },
-
-  updateSubscription: async (subscriptionId: string, newPlanId: string) => {
-    try {
-      set({ isLoading: true, error: null });
-      
-      const newPlan = stripeService.getPlan(newPlanId);
-      if (!newPlan) {
-        set({ isLoading: false, error: 'Plan not found' });
-        return { success: false, error: 'Plan not found' };
-      }
-
-      const { success, error } = await stripeService.updateSubscription(subscriptionId, newPlan.stripe_price_id);
-      
-      if (error) {
-        set({ isLoading: false, error });
-        return { success: false, error };
-      }
-
-      set({ isLoading: false });
-      return { success: true };
-    } catch (error) {
-      console.error('Update subscription error:', error);
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to update subscription',
-      });
-      return { success: false, error: 'Failed to update subscription' };
-    }
-  },
-
-  createPaymentIntent: async (amount: number, currency: string, customerId?: string) => {
-    try {
-      set({ isLoading: true, error: null });
-      
-      const { clientSecret, error } = await stripeService.createPaymentIntent(amount, currency, customerId);
-      
-      if (error) {
-        set({ isLoading: false, error });
-        return { clientSecret: '', error };
-      }
-
-      set({ isLoading: false });
-      return { clientSecret };
-    } catch (error) {
-      console.error('Create payment intent error:', error);
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to create payment intent',
-      });
-      return { clientSecret: '', error: 'Failed to create payment intent' };
+      return { success: false, error: 'Failed to restore purchases' };
     }
   },
 
@@ -241,7 +281,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       plans: [],
       currentPlan: null,
       subscription: null,
-      paymentMethods: [],
+      isLifetimePro: false,
+      lifetimeProCount: 0,
       isLoading: false,
       error: null,
     });

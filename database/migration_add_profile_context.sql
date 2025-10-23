@@ -1,15 +1,10 @@
--- Migration: Add struggles and goals columns to profiles table
--- Purpose: Store optional user context for AI personalization
-
--- Add struggles column (things user is struggling with)
+-- Add missing columns to profiles table for authentication
 ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS struggles TEXT;
+ADD COLUMN IF NOT EXISTS user_type TEXT DEFAULT 'username',
+ADD COLUMN IF NOT EXISTS pin_hash TEXT;
 
--- Add goals column (things user wants to work on)
-ALTER TABLE profiles 
-ADD COLUMN IF NOT EXISTS goals TEXT;
+-- Create index for user_type lookups
+CREATE INDEX IF NOT EXISTS idx_profiles_user_type ON profiles(user_type);
 
--- Add comments for documentation
-COMMENT ON COLUMN profiles.struggles IS 'Optional field: Things the user is struggling with (e.g., low self-esteem, anxiety)';
-COMMENT ON COLUMN profiles.goals IS 'Optional field: Things the user wants to work on (e.g., setting boundaries, building confidence)';
-
+-- Create index for username lookups (if not exists)
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);

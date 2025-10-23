@@ -142,7 +142,7 @@ export default function UpgradeScreen() {
         {/* Pricing Section */}
         <View style={styles.pricingSection}>
           <Text style={styles.pricingSubtitle}>Unlimited peace of mind for</Text>
-          <Text style={styles.pricingAmount}>32p a day</Text>
+          <Text style={styles.pricingAmount}>33p a day</Text>
         </View>
 
         {/* Comparison Table */}
@@ -151,7 +151,7 @@ export default function UpgradeScreen() {
         {/* Subscription Details */}
         <View style={styles.subscriptionSection}>
           <Text style={styles.subscriptionPrice}>
-            £9.47<span style={styles.subscriptionPeriod}>/month</span>
+            £9.99<span style={styles.subscriptionPeriod}>/month</span>
           </Text>
           <TouchableOpacity 
             style={styles.trialButton}

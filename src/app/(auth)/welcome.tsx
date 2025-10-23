@@ -10,7 +10,7 @@ import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme, getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
-import { profileService } from '@/lib/profileService';
+import { authService } from '@/lib/authService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,28 +20,20 @@ export default function WelcomeScreen() {
 
   const handleAnonymousAccess = async () => {
     try {
-      // Generate anonymous user ID
-      const anonymousId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Use authService to create anonymous account
+      const result = await authService.createAnonymousAccount();
       
-      // Save anonymous ID to storage
-      await AsyncStorage.setItem('anonymous_user_id', anonymousId);
-      await AsyncStorage.setItem('user_id', anonymousId);
-      await AsyncStorage.setItem('user_type', 'anonymous');
-      
-      // Ensure onboarding is not marked as completed for new users
-      await AsyncStorage.removeItem('onboarding_completed');
-      
-      // Try to create anonymous profile in database
-      try {
-        await profileService.createAnonymousProfile(anonymousId);
-        console.log('Anonymous profile created successfully');
-      } catch (dbError) {
-        console.log('Database profile creation failed, continuing with local storage only:', dbError);
-        // Continue without database profile - user can still use the app
+      if (result.success) {
+        // Ensure onboarding is not marked as completed for new users
+        await AsyncStorage.removeItem('onboarding_completed');
+        
+        // Navigate to main app (will show onboarding)
+        router.push('/(tabs)');
+      } else {
+        console.error('Failed to create anonymous account:', result.error);
+        // Still navigate even if creation fails
+        router.push('/(tabs)');
       }
-      
-      // Navigate to onboarding
-      router.push('/(tabs)');
     } catch (error) {
       console.error('Error creating anonymous user:', error);
       // Still navigate to app even if profile creation fails
@@ -57,14 +49,13 @@ export default function WelcomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <View style={styles.content}>
-        {/* Logo and app name */}
+        {/* Logo */}
         <View style={styles.logoContainer}>
           <Image 
             source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={[styles.appName, { color: currentTheme.textPrimary }]}>GutCheck</Text>
         </View>
         
         {/* Main heading */}
@@ -95,6 +86,16 @@ export default function WelcomeScreen() {
           >
             <Text style={[styles.secondaryButtonText, { color: currentTheme.primary }]}>Create Username Only</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tertiaryButton}
+            onPress={() => router.push('/(auth)/login-pin')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tertiaryButtonText, { color: currentTheme.primary }]}>
+              Already have an account? Login
+            </Text>
+          </TouchableOpacity>
         </View>
         
         {/* Footer text */}
@@ -122,11 +123,11 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 32, // mb-8 equivalent
+    marginBottom: 8, // Much smaller spacing
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 280,
+    height: 280,
   },
   appName: {
     fontSize: 24, // text-3xl
@@ -182,6 +183,15 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 16, // text-base
     fontWeight: '600', // font-semibold
+    fontFamily: 'Inter',
+  },
+  tertiaryButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  tertiaryButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
     fontFamily: 'Inter',
   },
   footerText: {

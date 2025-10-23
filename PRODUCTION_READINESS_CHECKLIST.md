@@ -84,8 +84,8 @@
 
 ### **Stripe Integration**
 - [x] British Pounds (£) currency
-- [x] Monthly plan: £9.92 (32p/day)
-- [x] Yearly plan: £98.55 (27p/day)
+- [x] Monthly plan: £9.99 (33p/day)
+- [x] Yearly plan: £99.99 (27p/day)
 - [x] No free plan (7-day trial only)
 - [x] Production-ready Stripe keys
 

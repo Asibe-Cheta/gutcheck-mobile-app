@@ -1,6 +1,6 @@
 /**
  * Subscription Screen
- * Premium subscription management with Stripe integration
+ * Premium subscription management with Apple In-App Purchases
  */
 
 import React, { useState, useEffect } from 'react';
@@ -11,19 +11,16 @@ import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
-import { useAuthStore } from '@/lib/stores/authStore';
-import { stripeService } from '@/lib/stripe';
 
 interface SubscriptionPlan {
   id: string;
   name: string;
-  price: string;
-  period: string;
-  actualPrice?: string;
-  actualPeriod?: string;
-  description?: string;
+  price: number;
+  currency: string;
+  interval: 'month' | 'year';
+  productId: string;
+  description: string;
   features: string[];
   popular?: boolean;
 }
@@ -32,245 +29,100 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const [currentPlan, setCurrentPlan] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  const { 
+    plans, 
+    currentPlan, 
+    subscription, 
+    isLifetimePro,
+    lifetimeProCount,
+    isLoading, 
+    error,
+    loadPlans,
+    loadSubscription,
+    checkLifetimePro,
+    subscribeToPlan,
+    restorePurchases,
+    clearError
+  } = useSubscriptionStore();
 
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-
-  // Simulate payment for development mode
-  const simulatePayment = async (planId: string) => {
-    try {
-      // Get the plan details
-      const plan = stripeService.getPlan(planId);
-      if (!plan) {
-        Alert.alert('Error', 'Plan not found.');
-        return;
-      }
-
-      // Simulate payment processing
-      Alert.alert(
-        'Processing Payment...',
-        'Simulating payment processing...',
-        [],
-        { cancelable: false }
-      );
-
-      // Simulate delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Set subscription in store
-      const subscriptionStore = useSubscriptionStore.getState();
-      await subscriptionStore.setSubscription({
-        id: `sub_sim_${Date.now()}`,
-        planId: planId,
-        status: 'active',
-        trialEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
-        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
-        cancelAtPeriodEnd: false
-      });
-
-      // Save to local storage
-      await AsyncStorage.setItem('current_subscription_plan', planId);
-      await AsyncStorage.setItem('subscription_status', 'active');
-      await AsyncStorage.setItem('trial_end_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
-
-      Alert.alert(
-        'Payment Successful!',
-        'Your 7-day free trial has started. You now have access to all premium features.',
-        [
-          {
-            text: 'Continue to App',
-            onPress: () => router.push('/(tabs)')
-          }
-        ]
-      );
-
-    } catch (error) {
-      console.error('Error simulating payment:', error);
-      Alert.alert('Error', 'Failed to process payment simulation.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load plans from Stripe service
+  // Load plans and subscription on mount
   useEffect(() => {
-    const loadPlans = () => {
-      const stripePlans = stripeService.getPlans();
-      const formattedPlans: SubscriptionPlan[] = stripePlans.map(plan => {
-        // Calculate daily cost
-        const dailyCost = plan.interval === 'month' ? plan.price / 30 : plan.price / 365;
-        
-        return {
-          id: plan.id,
-          name: plan.name,
-          price: `£${dailyCost.toFixed(2)}`, // Daily cost as main price
-          period: plan.interval === 'month' ? 'day' : 'day',
-          actualPrice: `£${plan.price.toFixed(2)}`, // Actual monthly/yearly price
-          actualPeriod: plan.interval === 'month' ? 'month' : 'year',
-          description: plan.description,
-          features: plan.features,
-          popular: plan.is_popular || false
-        };
-      });
-      setPlans(formattedPlans);
+    loadPlans();
+    loadSubscription();
+    
+    // Check for lifetime pro status
+    const checkLifetimeProStatus = async () => {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (userId) {
+        await checkLifetimePro(userId);
+      }
     };
     
-    loadPlans();
+    checkLifetimeProStatus();
   }, []);
-
-  useEffect(() => {
-    loadCurrentPlan();
-  }, []);
-
-  const loadCurrentPlan = async () => {
-    try {
-      const plan = await AsyncStorage.getItem('current_subscription_plan');
-      setCurrentPlan(plan);
-    } catch (error) {
-      console.error('Error loading current plan:', error);
-    }
-  };
 
   const handleSubscribe = async (planId: string) => {
-    setIsLoading(true);
-    
     try {
-      // Check if we're in development mode (Expo Go)
-      const isDevelopment = __DEV__ || Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'development';
+      const result = await subscribeToPlan(planId);
       
-      if (isDevelopment) {
-        // Development mode - simulate payment
+      if (result.success) {
         Alert.alert(
-          'Development Mode',
-          'This is a development build. Payment simulation will be used.',
+          '🎉 Subscription Active!',
+          'Welcome to Premium! You now have access to all premium features.',
           [
             {
-              text: 'Cancel',
-              style: 'cancel'
-            },
-            {
-              text: 'Simulate Payment',
-              onPress: () => simulatePayment(planId)
-            }
-          ]
-        );
-        return;
-      }
-
-      // Production mode - real Stripe payment
-      // Check if Stripe keys are configured
-      const publishableKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-      if (!publishableKey || publishableKey.includes('your_')) {
-        Alert.alert(
-          'Configuration Required',
-          'Stripe payment keys are not configured. Please contact support.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      // Get user from auth store
-      const user = useAuthStore.getState().user;
-      if (!user) {
-        Alert.alert('Authentication Required', 'Please log in to subscribe.');
-        return;
-      }
-
-      // Get the plan details
-      const plan = stripeService.getPlan(planId);
-      if (!plan) {
-        Alert.alert('Error', 'Plan not found.');
-        return;
-      }
-
-      // Create customer and subscription
-      const { customerId, error: customerError } = await stripeService.createCustomer(
-        user.id,
-        user.email || 'user@example.com'
-      );
-
-      if (customerError) {
-        Alert.alert('Error', `Failed to create customer: ${customerError}`);
-        return;
-      }
-
-      // Create subscription with 7-day trial
-      const { subscriptionId, clientSecret, error: subscriptionError } = await stripeService.createSubscription(
-        customerId,
-        plan.stripe_price_id,
-        7 // 7-day trial
-      );
-
-      if (subscriptionError) {
-        Alert.alert('Error', `Failed to create subscription: ${subscriptionError}`);
-        return;
-      }
-
-      if (clientSecret) {
-        // Payment required - show payment form
-        Alert.alert(
-          'Payment Required',
-          'Please complete your payment to activate your subscription. You have a 7-day free trial.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Continue to Payment', 
-              onPress: () => {
-                // Here you would navigate to payment form or handle payment
-                Alert.alert(
-                  'Payment Integration',
-                  'Payment form integration required. This would handle the clientSecret for payment completion.',
-                  [{ text: 'OK' }]
-                );
-              }
+              text: 'Continue to App',
+              onPress: () => router.push('/(tabs)')
             }
           ]
         );
       } else {
-        // Trial activated successfully
-        await AsyncStorage.setItem('current_subscription_plan', planId);
-        setCurrentPlan(planId);
-        Alert.alert(
-          '🎉 Trial Started!',
-          `Welcome to ${plan.name}! Your 7-day free trial has started.`,
-          [{ text: 'Great!', style: 'default' }]
-        );
+        Alert.alert('Subscription Failed', result.error || 'Failed to subscribe. Please try again.');
       }
     } catch (error) {
       console.error('Subscription error:', error);
       Alert.alert('Error', 'Failed to process subscription. Please try again.');
-    } finally {
-      setIsLoading(false);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    try {
+      const result = await restorePurchases();
+      
+      if (result.success) {
+        if (subscription) {
+          Alert.alert('Purchases Restored', 'Your previous purchases have been restored.');
+        } else {
+          Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
+        }
+      } else {
+        Alert.alert('Restore Failed', result.error || 'Failed to restore purchases. Please try again.');
+      }
+    } catch (error) {
+      console.error('Restore purchases error:', error);
+      Alert.alert('Error', 'Failed to restore purchases. Please try again.');
     }
   };
 
   const handleCancelSubscription = () => {
     Alert.alert(
       'Cancel Subscription',
-      'Are you sure you want to cancel your subscription? You\'ll lose access to premium features at the end of your billing period.',
+      'To cancel your subscription, please go to your Apple ID settings > Subscriptions. You\'ll keep access until the end of your billing period.',
       [
-        { text: 'Keep Subscription', style: 'cancel' },
-        { 
-          text: 'Cancel Subscription', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AsyncStorage.removeItem('current_subscription_plan');
-              setCurrentPlan(null);
-              Alert.alert('Subscription Cancelled', 'Your subscription has been cancelled.');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to cancel subscription.');
-            }
-          }
-        }
+        { text: 'OK', style: 'default' }
       ]
     );
   };
 
   const renderPlanCard = (plan: SubscriptionPlan) => {
-    const isCurrentPlan = currentPlan === plan.id;
+    const isCurrentPlan = currentPlan?.id === plan.id;
     const isPopular = plan.popular;
+    
+    // Calculate daily cost
+    const dailyCost = plan.interval === 'month' 
+      ? (plan.price / 30).toFixed(2)  // £9.99 / 30 = £0.33 per day
+      : (plan.price / 365).toFixed(2); // £99.99 / 365 = £0.27 per day
 
     return (
       <View key={plan.id} style={[
@@ -292,15 +144,21 @@ export default function SubscriptionScreen() {
 
         <View style={styles.planHeader}>
           <Text style={styles.planName}>{plan.name}</Text>
-          <Text style={styles.planDescription}>{plan.description}</Text>
-          <View style={styles.priceContainer}>
-            <Text style={styles.price}>{plan.price}</Text>
-            <Text style={styles.period}>/{plan.period}</Text>
+          
+          {/* Prominent Daily Cost */}
+          <View style={styles.dailyCostContainer}>
+            <Text style={styles.dailyCostLabel}>Just</Text>
+            <Text style={styles.dailyCost}>{dailyCost}p</Text>
+            <Text style={styles.dailyCostLabel}>a day</Text>
           </View>
+          
+          {/* Less Prominent Actual Price */}
           <View style={styles.actualPriceContainer}>
-            <Text style={styles.actualPrice}>{plan.actualPrice}</Text>
-            <Text style={styles.actualPeriod}>/{plan.actualPeriod}</Text>
+            <Text style={styles.actualPrice}>£{plan.price.toFixed(2)}</Text>
+            <Text style={styles.actualPeriod}>/{plan.interval}</Text>
           </View>
+          
+          <Text style={styles.planDescription}>{plan.description}</Text>
         </View>
 
         <View style={styles.featuresContainer}>
@@ -460,10 +318,45 @@ export default function SubscriptionScreen() {
       marginBottom: 8,
     },
     planDescription: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: 12,
+      textAlign: 'center',
+    },
+    dailyCostContainer: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'center',
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    dailyCostLabel: {
+      fontSize: 20,
+      color: colors.textPrimary,
+      fontWeight: '500',
+      marginHorizontal: 4,
+    },
+    dailyCost: {
+      fontSize: 48,
+      fontWeight: 'bold',
+      color: colors.primary,
+      marginHorizontal: 2,
+    },
+    actualPriceContainer: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'center',
+      marginBottom: 4,
+    },
+    actualPrice: {
       fontSize: 16,
       color: colors.textSecondary,
-      marginBottom: 16,
-      textAlign: 'center',
+      fontWeight: '500',
+    },
+    actualPeriod: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginLeft: 2,
     },
     priceContainer: {
       flexDirection: 'row',
@@ -480,20 +373,6 @@ export default function SubscriptionScreen() {
       color: colors.primary,
       marginLeft: 4,
       fontWeight: '600',
-    },
-    actualPriceContainer: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-    },
-    actualPrice: {
-      fontSize: 16,
-      color: colors.textSecondary,
-      textDecorationLine: 'line-through',
-    },
-    actualPeriod: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginLeft: 4,
     },
     featuresContainer: {
       marginBottom: 24,
@@ -545,6 +424,41 @@ export default function SubscriptionScreen() {
       marginLeft: 12,
       flex: 1,
     },
+    restoreButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 12,
+      marginTop: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    restoreButtonText: {
+      fontSize: 16,
+      color: colors.primary,
+      marginLeft: 8,
+      fontWeight: '600',
+    },
+    lifetimeProInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary + '10',
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.primary + '30',
+    },
+    lifetimeProText: {
+      fontSize: 16,
+      color: colors.textPrimary,
+      marginLeft: 12,
+      flex: 1,
+      fontWeight: '500',
+    },
     faqSection: {
       marginTop: 32,
       marginBottom: 20,
@@ -588,21 +502,38 @@ export default function SubscriptionScreen() {
       {/* Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Current Plan Status */}
-        {currentPlan && (
+        {(subscription || isLifetimePro) && (
           <View style={styles.statusCard}>
             <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
             <View style={styles.statusText}>
-              <Text style={styles.statusTitle}>Premium Active</Text>
+              <Text style={styles.statusTitle}>
+                {isLifetimePro ? 'Lifetime Pro Active' : 'Premium Active'}
+              </Text>
               <Text style={styles.statusDescription}>
-                You have access to all premium features
+                {isLifetimePro 
+                  ? 'You have lifetime access to all premium features as one of the first 20 users!'
+                  : 'You have access to all premium features'
+                }
               </Text>
             </View>
-            <TouchableOpacity 
-              style={styles.cancelButton}
-              onPress={handleCancelSubscription}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+            {!isLifetimePro && (
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={handleCancelSubscription}
+              >
+                <Text style={styles.cancelButtonText}>Manage</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Lifetime Pro Info */}
+        {isLifetimePro && (
+          <View style={styles.lifetimeProInfo}>
+            <Ionicons name="star" size={20} color={colors.primary} />
+            <Text style={styles.lifetimeProText}>
+              🎉 Congratulations! You're one of the first 20 users with lifetime pro access!
+            </Text>
           </View>
         )}
 
@@ -611,11 +542,21 @@ export default function SubscriptionScreen() {
           {plans.map(renderPlanCard)}
         </View>
 
+        {/* Restore Purchases Button */}
+        <TouchableOpacity 
+          style={styles.restoreButton}
+          onPress={handleRestorePurchases}
+          disabled={isLoading}
+        >
+          <Ionicons name="refresh" size={20} color={colors.primary} />
+          <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+        </TouchableOpacity>
+
         {/* Payment Info */}
         <View style={styles.paymentInfo}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
           <Text style={styles.paymentInfoText}>
-            Secure payment processing by Stripe. Your payment information is encrypted and secure.
+            Secure payment processing by Apple. Your payment information is handled securely by Apple.
           </Text>
         </View>
 
@@ -626,21 +567,21 @@ export default function SubscriptionScreen() {
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
             <Text style={styles.faqAnswer}>
-              You can cancel anytime from this screen or by contacting support. You'll keep premium access until the end of your billing period.
+              Go to your Apple ID settings &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
             </Text>
           </View>
 
           <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Can I change my plan later?</Text>
+            <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
             <Text style={styles.faqAnswer}>
-              Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately.
+              Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
             </Text>
           </View>
 
           <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Is there a free trial?</Text>
+            <Text style={styles.faqQuestion}>How does Apple billing work?</Text>
             <Text style={styles.faqAnswer}>
-              We offer a 7-day free trial for all premium plans. No credit card required to start.
+              Your subscription is billed through your Apple ID. You can manage billing and payment methods in your Apple ID settings.
             </Text>
           </View>
         </View>

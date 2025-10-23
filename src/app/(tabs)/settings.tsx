@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
+import { authService } from '@/lib/authService';
 
 // Settings Item Component
 const SettingsItem = ({ 
@@ -178,15 +179,62 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert(
       'Log Out',
-      'Are you sure you want to log out?',
+      'Are you sure you want to log out? You can log back in anytime with your username and PIN.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: () => {
-          // TODO: Implement logout logic
-          console.log('User logged out');
+        { text: 'Log Out', style: 'destructive', onPress: async () => {
+          const result = await authService.logout();
+          if (result.success) {
+            // Navigate to welcome screen
+            router.replace('/(auth)/welcome');
+          } else {
+            Alert.alert('Error', result.error || 'Failed to logout');
+          }
         }}
       ]
     );
+  };
+
+  const handleDeleteAccount = () => {
+    console.log('Delete Account button pressed');
+    
+    // Use web-compatible confirm dialogs
+    const firstConfirm = confirm(
+      'Delete Account\n\nAre you sure you want to permanently delete your account? This action cannot be undone and will remove all your data, conversations, and settings.'
+    );
+    
+    if (!firstConfirm) {
+      console.log('First confirmation cancelled');
+      return;
+    }
+    
+    console.log('First confirmation accepted');
+    
+    const secondConfirm = confirm(
+      'Final Confirmation\n\nThis will permanently delete your account and all data. Are you absolutely sure?'
+    );
+    
+    if (!secondConfirm) {
+      console.log('Second confirmation cancelled');
+      return;
+    }
+    
+    console.log('Second confirmation accepted, deleting account...');
+    
+    // Perform the deletion
+    const performDeletion = async () => {
+      const result = await authService.deleteAccount();
+      console.log('Delete account result:', result);
+      
+      if (result.success) {
+        alert('Account Deleted\n\nYour account has been permanently deleted. Thank you for using GutCheck.');
+        router.replace('/(auth)/welcome');
+      } else {
+        alert('Error\n\n' + (result.error || 'Failed to delete account'));
+      }
+    };
+    
+    performDeletion();
   };
 
   const styles = createStyles(isDark);
@@ -334,6 +382,17 @@ export default function SettingsScreen() {
             title="Sync Settings"
             description="Manage cloud synchronization"
             onPress={() => Alert.alert('Sync Settings', 'Cloud sync features coming soon!')}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <SettingsItem
+            icon="trash-bin"
+            title="Delete Account"
+            description="Permanently delete your account and all data"
+            onPress={() => {
+              console.log('Delete Account SettingsItem pressed');
+              handleDeleteAccount();
+            }}
             styles={styles}
             colors={currentTheme}
           />

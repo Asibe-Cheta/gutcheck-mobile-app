@@ -43,22 +43,23 @@ module.exports = {
   expo: {
     name: 'GutCheck',
     slug: 'gutcheck',
+    // owner: 'bervic-digital',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/icon.png',
+    icon: './assets/gc-main.png',
     userInterfaceStyle: 'dark',
     newArchEnabled: true,
     splash: {
-      image: './assets/splash-icon.png',
+      image: './assets/gc-main.png',
       resizeMode: 'contain',
       backgroundColor: '#1a1d29',
     },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.gutcheck.app',
-      buildNumber: '1',
+      buildNumber: '34',
       infoPlist: {
-        NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
+        // NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
         NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
         NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
@@ -70,7 +71,7 @@ module.exports = {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon.png',
+        foregroundImage: './assets/gc-main.png',
         backgroundColor: '#1a1d29',
       },
       edgeToEdgeEnabled: true,
