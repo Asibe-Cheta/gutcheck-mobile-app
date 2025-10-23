@@ -141,6 +141,25 @@ class AuthService {
           networkInfo: 'Testing network connectivity...'
         });
 
+        // Send debug info to remote logging service
+        try {
+          await fetch('https://httpbin.org/post', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'auth_debug',
+              timestamp: new Date().toISOString(),
+              user_id: userId,
+              username,
+              supabaseUrl: supabase.supabaseUrl,
+              isTestFlight: __DEV__ === false,
+              platform: Platform.OS
+            })
+          });
+        } catch (e) {
+          console.log('Remote logging failed:', e);
+        }
+
         // First try with all columns
         let insertData: any = {
           user_id: userId,

@@ -1408,6 +1408,25 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       platform: Platform.OS
     });
 
+    // Send debug info to remote logging service
+    try {
+      await fetch('https://httpbin.org/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'ai_debug',
+          timestamp: new Date().toISOString(),
+          url: apiUrl,
+          isWeb,
+          hasApiKey: !!apiKey,
+          isTestFlight: __DEV__ === false,
+          platform: Platform.OS
+        })
+      });
+    } catch (e) {
+      console.log('Remote logging failed:', e);
+    }
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
