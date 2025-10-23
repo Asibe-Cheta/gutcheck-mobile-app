@@ -26,10 +26,13 @@ export default function DebugScreen() {
       setEnvData({
         allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
         fullExtra: Constants.expoConfig?.extra,
-        supabaseUrl: Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL,
-        supabaseKey: Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-        anthropicKey: Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
-        isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production'
+        supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL,
+        supabaseKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+        anthropicKey: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+        isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
+        processEnvKeys: Object.keys(process.env || {}),
+        processEnvSupabase: process.env.EXPO_PUBLIC_SUPABASE_URL,
+        processEnvAnthropic: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
       });
     } catch (error) {
       console.log('Error loading debug data:', error);
@@ -66,6 +69,15 @@ export default function DebugScreen() {
         </Text>
         <Text style={styles.text}>
           All Keys: {envData?.allExtraKeys?.join(', ') || 'None'}
+        </Text>
+        <Text style={styles.text}>
+          Process Env Keys: {envData?.processEnvKeys?.join(', ') || 'None'}
+        </Text>
+        <Text style={styles.text}>
+          Process Env Supabase: {envData?.processEnvSupabase ? 'Present' : 'MISSING'}
+        </Text>
+        <Text style={styles.text}>
+          Process Env Anthropic: {envData?.processEnvAnthropic ? 'Present' : 'MISSING'}
         </Text>
       </View>
 

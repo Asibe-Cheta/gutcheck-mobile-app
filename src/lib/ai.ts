@@ -300,7 +300,7 @@ IMPORTANT:
 
   // Anthropic Claude analysis (for JSON responses)
   private async analyzeWithAnthropic(prompt: string): Promise<any> {
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     console.log('Anthropic API Key Status:', apiKey ? 'PRESENT' : 'MISSING');
     console.log('Anthropic API Key Preview:', apiKey ? `${apiKey.substring(0, 10)}...` : 'NONE');
     
@@ -358,7 +358,7 @@ IMPORTANT:
 
   // Anthropic Claude conversational response (for plain text responses)
   private async getConversationalResponse(prompt: string): Promise<string> {
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1226,7 +1226,7 @@ Always respond naturally and conversationally. Build on previous messages to mai
    * Direct Claude response using full conversation context with image support
    */
   private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false, imageData?: string): Promise<string> {
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
     console.log('getDirectClaudeResponse called with:', {
       hasImage,
