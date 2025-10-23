@@ -1402,7 +1402,10 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       windowType: typeof window,
       isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative',
       isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
-      environment: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV
+      environment: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV,
+      isTestFlight: __DEV__ === false,
+      networkTest: 'Testing network connectivity to Claude API...',
+      platform: Platform.OS
     });
 
     const response = await fetch(apiUrl, {

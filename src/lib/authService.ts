@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import * as Crypto from 'expo-crypto';
+import { Platform } from 'react-native';
 
 export interface AuthUser {
   id: string;
@@ -133,7 +134,11 @@ class AuthService {
           username,
           user_type: 'username',
           pin_hash: pinHash ? `${pinHash.substring(0, 10)}...` : 'MISSING',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          supabaseUrl: supabase.supabaseUrl,
+          isTestFlight: __DEV__ === false,
+          platform: Platform.OS,
+          networkInfo: 'Testing network connectivity...'
         });
 
         // First try with all columns
