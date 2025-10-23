@@ -1,43 +1,6 @@
-// Load environment variables from .env file
-const fs = require('fs');
-const path = require('path');
-
-// Function to load .env file
-function loadEnvFile() {
-  const envPath = path.resolve(__dirname, '.env');
-  const env = {};
-  
-  if (fs.existsSync(envPath)) {
-    // Read as buffer first to detect encoding
-    const buffer = fs.readFileSync(envPath);
-    // Convert to UTF-8 string, removing BOM if present
-    let envContent = buffer.toString('utf8').replace(/^\uFEFF/, '');
-    
-    // Split into lines and process
-    const lines = envContent.split(/\r?\n/);
-    
-    for (const line of lines) {
-      // Skip comments and empty lines
-      const trimmedLine = line.trim();
-      if (trimmedLine.startsWith('#') || !trimmedLine) {
-        continue;
-      }
-      
-      const equalsIndex = trimmedLine.indexOf('=');
-      if (equalsIndex > 0) {
-        const key = trimmedLine.substring(0, equalsIndex).trim();
-        const value = trimmedLine.substring(equalsIndex + 1).trim();
-        if (key && value) {
-          env[key] = value;
-        }
-      }
-    }
-  }
-  
-  return env;
-}
-
-const envVars = loadEnvFile();
+// Environment variables are provided by EAS Build in production
+// No need to load from .env file in production builds
+const envVars = {};
 
 module.exports = {
   expo: {
