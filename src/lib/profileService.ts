@@ -134,7 +134,11 @@ class ProfileService {
    */
   async saveProfile(profileData: Omit<ProfileData, 'id' | 'user_id'>): Promise<ProfileData> {
     try {
-      const userId = await this.getAnonymousUserId();
+      // Get user ID from auth system (works for both anonymous and username users)
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        throw new Error('No user ID found. Please log in again.');
+      }
       
       // Check if profile already exists
       const { data: existingProfile } = await supabase
@@ -266,7 +270,7 @@ class ProfileService {
     try {
       const userId = await AsyncStorage.getItem('user_id');
       if (!userId) {
-        throw new Error('No user ID found');
+        throw new Error('No user ID found. Please log in again.');
       }
 
       const { error } = await supabase

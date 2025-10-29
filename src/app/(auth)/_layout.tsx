@@ -14,6 +14,7 @@ export default function AuthLayout() {
       <Stack.Screen name="login-pin" />
       <Stack.Screen name="username" />
       <Stack.Screen name="pin-setup" />
+      <Stack.Screen name="anonymous-pin-setup" />
       <Stack.Screen name="onboarding" />
     </Stack>
   );

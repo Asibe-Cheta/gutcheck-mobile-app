@@ -105,6 +105,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   };
 
+  const handlePrevious = () => {
+    if (currentScreen > 0) {
+      setCurrentScreen(currentScreen - 1);
+    }
+  };
+
   const handleSkip = () => {
     onComplete();
   };
@@ -121,7 +127,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         </Text>
         
         <Text style={[styles.subtext, { color: colors.textSecondary }]}>
-          Trusting your gut was the smartest move. You're about to learn how to spot red flags before they hit, from manipulation to bullying. Your intuition will become your greatest ally.
+          Trusting your gut was the smartest move. You're about to learn how to spot red flags before they hit, from manipulation to bullying.
         </Text>
 
         <View style={styles.ageSelection}>
@@ -442,17 +448,47 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       paddingHorizontal: 24,
       paddingBottom: 32,
     },
+    navigationButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 12,
+    },
+    previousButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: 'transparent',
+      flex: 1,
+    },
+    previousButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: '600',
+      marginLeft: 8,
+    },
     nextButton: {
       backgroundColor: colors.primary,
       paddingVertical: 16,
+      paddingHorizontal: 20,
       borderRadius: 12,
       alignItems: 'center',
-      marginBottom: 12,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      flex: 1,
+    },
+    nextButtonFullWidth: {
+      flex: 1,
     },
     nextButtonText: {
       color: '#FFFFFF',
       fontSize: 16,
       fontWeight: '600',
+      marginRight: 8,
     },
     skipButton: {
       paddingVertical: 12,
@@ -490,14 +526,29 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
       {/* Bottom Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.nextButton}
-          onPress={handleNext}
-        >
-          <Text style={styles.nextButtonText}>
-            {currentScreen === 2 ? 'Start My 7-Day Free Trial' : 'Continue'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.navigationButtons}>
+          {currentScreen > 0 && (
+            <TouchableOpacity
+              style={styles.previousButton}
+              onPress={handlePrevious}
+            >
+              <Ionicons name="arrow-back" size={20} color={colors.primary} />
+              <Text style={styles.previousButtonText}>Previous</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity
+            style={[styles.nextButton, currentScreen === 0 && styles.nextButtonFullWidth]}
+            onPress={handleNext}
+          >
+            <Text style={styles.nextButtonText}>
+              {currentScreen === 2 ? 'Start My 7-Day Free Trial' : 'Continue'}
+            </Text>
+            {currentScreen < 2 && (
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+        </View>
         
         {currentScreen < 2 && (
           <TouchableOpacity

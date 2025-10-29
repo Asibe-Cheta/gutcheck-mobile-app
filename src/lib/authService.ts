@@ -47,12 +47,20 @@ class AuthService {
   }
 
   /**
-   * Create an anonymous account (no PIN required)
+   * Create an anonymous account with PIN
    */
-  async createAnonymousAccount(): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  async createAnonymousAccount(pin?: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
     try {
       const userId = this.generateUserId();
       const username = this.generateAnonymousUsername();
+
+      // If PIN is provided, validate it
+      if (pin && (pin.length !== 4 || !/^\d{4}$/.test(pin))) {
+        return { success: false, error: 'PIN must be exactly 4 digits' };
+      }
+
+      // Hash PIN if provided
+      const pinHash = pin ? await this.hashPin(pin) : null;
 
       // Save to local storage
       await AsyncStorage.setItem('user_id', userId);
@@ -62,14 +70,21 @@ class AuthService {
 
       // Try to save to database (graceful failure if table doesn't exist)
       try {
+        const insertData: any = {
+          user_id: userId,
+          username,
+          user_type: 'anonymous',
+          created_at: new Date().toISOString(),
+        };
+
+        // Add PIN hash if provided
+        if (pinHash) {
+          insertData.pin_hash = pinHash;
+        }
+
         const { error } = await supabase
           .from('profiles')
-          .insert({
-            user_id: userId,
-            username,
-            user_type: 'anonymous',
-            created_at: new Date().toISOString(),
-          });
+          .insert(insertData);
 
         if (error) {
           console.warn('Database save failed (non-critical):', error);
@@ -258,7 +273,7 @@ class AuthService {
   }
 
   /**
-   * Login with username and PIN
+   * Login with username and PIN (for both username and anonymous accounts)
    */
   async login(username: string, pin: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
     try {
@@ -298,6 +313,52 @@ class AuthService {
       return { success: true, user };
     } catch (error) {
       console.error('Login error:', error);
+      return { success: false, error: 'Login failed' };
+    }
+  }
+
+  /**
+   * Login anonymous user with username and PIN
+   */
+  async loginAnonymous(username: string, pin: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    try {
+      // Validate inputs
+      if (!username || !pin) {
+        return { success: false, error: 'Username and PIN are required' };
+      }
+
+      // Hash the provided PIN
+      const pinHash = await this.hashPin(pin);
+
+      // Query database for anonymous user with matching username and PIN hash
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, username, user_type, created_at')
+        .eq('username', username)
+        .eq('user_type', 'anonymous')
+        .eq('pin_hash', pinHash)
+        .single();
+
+      if (error || !data) {
+        return { success: false, error: 'Invalid username or PIN' };
+      }
+
+      // Save to local storage
+      await AsyncStorage.setItem('user_id', data.user_id);
+      await AsyncStorage.setItem('username', data.username);
+      await AsyncStorage.setItem('user_type', data.user_type);
+      await AsyncStorage.setItem('is_logged_in', 'true');
+
+      const user: AuthUser = {
+        id: data.user_id,
+        username: data.username,
+        userType: 'anonymous',
+        createdAt: data.created_at,
+      };
+
+      return { success: true, user };
+    } catch (error) {
+      console.error('Anonymous login error:', error);
       return { success: false, error: 'Login failed' };
     }
   }

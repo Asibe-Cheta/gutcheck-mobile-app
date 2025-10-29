@@ -18,6 +18,7 @@ import {
   Modal,
   Dimensions,
   Animated,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -338,9 +339,9 @@ export default function ChatScreen() {
           
           console.log('Added chunk to conversation history:', i + 1);
           
-          // Small delay between chunks to make it feel natural
+          // Shorter delay between chunks for faster response
           if (i < chunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
       } else {
@@ -466,16 +467,16 @@ export default function ChatScreen() {
       currentText += message[i];
       onUpdate(currentText);
       
-      // Variable typing speed - faster for spaces, slower for punctuation
+      // Much faster typing speed - reduced delays significantly
       const char = message[i];
-      let delay = 30; // Base delay
+      let delay = 10; // Much faster base delay (was 30)
       
       if (char === ' ') {
-        delay = 50; // Slightly longer pause for spaces
+        delay = 15; // Slightly longer pause for spaces (was 50)
       } else if (char === '.' || char === '!' || char === '?') {
-        delay = 200; // Longer pause for sentence endings
+        delay = 50; // Shorter pause for sentence endings (was 200)
       } else if (char === ',' || char === ';') {
-        delay = 100; // Medium pause for commas
+        delay = 25; // Shorter pause for commas (was 100)
       }
       
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -630,13 +631,14 @@ export default function ChatScreen() {
           if (part.startsWith('**') && part.endsWith('**')) {
             const boldText = part.slice(2, -2);
             
-            // Check if bold text contains a phone number
-            const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4})/g;
+            // Check if bold text contains a phone number - improved regex
+            const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4}|\d{5}\s?\d{6})/g;
             const phoneParts = boldText.split(phoneRegex);
             
             return (
               <Text key={index} style={[textStyle, { fontWeight: 'bold' }]}>
                 {phoneParts.map((phonePart, phoneIndex) => {
+                  // Test if this part matches the phone regex
                   if (phoneRegex.test(phonePart)) {
                     // Make phone number clickable
                     const phoneNumber = phonePart.replace(/\s/g, '');
@@ -645,14 +647,31 @@ export default function ChatScreen() {
                         key={phoneIndex}
                         style={[textStyle, { fontWeight: 'bold', color: '#4A90E2', textDecorationLine: 'underline' }]}
                         onPress={() => {
-                          Alert.alert(
-                            'Call Helpline',
-                            `Would you like to call ${phonePart}?`,
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) }
-                            ]
-                          );
+                          try {
+                            // Clean and format the phone number for dialing
+                            const dialNumber = phoneNumber.replace(/[^\d]/g, '');
+                            Alert.alert(
+                              'Call Helpline',
+                              `This will dial ${phonePart}. Continue?`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                  text: 'Call', 
+                                  onPress: () => {
+                                    try {
+                                      Linking.openURL(`tel:${dialNumber}`);
+                                    } catch (error) {
+                                      console.error('Error opening phone dialer:', error);
+                                      Alert.alert('Error', 'Unable to open phone dialer. Please try calling manually.');
+                                    }
+                                  }
+                                }
+                              ]
+                            );
+                          } catch (error) {
+                            console.error('Error handling phone number:', error);
+                            Alert.alert('Error', 'Unable to process phone number. Please try calling manually.');
+                          }
                         }}
                       >
                         {phonePart}
@@ -665,11 +684,12 @@ export default function ChatScreen() {
             );
           }
           
-          // Check regular text for phone numbers
-          const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4})/g;
+          // Check regular text for phone numbers - improved regex for UK numbers
+          const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4}|\d{5}\s?\d{6}|\d{3}\s?\d{3}\s?\d{4}|\d{2}\s?\d{4}\s?\d{4})/g;
           const phoneParts = part.split(phoneRegex);
           
           return phoneParts.map((phonePart, phoneIndex) => {
+            // Test if this part matches the phone regex
             if (phoneRegex.test(phonePart)) {
               // Make phone number clickable
               const phoneNumber = phonePart.replace(/\s/g, '');
@@ -678,14 +698,31 @@ export default function ChatScreen() {
                   key={`${index}-${phoneIndex}`}
                   style={[textStyle, { color: '#4A90E2', textDecorationLine: 'underline' }]}
                   onPress={() => {
-                    Alert.alert(
-                      'Call Helpline',
-                      `Would you like to call ${phonePart}?`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Call', onPress: () => Linking.openURL(`tel:${phoneNumber}`) }
-                      ]
-                    );
+                    try {
+                      // Clean and format the phone number for dialing
+                      const dialNumber = phoneNumber.replace(/[^\d]/g, '');
+                      Alert.alert(
+                        'Call Helpline',
+                        `This will dial ${phonePart}. Continue?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { 
+                            text: 'Call', 
+                            onPress: () => {
+                              try {
+                                Linking.openURL(`tel:${dialNumber}`);
+                              } catch (error) {
+                                console.error('Error opening phone dialer:', error);
+                                Alert.alert('Error', 'Unable to open phone dialer. Please try calling manually.');
+                              }
+                            }
+                          }
+                        ]
+                      );
+                    } catch (error) {
+                      console.error('Error handling phone number:', error);
+                      Alert.alert('Error', 'Unable to process phone number. Please try calling manually.');
+                    }
                   }}
                 >
                   {phonePart}

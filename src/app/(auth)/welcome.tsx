@@ -18,27 +18,9 @@ export default function WelcomeScreen() {
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
 
-  const handleAnonymousAccess = async () => {
-    try {
-      // Use authService to create anonymous account
-      const result = await authService.createAnonymousAccount();
-      
-      if (result.success) {
-        // Ensure onboarding is not marked as completed for new users
-        await AsyncStorage.removeItem('onboarding_completed');
-        
-        // Navigate to main app (will show onboarding)
-        router.push('/(tabs)');
-      } else {
-        console.error('Failed to create anonymous account:', result.error);
-        // Still navigate even if creation fails
-        router.push('/(tabs)');
-      }
-    } catch (error) {
-      console.error('Error creating anonymous user:', error);
-      // Still navigate to app even if profile creation fails
-      router.push('/(tabs)');
-    }
+  const handleAnonymousAccess = () => {
+    // Navigate to anonymous PIN setup
+    router.push('/(auth)/anonymous-pin-setup');
   };
 
   const handleUsernameSignUp = () => {

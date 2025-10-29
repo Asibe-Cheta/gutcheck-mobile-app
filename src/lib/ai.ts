@@ -1135,11 +1135,11 @@ Always respond naturally and conversationally. Build on previous messages to mai
         response: enhancedResponse,
         nextStage
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Claude conversation error:', error);
       console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
+        message: error?.message || 'Unknown error',
+        stack: error?.stack || 'No stack trace',
         messages: messages.map(m => ({ role: m.role, contentLength: m.content.length })),
         isWeb: typeof window !== 'undefined',
         apiKeyPresent: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
@@ -1148,9 +1148,9 @@ Always respond naturally and conversationally. Build on previous messages to mai
       
       // More specific error message based on error type
       let errorMessage = "I'm here to help. What's going on?";
-      if (error.message.includes('API error')) {
+      if (error?.message?.includes('API error')) {
         errorMessage = "I'm having trouble connecting to my AI service right now. Please try again in a moment.";
-      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+      } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
         errorMessage = "I'm having network issues. Please check your connection and try again.";
       }
       
@@ -1224,14 +1224,14 @@ Always respond naturally and conversationally. Build on previous messages to mai
 
   /**
    * Direct Claude response using full conversation context with image support
+   * Optimized for faster response times
    */
   private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false, imageData?: string): Promise<string> {
     const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
+    // Reduced logging for performance
     console.log('getDirectClaudeResponse called with:', {
       hasImage,
-      imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
-      imageDataType: typeof imageData,
       messagesCount: messages.length
     });
     
@@ -1383,7 +1383,7 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
     };
 
     // For web, we don't include the API key in headers (it's handled by the proxy)
-    const headers = isWeb 
+    const headers: Record<string, string> = isWeb 
       ? { 'Content-Type': 'application/json' }
       : {
           'x-api-key': apiKey || '',
@@ -1391,79 +1391,42 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
           'anthropic-version': '2023-06-01',
         };
 
-    console.log('Making API request:', {
-      url: apiUrl,
-      isWeb,
-      hasApiKey: !!apiKey,
-      messageCount: messagesWithImage.length,
-      apiKeyPreview: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING',
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'React Native',
-      navigatorProduct: typeof navigator !== 'undefined' ? navigator.product : 'undefined',
-      windowType: typeof window,
-      isReactNative: typeof navigator !== 'undefined' && navigator.product === 'ReactNative',
-      isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
-      environment: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV,
-      isTestFlight: __DEV__ === false,
-      networkTest: 'Testing network connectivity to Claude API...',
-      platform: Platform.OS,
-      allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
-      fullExtra: Constants.expoConfig?.extra
-    });
+    // Optimized API call with timeout for faster responses
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-    // Send debug info to remote logging service
     try {
-      await fetch('https://httpbin.org/post', {
+      const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'ai_debug',
-          timestamp: new Date().toISOString(),
-          url: apiUrl,
-          isWeb,
-          hasApiKey: !!apiKey,
-          isTestFlight: __DEV__ === false,
-          platform: Platform.OS
-        })
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
-    } catch (e) {
-      console.log('Remote logging failed:', e);
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Claude API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText: errorText
+        });
+        throw new Error(`Claude API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      const fullResponse = data.content[0].text;
+      
+      return fullResponse;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - please try again');
+      }
+      throw error;
     }
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText,
-        url: apiUrl,
-        isWeb,
-        hasApiKey: !!apiKey,
-        headers: headers
-      });
-      throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log('Claude API response data:', {
-      hasContent: !!data.content,
-      contentLength: data.content?.length,
-      firstContentType: data.content?.[0]?.type
-    });
-    
-    const fullResponse = data.content[0].text;
-    console.log('Extracted response text:', {
-      length: fullResponse.length,
-      preview: fullResponse.substring(0, 100) + '...'
-    });
-    
-    // If response is very long, we'll handle chunking in the chat component
-    return fullResponse;
   }
 
   /**

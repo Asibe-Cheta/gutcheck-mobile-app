@@ -143,10 +143,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleTestNotification = async () => {
-    await notificationService.sendTestNotification();
-    Alert.alert('Test Sent!', 'You should receive a notification in 2 seconds.');
-  };
 
   const handlePrivacyPress = () => {
     router.push('/privacy');
@@ -310,15 +306,6 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Test Notification Button (only show if notifications enabled) */}
-          {notificationsEnabled && (
-            <TouchableOpacity 
-              style={styles.testNotificationButton}
-              onPress={handleTestNotification}
-            >
-              <Text style={styles.testNotificationText}>Send Test Notification</Text>
-            </TouchableOpacity>
-          )}
           
           {/* Dark Mode Toggle */}
           <View style={styles.settingsItem}>
@@ -553,23 +540,6 @@ const createStyles = (isDark: boolean) => {
     fontSize: 16, // font-semibold
     fontWeight: '600',
     color: colors.warning, // text-red-500
-    fontFamily: 'Inter',
-  },
-  testNotificationButton: {
-    marginTop: 8,
-    marginHorizontal: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(79, 209, 199, 0.1)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 209, 199, 0.3)',
-    alignItems: 'center',
-  },
-  testNotificationText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
     fontFamily: 'Inter',
   },
   });

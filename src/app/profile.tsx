@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { profileService, ProfileData } from '@/lib/profileService';
+import RegionDropdown from '@/components/ui/RegionDropdown';
 
 interface LocalProfileData {
   username: string;
@@ -85,22 +86,17 @@ export default function ProfileScreen() {
   };
 
   const saveProfileData = async (data: LocalProfileData) => {
-    try {
-      // Save to database
-      await profileService.saveProfile({
-        username: data.username,
-        age: parseInt(data.age),
-        region: data.region,
-        avatar_url: data.avatarUri,
-        struggles: data.struggles,
-        goals: data.goals
-      });
-      
-      setProfileData(data);
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to save profile data');
-    }
+    // Save to database
+    await profileService.saveProfile({
+      username: data.username,
+      age: parseInt(data.age),
+      region: data.region,
+      avatar_url: data.avatarUri,
+      struggles: data.struggles,
+      goals: data.goals
+    });
+    
+    setProfileData(data);
   };
 
   const handleImagePicker = async () => {
@@ -144,7 +140,14 @@ export default function ProfileScreen() {
     }
 
     if (!profileData.region.trim()) {
-      Alert.alert('Required Field', 'Please enter your region');
+      Alert.alert('Required Field', 'Please select your region');
+      return;
+    }
+
+    // Validate age is a number
+    const ageNumber = parseInt(profileData.age);
+    if (isNaN(ageNumber) || ageNumber < 1 || ageNumber > 120) {
+      Alert.alert('Invalid Age', 'Please enter a valid age between 1 and 120');
       return;
     }
 
@@ -155,7 +158,8 @@ export default function ProfileScreen() {
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error) {
-      Alert.alert('Error', 'Failed to save profile');
+      console.error('Save profile error:', error);
+      Alert.alert('Error', 'Failed to save profile. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -427,12 +431,10 @@ export default function ProfileScreen() {
           {/* Region */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Region *</Text>
-            <TextInput
-              style={styles.textInput}
+            <RegionDropdown
               value={profileData.region}
-              onChangeText={(text) => setProfileData({ ...profileData, region: text })}
-              placeholder="Enter your region/country"
-              placeholderTextColor={colors.textSecondary}
+              onValueChange={(value) => setProfileData({ ...profileData, region: value })}
+              placeholder="Select your region"
             />
           </View>
         </View>

@@ -3,7 +3,7 @@
  * For logging in with username + PIN
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,7 @@ export default function LoginPinScreen() {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const pinInputRef = useRef<TextInput>(null);
 
   const handlePinChange = (value: string) => {
     // Only allow digits
@@ -128,12 +129,14 @@ export default function LoginPinScreen() {
       fontSize: 16,
       color: colors.textPrimary,
     },
+    pinInputArea: {
+      marginBottom: 32,
+      marginTop: 16,
+    },
     pinDotsContainer: {
       flexDirection: 'row',
       justifyContent: 'center',
       gap: 16,
-      marginBottom: 32,
-      marginTop: 16,
     },
     pinDot: {
       width: 20,
@@ -233,14 +236,26 @@ export default function LoginPinScreen() {
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>PIN</Text>
-          {renderPinDots()}
+          <TouchableOpacity 
+            style={styles.pinInputArea}
+            onPress={() => {
+              // Focus the hidden input when PIN area is tapped
+              pinInputRef.current?.focus();
+            }}
+          >
+            {renderPinDots()}
+          </TouchableOpacity>
           <TextInput
+            ref={pinInputRef}
             style={styles.hiddenInput}
             value={pin}
             onChangeText={handlePinChange}
             keyboardType="number-pad"
             maxLength={4}
             secureTextEntry
+            autoFocus={false}
+            placeholder=""
+            placeholderTextColor="transparent"
           />
         </View>
 

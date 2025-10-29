@@ -145,17 +145,15 @@ export default function SubscriptionScreen() {
         <View style={styles.planHeader}>
           <Text style={styles.planName}>{plan.name}</Text>
           
-          {/* Prominent Daily Cost */}
-          <View style={styles.dailyCostContainer}>
-            <Text style={styles.dailyCostLabel}>Just</Text>
-            <Text style={styles.dailyCost}>{dailyCost}p</Text>
-            <Text style={styles.dailyCostLabel}>a day</Text>
+          {/* Most Prominent: Billed Amount */}
+          <View style={styles.priceContainer}>
+            <Text style={styles.price}>£{plan.price.toFixed(2)}</Text>
+            <Text style={styles.period}>/{plan.interval}</Text>
           </View>
           
-          {/* Less Prominent Actual Price */}
-          <View style={styles.actualPriceContainer}>
-            <Text style={styles.actualPrice}>£{plan.price.toFixed(2)}</Text>
-            <Text style={styles.actualPeriod}>/{plan.interval}</Text>
+          {/* Subordinate: Daily Cost */}
+          <View style={styles.dailyCostContainer}>
+            <Text style={styles.dailyCostLabel}>Just {dailyCost}p per day</Text>
           </View>
           
           <Text style={styles.planDescription}>{plan.description}</Text>
@@ -323,45 +321,32 @@ export default function SubscriptionScreen() {
       marginTop: 12,
       textAlign: 'center',
     },
-    dailyCostContainer: {
+    priceContainer: {
       flexDirection: 'row',
       alignItems: 'baseline',
       justifyContent: 'center',
       marginTop: 16,
       marginBottom: 8,
     },
-    dailyCostLabel: {
-      fontSize: 20,
-      color: colors.textPrimary,
-      fontWeight: '500',
-      marginHorizontal: 4,
-    },
-    dailyCost: {
+    price: {
       fontSize: 48,
       fontWeight: 'bold',
       color: colors.primary,
-      marginHorizontal: 2,
     },
-    actualPriceContainer: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      justifyContent: 'center',
-      marginBottom: 4,
+    period: {
+      fontSize: 24,
+      color: colors.primary,
+      marginLeft: 4,
+      fontWeight: '600',
     },
-    actualPrice: {
+    dailyCostContainer: {
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    dailyCostLabel: {
       fontSize: 16,
       color: colors.textSecondary,
-      fontWeight: '500',
-    },
-    actualPeriod: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginLeft: 2,
-    },
-    priceContainer: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      marginBottom: 8,
+      fontWeight: '400',
     },
     price: {
       fontSize: 36,
