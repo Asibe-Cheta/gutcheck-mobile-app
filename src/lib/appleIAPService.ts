@@ -13,17 +13,38 @@ let InAppPurchases: any = null;
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
-  if (InAppPurchases) return true; // Already loaded
+  if (InAppPurchases) {
+    console.log('[IAP] Module already loaded');
+    return true; // Already loaded
+  }
   
   try {
     // Only load in standalone builds (production/TestFlight), not Expo Go
     if (!isExpoGo) {
-      InAppPurchases = require('expo-in-app-purchases').InAppPurchases;
-      console.log('IAP module loaded successfully');
+      const expoIAP = require('expo-in-app-purchases');
+      console.log('[IAP] expo-in-app-purchases module:', expoIAP);
+      
+      // Try different import structures
+      if (expoIAP.InAppPurchases) {
+        InAppPurchases = expoIAP.InAppPurchases;
+      } else if (expoIAP.default) {
+        InAppPurchases = expoIAP.default;
+      } else if (typeof expoIAP === 'object' && expoIAP.connectAsync) {
+        // Module exports directly
+        InAppPurchases = expoIAP;
+      } else {
+        console.error('[IAP] Unexpected module structure:', Object.keys(expoIAP));
+        InAppPurchases = null;
+        return false;
+      }
+      
+      console.log('[IAP] Module loaded successfully. Available methods:', Object.keys(InAppPurchases || {}));
       return true;
+    } else {
+      console.log('[IAP] Skipping load - in Expo Go');
     }
   } catch (error) {
-    console.error('expo-in-app-purchases not available:', error);
+    console.error('[IAP] expo-in-app-purchases not available:', error);
     InAppPurchases = null;
   }
   
@@ -123,20 +144,39 @@ class AppleIAPService {
 
       // Try to load module if not already loaded (runtime fallback)
       if (!InAppPurchases) {
+        console.log('[IAP] Module not loaded, attempting to load...');
         const loaded = loadIAPModule();
-        if (!loaded) {
-          console.error('IAP module not available in standalone build - this is unexpected');
+        if (!loaded || !InAppPurchases) {
+          console.error('[IAP] Module not available in standalone build - this is unexpected');
+          console.error('[IAP] Execution environment:', Constants.executionEnvironment);
+          console.error('[IAP] isExpoGo:', isExpoGo);
           return {
             success: false,
-            error: 'In-App Purchases are not available. Please ensure the app is built with expo-in-app-purchases included.'
+            error: 'In-App Purchases are not available. Please ensure the app is built with expo-in-app-purchases included and rebuilt after installing the package.'
           };
         }
       }
 
-      if (!this.isInitialized) {
-        await this.initialize();
+      // Verify purchaseItemAsync exists
+      if (!InAppPurchases.purchaseItemAsync) {
+        console.error('[IAP] purchaseItemAsync not found. Available methods:', Object.keys(InAppPurchases));
+        return {
+          success: false,
+          error: 'In-App Purchase method not found. The expo-in-app-purchases module may not be properly linked. Please rebuild the app.'
+        };
       }
 
+      if (!this.isInitialized) {
+        const initResult = await this.initialize();
+        if (!initResult.success) {
+          return {
+            success: false,
+            error: initResult.error || 'Failed to initialize IAP'
+          };
+        }
+      }
+
+      console.log('[IAP] Calling purchaseItemAsync for product:', productId);
       const result = await InAppPurchases.purchaseItemAsync(productId);
       
       if (result.responseCode === 0) { // Success
