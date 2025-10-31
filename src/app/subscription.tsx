@@ -5,14 +5,34 @@
  * This file uses lazy imports to prevent crashes during module loading
  */
 
+// CRITICAL: Log at the VERY FIRST line to detect if file even loads
+console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
+
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
+console.log('[SUB_FILE] Step A: About to import React...');
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+console.log('[SUB_FILE] ✅ Step A: React imported');
+
+console.log('[SUB_FILE] Step B: About to import RN components...');
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+console.log('[SUB_FILE] ✅ Step B: RN components imported');
+
+console.log('[SUB_FILE] Step C: About to import SafeAreaView...');
 import { SafeAreaView } from 'react-native-safe-area-context';
+console.log('[SUB_FILE] ✅ Step C: SafeAreaView imported');
+
+console.log('[SUB_FILE] Step D: About to import router...');
 import { useRouter } from 'expo-router';
+console.log('[SUB_FILE] ✅ Step D: Router imported');
+
+console.log('[SUB_FILE] Step E: About to import AsyncStorage...');
 import AsyncStorage from '@react-native-async-storage/async-storage';
+console.log('[SUB_FILE] ✅ Step E: AsyncStorage imported');
+
+console.log('[SUB_FILE] Step F: About to import Constants...');
 import Constants from 'expo-constants';
+console.log('[SUB_FILE] ✅ Step F: Constants imported');
 
 // Wrap ALL imports in a try-catch that logs immediately
 // This must run before React component evaluation
