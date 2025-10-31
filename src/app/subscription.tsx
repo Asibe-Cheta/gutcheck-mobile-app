@@ -3,7 +3,7 @@
  * Premium subscription management with Apple In-App Purchases
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,9 +11,31 @@ import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
-import { lifetimeProService } from '@/lib/lifetimeProService';
 import Constants from 'expo-constants';
+
+// Lazy import store to prevent crash if module fails to load
+let useSubscriptionStore: any = null;
+let lifetimeProService: any = null;
+
+try {
+  console.log('[SUB] Attempting to import subscriptionStore...');
+  const storeModule = require('@/lib/stores/subscriptionStore');
+  useSubscriptionStore = storeModule.useSubscriptionStore;
+  console.log('[SUB] ✅ subscriptionStore imported successfully');
+} catch (error: any) {
+  console.error('[SUB] ❌ Failed to import subscriptionStore:', error);
+  console.error('[SUB] Error stack:', error?.stack);
+}
+
+try {
+  console.log('[SUB] Attempting to import lifetimeProService...');
+  const lifetimeModule = require('@/lib/lifetimeProService');
+  lifetimeProService = lifetimeModule.lifetimeProService;
+  console.log('[SUB] ✅ lifetimeProService imported successfully');
+} catch (error: any) {
+  console.error('[SUB] ❌ Failed to import lifetimeProService:', error);
+  console.error('[SUB] Error stack:', error?.stack);
+}
 
 interface SubscriptionPlan {
   id: string;
@@ -28,20 +50,47 @@ interface SubscriptionPlan {
 }
 
 export default function SubscriptionScreen() {
+  console.log('[SUB] Subscription screen component mounting...');
+  
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const [mountError, setMountError] = useState<string | null>(null);
   
-  console.log('[SUB] Subscription screen component mounting...');
+  // Check if imports succeeded
+  if (!useSubscriptionStore) {
+    const errorMsg = 'Failed to load subscription store module. Check logs for details.';
+    console.error('[SUB] ❌ useSubscriptionStore is null');
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1d29', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 10 }}>❌ Error Loading Subscription</Text>
+        <Text style={{ color: '#ffffff', textAlign: 'center', marginBottom: 10 }}>{errorMsg}</Text>
+        <Text style={{ color: '#888', textAlign: 'center', fontSize: 12, marginBottom: 20 }}>
+          Check Debug Info screen for error logs
+        </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 20, padding: 10, backgroundColor: '#4CAF50', borderRadius: 5 }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#ffffff' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
   
   // Initialize store with error handling
   let subscriptionStore;
   try {
+    console.log('[SUB] Calling useSubscriptionStore()...');
     subscriptionStore = useSubscriptionStore();
     console.log('[SUB] ✅ Store initialized successfully');
   } catch (error: any) {
-    console.error('[SUB] ❌ Error initializing store:', error);
+    console.error('[SUB] ❌ Error calling useSubscriptionStore:', error);
+    console.error('[SUB] Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    });
     setMountError(`Store initialization failed: ${error?.message || 'Unknown error'}`);
     // Return error UI early if store fails
     return (
