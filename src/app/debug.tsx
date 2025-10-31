@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, Clipboard } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { getLogs, clearLogs, getLogCount, exportLogsAsText } from '@/lib/logCapture';
@@ -75,7 +76,7 @@ export default function DebugScreen() {
     try {
       const logsText = await exportLogsAsText();
       if (logsText.trim()) {
-        await Clipboard.setString(logsText);
+        await Clipboard.setStringAsync(logsText);
         Alert.alert('Success', 'All logs copied to clipboard!');
       } else {
         Alert.alert('No Logs', 'There are no logs to copy.');
