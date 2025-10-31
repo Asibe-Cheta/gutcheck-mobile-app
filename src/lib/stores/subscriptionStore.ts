@@ -4,8 +4,28 @@
  */
 
 import { create } from 'zustand';
-import { lifetimeProService } from '@/lib/lifetimeProService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Lazy import lifetimeProService to prevent crash if module fails
+let lifetimeProService: any = null;
+function getLifetimeProService() {
+  if (!lifetimeProService) {
+    try {
+      const lifetimeModule = require('@/lib/lifetimeProService');
+      lifetimeProService = lifetimeModule.lifetimeProService;
+      console.log('[STORE] lifetimeProService loaded successfully');
+    } catch (error: any) {
+      console.error('[STORE] Failed to load lifetimeProService:', error);
+      lifetimeProService = {
+        checkUserLifetimeProStatus: () => Promise.resolve(false),
+        getLifetimeProCount: () => Promise.resolve(0),
+        grantLifetimePro: () => Promise.resolve({ success: false, error: 'Service not available' }),
+        removeUserFromLifetimePro: () => Promise.resolve({ success: false, error: 'Service not available' }),
+      };
+    }
+  }
+  return lifetimeProService;
+}
 
 // Import Apple IAP service (with graceful fallback for development)
 // Lazy import to prevent crash if module fails to load
@@ -185,7 +205,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       if (userId) {
         try {
           // Force database check (bypasses AsyncStorage cache)
-          const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
+          const isLifetimePro = await getLifetimeProService().checkUserLifetimeProStatus(userId);
           if (isLifetimePro) {
             set({ 
               isLifetimePro: true, 
@@ -245,10 +265,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       set({ isLoading: true, error: null });
       
       // First, check current status from database (bypasses cache) - this is the source of truth
-      const currentStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
+      const currentStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
       
       // Then check eligibility to get count
-      const { isEligible, isLifetimePro, count } = await lifetimeProService.checkLifetimeProEligibility(userId);
+      const { isEligible, isLifetimePro, count } = await getLifetimeProService().checkLifetimeProEligibility(userId);
       
       // CRITICAL: Use database status as source of truth
       // If database says false, user is NOT lifetime pro (even if they're in first 20)
@@ -264,7 +284,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       // Only grant if eligible AND database confirms they're not already lifetime pro
       // This prevents re-granting after removal
       if (isEligible && !actualIsLifetimePro && !currentStatus) {
-        const result = await lifetimeProService.grantLifetimePro(userId);
+        const result = await getLifetimeProService().grantLifetimePro(userId);
         if (result.success) {
           set({ isLifetimePro: true });
           
@@ -292,7 +312,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       console.log('[IAP] subscribeToPlan called for user:', userId);
       
       if (userId) {
-        const dbStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
+        const dbStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
         console.log('[IAP] Database lifetime pro status:', dbStatus);
         
         if (dbStatus) {
