@@ -1,40 +1,74 @@
 /**
  * Subscription Screen
  * Premium subscription management with Apple In-App Purchases
+ * 
+ * This file uses lazy imports to prevent crashes during module loading
  */
 
+// IMPORTANT: Import ONLY lightweight React/RN modules at the top
+// Heavy dependencies are lazy-loaded below
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { getThemeColors } from '@/lib/theme';
-import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-// Lazy import store to prevent crash if module fails to load
+// Wrap ALL imports in a try-catch that logs immediately
+// This must run before React component evaluation
+console.log('[SUB_MODULE] Starting subscription module load...');
+
 let useSubscriptionStore: any = null;
 let lifetimeProService: any = null;
+let importError: string | null = null;
 
 try {
-  console.log('[SUB] Attempting to import subscriptionStore...');
+  console.log('[SUB_MODULE] Step 1: Attempting to import subscriptionStore...');
   const storeModule = require('@/lib/stores/subscriptionStore');
+  console.log('[SUB_MODULE] Step 1.1: Module loaded, extracting useSubscriptionStore...');
   useSubscriptionStore = storeModule.useSubscriptionStore;
-  console.log('[SUB] ✅ subscriptionStore imported successfully');
+  console.log('[SUB_MODULE] ✅ Step 1: subscriptionStore imported successfully');
 } catch (error: any) {
-  console.error('[SUB] ❌ Failed to import subscriptionStore:', error);
-  console.error('[SUB] Error stack:', error?.stack);
+  const errorMsg = `Failed to import subscriptionStore: ${error?.message || 'Unknown error'}`;
+  console.error('[SUB_MODULE] ❌ Step 1 FAILED:', errorMsg);
+  console.error('[SUB_MODULE] Error stack:', error?.stack);
+  console.error('[SUB_MODULE] Error name:', error?.name);
+  importError = errorMsg;
 }
 
 try {
-  console.log('[SUB] Attempting to import lifetimeProService...');
+  console.log('[SUB_MODULE] Step 2: Attempting to import lifetimeProService...');
   const lifetimeModule = require('@/lib/lifetimeProService');
+  console.log('[SUB_MODULE] Step 2.1: Module loaded, extracting lifetimeProService...');
   lifetimeProService = lifetimeModule.lifetimeProService;
-  console.log('[SUB] ✅ lifetimeProService imported successfully');
+  console.log('[SUB_MODULE] ✅ Step 2: lifetimeProService imported successfully');
 } catch (error: any) {
-  console.error('[SUB] ❌ Failed to import lifetimeProService:', error);
-  console.error('[SUB] Error stack:', error?.stack);
+  const errorMsg = `Failed to import lifetimeProService: ${error?.message || 'Unknown error'}`;
+  console.error('[SUB_MODULE] ❌ Step 2 FAILED:', errorMsg);
+  console.error('[SUB_MODULE] Error stack:', error?.stack);
+  console.error('[SUB_MODULE] Error name:', error?.name);
+  if (!importError) importError = errorMsg;
+}
+
+console.log('[SUB_MODULE] Module load complete. useSubscriptionStore:', !!useSubscriptionStore, 'lifetimeProService:', !!lifetimeProService);
+
+// Lazy import theme and icons - these should be safe but just in case
+let getThemeColors: any = null;
+let useTheme: any = null;
+let Ionicons: any = null;
+
+try {
+  console.log('[SUB_MODULE] Step 3: Loading theme utilities...');
+  const themeModule = require('@/lib/theme');
+  getThemeColors = themeModule.getThemeColors;
+  const themeContextModule = require('@/lib/themeContext');
+  useTheme = themeContextModule.useTheme;
+  const iconsModule = require('@expo/vector-icons');
+  Ionicons = iconsModule.Ionicons;
+  console.log('[SUB_MODULE] ✅ Step 3: Theme utilities loaded successfully');
+} catch (error: any) {
+  console.error('[SUB_MODULE] ❌ Step 3 FAILED (theme/icons):', error?.message);
+  // These are critical for UI, but we'll handle it in the component
 }
 
 interface SubscriptionPlan {
@@ -53,8 +87,31 @@ export default function SubscriptionScreen() {
   console.log('[SUB] Subscription screen component mounting...');
   
   const router = useRouter();
-  const { isDark } = useTheme();
-  const colors = getThemeColors(isDark);
+  
+  // Safely get theme - with fallbacks if lazy import failed
+  let isDark = false;
+  let colors: any = {
+    background: '#1a1d29',
+    textPrimary: '#ffffff',
+    textSecondary: '#888888',
+    primary: '#4CAF50',
+    border: '#333333'
+  };
+  
+  try {
+    if (useTheme && getThemeColors) {
+      const themeResult = useTheme();
+      isDark = themeResult?.isDark || false;
+      colors = getThemeColors(isDark);
+      console.log('[SUB] ✅ Theme loaded successfully');
+    } else {
+      console.warn('[SUB] ⚠️ Theme not available, using fallback colors');
+    }
+  } catch (error: any) {
+    console.error('[SUB] ❌ Error loading theme:', error);
+    // Use fallback colors already set above
+  }
+  
   const [mountError, setMountError] = useState<string | null>(null);
   
   // Check if imports succeeded

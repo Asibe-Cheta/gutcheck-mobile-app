@@ -103,8 +103,25 @@ export default function SettingsScreen() {
     router.push('/profile');
   };
 
-  const handleSubscriptionPress = () => {
-    router.push('/subscription');
+  const handleSubscriptionPress = async () => {
+    try {
+      console.log('[SETTINGS] Navigating to subscription screen...');
+      // Wrap navigation in try-catch to catch any navigation/module loading errors
+      await router.push('/subscription');
+      console.log('[SETTINGS] ✅ Navigation to subscription completed');
+    } catch (error: any) {
+      console.error('[SETTINGS] ❌ Error navigating to subscription:', error);
+      console.error('[SETTINGS] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
+      Alert.alert(
+        'Navigation Error',
+        `Failed to open subscription screen: ${error?.message || 'Unknown error'}\n\nCheck Debug Info for details.`,
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const handleNotificationsToggle = async (value: boolean) => {
