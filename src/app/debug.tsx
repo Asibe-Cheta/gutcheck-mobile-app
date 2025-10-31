@@ -2,42 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
-
-// Log capture system
-const logStorage: string[] = [];
-const MAX_LOGS = 100;
-
-// Override console.log to capture logs
-const originalLog = console.log;
-const originalError = console.error;
-const originalWarn = console.warn;
-
-console.log = (...args: any[]) => {
-  originalLog(...args);
-  const message = args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-  ).join(' ');
-  logStorage.push(`[LOG] ${new Date().toLocaleTimeString()}: ${message}`);
-  if (logStorage.length > MAX_LOGS) logStorage.shift();
-};
-
-console.error = (...args: any[]) => {
-  originalError(...args);
-  const message = args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-  ).join(' ');
-  logStorage.push(`[ERROR] ${new Date().toLocaleTimeString()}: ${message}`);
-  if (logStorage.length > MAX_LOGS) logStorage.shift();
-};
-
-console.warn = (...args: any[]) => {
-  originalWarn(...args);
-  const message = args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-  ).join(' ');
-  logStorage.push(`[WARN] ${new Date().toLocaleTimeString()}: ${message}`);
-  if (logStorage.length > MAX_LOGS) logStorage.shift();
-};
+import { getLogs, clearLogs, getLogCount } from '@/lib/logCapture';
 
 export default function DebugScreen() {
   const [debugData, setDebugData] = useState<any>(null);
@@ -50,7 +15,8 @@ export default function DebugScreen() {
     loadDebugData();
     // Refresh logs every second
     const interval = setInterval(() => {
-      setLogs([...logStorage]);
+      const capturedLogs = getLogs();
+      setLogs(capturedLogs);
       // Auto-scroll to bottom
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -178,7 +144,7 @@ export default function DebugScreen() {
         <TouchableOpacity 
           style={[styles.button, { backgroundColor: '#ff4444', marginTop: 8 }]} 
           onPress={() => {
-            logStorage.length = 0;
+            clearLogs();
             setLogs([]);
           }}
         >

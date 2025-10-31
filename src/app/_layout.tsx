@@ -3,6 +3,9 @@
  * Main navigation structure
  */
 
+// CRITICAL: Import log capture FIRST before anything else
+import '@/lib/logCapture';
+
 import React, { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +15,20 @@ import { ThemeProvider, useTheme } from '@/lib/themeContext';
 import { getThemeColors } from '@/lib/theme';
 import { notificationService } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Global error handler
+if (typeof ErrorUtils !== 'undefined') {
+  const originalHandler = ErrorUtils.getGlobalHandler();
+  ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+    console.error('[GLOBAL_ERROR]', {
+      message: error.message,
+      stack: error.stack,
+      isFatal: isFatal,
+      name: error.name
+    });
+    originalHandler(error, isFatal);
+  });
+}
 
 // Inner component that uses theme context
 function AppContent() {

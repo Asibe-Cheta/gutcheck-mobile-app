@@ -8,7 +8,36 @@ import { lifetimeProService } from '@/lib/lifetimeProService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import Apple IAP service (with graceful fallback for development)
-import { appleIAPService, AppleSubscription, PRODUCT_IDS } from '@/lib/appleIAPService';
+// Lazy import to prevent crash if module fails to load
+let appleIAPService: any = null;
+let AppleSubscription: any = null;
+let PRODUCT_IDS: any = null;
+
+// Lazy load IAP service
+function getIAPService() {
+  if (!appleIAPService) {
+    try {
+      const iapModule = require('@/lib/appleIAPService');
+      appleIAPService = iapModule.appleIAPService;
+      AppleSubscription = iapModule.AppleSubscription;
+      PRODUCT_IDS = iapModule.PRODUCT_IDS;
+      console.log('[STORE] IAP service loaded successfully');
+    } catch (error: any) {
+      console.error('[STORE] Failed to load IAP service:', error);
+      // Create a mock service that returns errors
+      appleIAPService = {
+        getProducts: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
+        purchaseProduct: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
+        restorePurchases: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
+      };
+      PRODUCT_IDS = {
+        PREMIUM_MONTHLY: 'com.mygutcheck.premium.monthly',
+        PREMIUM_YEARLY: 'com.mygutcheck.premium.yearly',
+      };
+    }
+  }
+  return { appleIAPService, PRODUCT_IDS };
+}
 
 interface AppleSubscriptionPlan {
   id: string;
@@ -54,7 +83,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       
       // First, query products from App Store Connect (required before purchase)
       console.log('[IAP] Querying products from App Store Connect...');
-      const productsResult = await appleIAPService.getProducts();
+      const { appleIAPService: iapService, PRODUCT_IDS: productIds } = getIAPService();
+      const productsResult = await iapService.getProducts();
       
       if (!productsResult.success) {
         console.error('[IAP] ❌ Failed to query products from App Store Connect:', productsResult.error);
@@ -104,7 +134,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           price: monthlyProduct?.price || 9.99,
           currency: monthlyProduct?.currency || 'GBP',
           interval: 'month',
-          productId: PRODUCT_IDS.PREMIUM_MONTHLY,
+          productId: productIds.PREMIUM_MONTHLY,
           description: monthlyProduct?.description || 'Full access to all features',
           features: [
             'Unlimited AI conversations',
@@ -121,7 +151,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           price: yearlyProduct?.price || 99.99,
           currency: yearlyProduct?.currency || 'GBP',
           interval: 'year',
-          productId: PRODUCT_IDS.PREMIUM_YEARLY,
+          productId: productIds.PREMIUM_YEARLY,
           description: yearlyProduct?.description || 'Full access to all features - Save 17%',
           features: [
             'Unlimited AI conversations',
@@ -302,7 +332,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       }
 
       // Try to purchase through Apple IAP
-      const result = await appleIAPService.purchaseProduct(plan.productId);
+      const { appleIAPService: iapService } = getIAPService();
+      const result = await iapService.purchaseProduct(plan.productId);
       const subscription = result.success ? result.subscription : null;
       
       if (subscription) {
@@ -332,7 +363,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       set({ isLoading: true, error: null });
       
       // Restore purchases through Apple IAP
-      const result = await appleIAPService.restorePurchases();
+      const { appleIAPService: iapService } = getIAPService();
+      const result = await iapService.restorePurchases();
       const subscriptions = result.success ? result.subscriptions || [] : [];
       
       if (subscriptions && subscriptions.length > 0) {
