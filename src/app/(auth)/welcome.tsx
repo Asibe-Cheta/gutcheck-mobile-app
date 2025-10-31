@@ -4,8 +4,8 @@
  * Custom design based on provided HTML
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme, getThemeColors } from '@/lib/theme';
@@ -17,6 +17,7 @@ const { width, height } = Dimensions.get('window');
 export default function WelcomeScreen() {
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const handleAnonymousAccess = () => {
     // Navigate to anonymous PIN setup
@@ -27,6 +28,45 @@ export default function WelcomeScreen() {
     // Navigate to username creation screen
     router.push('/(auth)/username');
   };
+
+  // Check if user is already logged in on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        console.log('[AUTH] Checking for existing session...');
+        const isLoggedIn = await authService.isLoggedIn();
+        console.log('[AUTH] Session check result:', isLoggedIn);
+        
+        if (isLoggedIn) {
+          const userId = await AsyncStorage.getItem('user_id');
+          const username = await AsyncStorage.getItem('username');
+          console.log('[AUTH] User is logged in:', { userId, username });
+          // User is already logged in, redirect to main app
+          router.replace('/(tabs)');
+        } else {
+          console.log('[AUTH] No existing session found');
+          setIsCheckingSession(false);
+        }
+      } catch (error) {
+        console.error('[AUTH] Error checking session:', error);
+        setIsCheckingSession(false);
+      }
+    };
+    
+    checkSession();
+  }, []);
+
+  // Show loading while checking session
+  if (isCheckingSession) {
+    return (
+      <View style={[styles.container, { backgroundColor: currentTheme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={currentTheme.primary} />
+        <Text style={[styles.loadingText, { color: currentTheme.textSecondary, marginTop: 16 }]}>
+          Checking session...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
@@ -179,6 +219,10 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 14, // text-sm
     textAlign: 'center',
+    fontFamily: 'Inter',
+  },
+  loadingText: {
+    fontSize: 16,
     fontFamily: 'Inter',
   },
 });
