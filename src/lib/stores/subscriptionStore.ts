@@ -102,14 +102,53 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       set({ isLoading: true, error: null });
       
       // First, query products from App Store Connect (required before purchase)
-      console.log('[IAP] Querying products from App Store Connect...');
-      const { appleIAPService: iapService, PRODUCT_IDS: productIds } = getIAPService();
-      const productsResult = await iapService.getProducts();
+      console.log('[STORE] loadPlans: Starting to load subscription plans...');
+      
+      let iapService: any = null;
+      let productIds: any = null;
+      let productsResult: any = { success: false, products: [] };
+      
+      try {
+        console.log('[STORE] loadPlans: Getting IAP service...');
+        const iapModule = getIAPService();
+        iapService = iapModule.appleIAPService;
+        productIds = iapModule.PRODUCT_IDS;
+        console.log('[STORE] loadPlans: ✅ IAP service obtained');
+        
+        if (!iapService || !productIds) {
+          throw new Error('IAP service or product IDs not available');
+        }
+        
+        console.log('[STORE] loadPlans: Querying products from App Store Connect...');
+        productsResult = await iapService.getProducts();
+        console.log('[STORE] loadPlans: Product query result:', { 
+          success: productsResult.success, 
+          productCount: productsResult.products?.length || 0 
+        });
+      } catch (iapError: any) {
+        console.error('[STORE] ❌ Failed to get IAP service or query products:', iapError);
+        console.error('[STORE] Error details:', {
+          message: iapError?.message,
+          stack: iapError?.stack,
+          name: iapError?.name
+        });
+        // Continue with fallback - don't crash the app
+        productsResult = { success: false, products: [], error: iapError?.message || 'IAP service unavailable' };
+      }
       
       if (!productsResult.success) {
-        console.error('[IAP] ❌ Failed to query products from App Store Connect:', productsResult.error);
-        console.warn('[IAP] ⚠️ Falling back to static plan data. This should NOT happen in production!');
+        console.error('[STORE] ❌ Failed to query products from App Store Connect:', productsResult.error);
+        console.warn('[STORE] ⚠️ Falling back to static plan data. This should NOT happen in production!');
         // Fall back to static plans if query fails
+      }
+      
+      // Ensure productIds exists even if IAP service failed
+      if (!productIds) {
+        productIds = {
+          PREMIUM_MONTHLY: 'com.mygutcheck.premium.monthly',
+          PREMIUM_YEARLY: 'com.mygutcheck.premium.yearly',
+        };
+        console.warn('[STORE] ⚠️ Using fallback product IDs');
       }
       
       // Define our subscription plans (using App Store Connect product data if available)
