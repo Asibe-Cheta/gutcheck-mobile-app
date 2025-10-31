@@ -77,6 +77,15 @@ class AppleIAPService {
         return { success: true };
       }
 
+      // Load IAP module on first use (lazy loading)
+      if (!InAppPurchases) {
+        const loaded = loadIAPModule();
+        if (!loaded) {
+          console.log('[IAP] Apple IAP not available - using mock mode');
+          return { success: true }; // Allow app to continue without IAP
+        }
+      }
+
       // Check if IAP is available (not in Expo Go)
       if (!InAppPurchases) {
         console.log('Apple IAP not available in Expo Go - using mock mode');
