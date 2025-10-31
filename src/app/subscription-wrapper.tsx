@@ -3,9 +3,14 @@
  * Dynamically loads the subscription screen to avoid native crashes during module resolution
  */
 
+// Log at the VERY FIRST line
+console.log('[SUB_WRAPPER] subscription-wrapper.tsx file is being evaluated/loaded');
+
 import React, { Suspense } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+console.log('[SUB_WRAPPER] ✅ Basic imports completed');
 
 // Loading fallback component
 function LoadingFallback() {
@@ -67,11 +72,14 @@ async function loadSubscriptionScreen() {
 }
 
 export default function SubscriptionWrapper() {
+  console.log('[SUB_WRAPPER] Component function called - wrapper is mounting');
+  
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
   const [Component, setComponent] = React.useState<React.ComponentType | null>(null);
 
   React.useEffect(() => {
+    console.log('[SUB_WRAPPER] useEffect triggered, calling loadSubscriptionScreen()...');
     loadSubscriptionScreen()
       .then(() => {
         console.log('[SUB_WRAPPER] Setting component in state...');

@@ -297,7 +297,17 @@ export default function SettingsScreen() {
             icon="card"
             title="Subscription"
             description="Manage your subscription plan"
-            onPress={handleSubscriptionPress}
+            onPress={() => {
+              console.log('[SETTINGS_BUTTON] Subscription button pressed at:', new Date().toISOString());
+              console.log('[SETTINGS_BUTTON] About to call handleSubscriptionPress...');
+              try {
+                handleSubscriptionPress();
+                console.log('[SETTINGS_BUTTON] ✅ handleSubscriptionPress called successfully');
+              } catch (error: any) {
+                console.error('[SETTINGS_BUTTON] ❌ Error calling handleSubscriptionPress:', error);
+                Alert.alert('Error', `Failed to navigate: ${error?.message}`);
+              }
+            }}
             styles={styles}
             colors={currentTheme}
           />
