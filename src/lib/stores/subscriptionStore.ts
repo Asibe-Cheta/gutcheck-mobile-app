@@ -101,8 +101,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         console.log('[IAP] ✅ Using real product data from App Store Connect:', appStoreProducts.length, 'products');
       }
       
-      const monthlyProduct = appStoreProducts.find((p: any) => p.productId === PRODUCT_IDS.PREMIUM_MONTHLY);
-      const yearlyProduct = appStoreProducts.find((p: any) => p.productId === PRODUCT_IDS.PREMIUM_YEARLY);
+      const monthlyProduct = appStoreProducts.find((p: any) => p.productId === productIds.PREMIUM_MONTHLY);
+      const yearlyProduct = appStoreProducts.find((p: any) => p.productId === productIds.PREMIUM_YEARLY);
       
       // Log which data source we're using
       if (monthlyProduct) {
@@ -210,7 +210,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const subscriptionStatus = await AsyncStorage.getItem('subscription_status');
       const subscriptionPlan = await AsyncStorage.getItem('subscription_plan');
       const subscription = subscriptionStatus === 'active' ? {
-        productId: subscriptionPlan === 'monthly' ? PRODUCT_IDS.PREMIUM_MONTHLY : PRODUCT_IDS.PREMIUM_YEARLY,
+        productId: (() => {
+          const { PRODUCT_IDS: ids } = getIAPService();
+          return subscriptionPlan === 'monthly' ? ids.PREMIUM_MONTHLY : ids.PREMIUM_YEARLY;
+        })(),
         transactionId: 'local_storage',
         purchaseDate: new Date().toISOString(),
         isActive: true
