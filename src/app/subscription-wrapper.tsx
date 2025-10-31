@@ -43,26 +43,45 @@ let loadError: Error | null = null;
 
 async function loadSubscriptionScreen() {
   if (SubscriptionScreenComponent) {
+    console.log('[SUB_WRAPPER] Component already loaded, skipping');
     return; // Already loaded
   }
   
   if (loadError) {
+    console.error('[SUB_WRAPPER] Previous load failed, rethrowing error');
     throw loadError; // Already tried and failed
   }
   
   if (loadingPromise) {
+    console.log('[SUB_WRAPPER] Already loading, waiting for existing promise...');
     return loadingPromise; // Already loading
   }
   
+  console.log('[SUB_WRAPPER] Creating new loading promise...');
   loadingPromise = (async () => {
     try {
-      console.log('[SUB_WRAPPER] Starting dynamic import of subscription screen...');
+      console.log('[SUB_WRAPPER] Step 1: About to call import()...');
+      console.log('[SUB_WRAPPER] Step 1.1: import() call initiated');
+      
       const module = await import('./subscription');
-      console.log('[SUB_WRAPPER] ✅ Dynamic import completed');
+      
+      console.log('[SUB_WRAPPER] Step 2: ✅ Dynamic import() completed successfully');
+      console.log('[SUB_WRAPPER] Step 2.1: Module received:', typeof module);
+      console.log('[SUB_WRAPPER] Step 2.2: Module keys:', Object.keys(module || {}));
+      
       SubscriptionScreenComponent = module.default;
-      console.log('[SUB_WRAPPER] ✅ Component extracted:', typeof SubscriptionScreenComponent);
+      console.log('[SUB_WRAPPER] Step 3: ✅ Component extracted:', typeof SubscriptionScreenComponent);
+      console.log('[SUB_WRAPPER] ✅ All steps completed successfully!');
     } catch (error: any) {
-      console.error('[SUB_WRAPPER] ❌ Dynamic import failed:', error);
+      console.error('[SUB_WRAPPER] ❌ Dynamic import failed at step:', error?.message);
+      console.error('[SUB_WRAPPER] Error type:', error?.constructor?.name);
+      console.error('[SUB_WRAPPER] Error stack:', error?.stack);
+      console.error('[SUB_WRAPPER] Full error object:', JSON.stringify({
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        toString: String(error)
+      }, null, 2));
       loadError = error;
       throw error;
     }
