@@ -48,6 +48,16 @@ export default function SubscriptionScreen() {
     clearError
   } = useSubscriptionStore();
 
+  // Debug: Log execution environment for troubleshooting test button visibility
+  useEffect(() => {
+    console.log('Subscription Screen - Debug Info:', {
+      executionEnvironment: Constants.executionEnvironment,
+      isDEV: __DEV__,
+      isLifetimePro,
+      shouldShowTestButton: (Constants.executionEnvironment !== 'storeClient' || __DEV__) && isLifetimePro
+    });
+  }, [isLifetimePro]);
+
   // Load plans and subscription on mount
   useEffect(() => {
     loadPlans();
@@ -540,9 +550,20 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
 
         {/* Test Button: Remove Lifetime Pro for IAP Testing (TestFlight/Dev only) */}
-        {(Constants.executionEnvironment === 'standalone' || __DEV__) && isLifetimePro && (
+        {/* Show button if: NOT Expo Go AND has lifetime pro (TestFlight/Production builds only) */}
+        {(Constants.executionEnvironment !== 'storeClient' || __DEV__) && isLifetimePro && (
           <TouchableOpacity 
-            style={[styles.restoreButton, { marginTop: 12, backgroundColor: colors.warning || '#FFA500' + '20' }]}
+            style={[
+              styles.restoreButton, 
+              { 
+                marginTop: 16, 
+                marginBottom: 8,
+                backgroundColor: '#FFA50020',
+                borderWidth: 2,
+                borderColor: '#FFA500',
+                borderStyle: 'solid'
+              }
+            ]}
             onPress={async () => {
               Alert.alert(
                 'Remove Lifetime Pro for Testing?',
@@ -589,9 +610,17 @@ export default function SubscriptionScreen() {
               );
             }}
           >
-            <Ionicons name="flask" size={20} color={colors.warning || '#FFA500'} />
-            <Text style={[styles.restoreButtonText, { color: colors.warning || '#FFA500' }]}>
-              Remove Lifetime Pro for Testing
+            <Ionicons name="flask" size={24} color="#FFA500" />
+            <Text style={[
+              styles.restoreButtonText, 
+              { 
+                color: '#FFA500', 
+                fontSize: 16,
+                fontWeight: '700',
+                marginLeft: 12
+              }
+            ]}>
+              🧪 Remove Lifetime Pro for Testing
             </Text>
           </TouchableOpacity>
         )}
