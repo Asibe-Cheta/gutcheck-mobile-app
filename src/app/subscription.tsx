@@ -585,14 +585,16 @@ export default function SubscriptionScreen() {
                         if (result.success) {
                           Alert.alert(
                             'Success',
-                            'Lifetime pro removed. Please refresh the subscription screen.',
+                            'Lifetime pro removed. Refreshing subscription screen...',
                             [
                               {
                                 text: 'OK',
-                                onPress: () => {
-                                  // Refresh subscription and lifetime pro status
-                                  loadSubscription();
-                                  checkLifetimePro(userId);
+                                onPress: async () => {
+                                  // Force refresh subscription and lifetime pro status
+                                  await loadSubscription();
+                                  await checkLifetimePro(userId);
+                                  // Also reload plans to ensure fresh state
+                                  await loadPlans();
                                 }
                               }
                             ]

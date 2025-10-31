@@ -166,14 +166,16 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // First, check current status from database (bypasses cache)
+      // First, check current status from database (bypasses cache) - this is the source of truth
       const currentStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
       
-      // Then check eligibility
+      // Then check eligibility to get count
       const { isEligible, isLifetimePro, count } = await lifetimeProService.checkLifetimeProEligibility(userId);
       
-      // Use database status as source of truth (not eligibility check, which may be stale)
-      const actualIsLifetimePro = currentStatus || isLifetimePro;
+      // CRITICAL: Use database status as source of truth
+      // If database says false, user is NOT lifetime pro (even if they're in first 20)
+      // This prevents re-granting after explicit removal for testing
+      const actualIsLifetimePro = currentStatus;
       
       set({ 
         isLifetimePro: actualIsLifetimePro, 
@@ -181,8 +183,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         isLoading: false 
       });
       
-      // If eligible and not already lifetime pro, grant it
-      if (isEligible && !actualIsLifetimePro) {
+      // Only grant if eligible AND database confirms they're not already lifetime pro
+      // This prevents re-granting after removal
+      if (isEligible && !actualIsLifetimePro && !currentStatus) {
         const result = await lifetimeProService.grantLifetimePro(userId);
         if (result.success) {
           set({ isLifetimePro: true });

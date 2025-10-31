@@ -68,7 +68,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
 
     if (currentScreen === 2) {
-      // Complete onboarding
+      // Save onboarding data first
       try {
         // Save onboarding completion
         await AsyncStorage.setItem('onboarding_completed', 'true');
@@ -94,12 +94,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             console.log('Profile update failed, will sync later:', error);
           }
         }
-
-        onComplete();
       } catch (error) {
-        console.error('Error completing onboarding:', error);
-        onComplete(); // Continue anyway
+        console.error('Error saving onboarding data:', error);
       }
+
+      // Navigate to subscription screen to start 7-day free trial
+      router.push('/subscription');
     } else {
       setCurrentScreen(currentScreen + 1);
     }
