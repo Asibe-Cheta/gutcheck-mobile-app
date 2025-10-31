@@ -176,6 +176,34 @@ class AppleIAPService {
         }
       }
 
+      // CRITICAL: Query products from store before purchase (required by Apple)
+      console.log('[IAP] Querying products from store before purchase...');
+      try {
+        const productsResult = await InAppPurchases.getProductsAsync([
+          PRODUCT_IDS.PREMIUM_MONTHLY,
+          PRODUCT_IDS.PREMIUM_YEARLY
+        ]);
+        console.log('[IAP] Products queried successfully:', productsResult.results?.length || 0);
+        
+        // Verify the product we want to purchase exists
+        const productExists = productsResult.results?.some(
+          (p: any) => p.productId === productId
+        );
+        if (!productExists) {
+          console.error('[IAP] Product not found in store:', productId);
+          return {
+            success: false,
+            error: `Product ${productId} not found in App Store. Please ensure it's configured in App Store Connect.`
+          };
+        }
+      } catch (queryError: any) {
+        console.error('[IAP] Failed to query products:', queryError);
+        return {
+          success: false,
+          error: `Failed to query products from store: ${queryError?.message || 'Unknown error'}`
+        };
+      }
+
       console.log('[IAP] Calling purchaseItemAsync for product:', productId);
       const result = await InAppPurchases.purchaseItemAsync(productId);
       

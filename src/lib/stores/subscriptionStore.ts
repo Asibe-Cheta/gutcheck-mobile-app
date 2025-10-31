@@ -52,16 +52,29 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Define our subscription plans
+      // First, query products from App Store (required before purchase)
+      console.log('[IAP] Querying products from App Store...');
+      const productsResult = await appleIAPService.getProducts();
+      
+      if (!productsResult.success) {
+        console.error('[IAP] Failed to query products:', productsResult.error);
+        // Fall back to static plans if query fails
+      }
+      
+      // Define our subscription plans (using App Store product data if available)
+      const appStoreProducts = productsResult.products || [];
+      const monthlyProduct = appStoreProducts.find(p => p.productId === PRODUCT_IDS.PREMIUM_MONTHLY);
+      const yearlyProduct = appStoreProducts.find(p => p.productId === PRODUCT_IDS.PREMIUM_YEARLY);
+      
       const plans: AppleSubscriptionPlan[] = [
         {
           id: 'monthly',
-          name: 'Premium Monthly',
-          price: 9.99,
-          currency: 'GBP',
+          name: monthlyProduct?.title || 'Premium Monthly',
+          price: monthlyProduct?.price || 9.99,
+          currency: monthlyProduct?.currency || 'GBP',
           interval: 'month',
           productId: PRODUCT_IDS.PREMIUM_MONTHLY,
-          description: 'Full access to all features',
+          description: monthlyProduct?.description || 'Full access to all features',
           features: [
             'Unlimited AI conversations',
             'Image and document analysis',
@@ -73,12 +86,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         },
         {
           id: 'yearly',
-          name: 'Premium Yearly',
-          price: 99.99,
-          currency: 'GBP',
+          name: yearlyProduct?.title || 'Premium Yearly',
+          price: yearlyProduct?.price || 99.99,
+          currency: yearlyProduct?.currency || 'GBP',
           interval: 'year',
           productId: PRODUCT_IDS.PREMIUM_YEARLY,
-          description: 'Full access to all features - Save 17%',
+          description: yearlyProduct?.description || 'Full access to all features - Save 17%',
           features: [
             'Unlimited AI conversations',
             'Image and document analysis',
@@ -91,6 +104,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         },
       ];
       
+      console.log('[IAP] Plans loaded. Products queried:', appStoreProducts.length);
       set({ plans, isLoading: false });
     } catch (error) {
       console.error('Load plans error:', error);
