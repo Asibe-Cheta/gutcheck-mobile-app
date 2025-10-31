@@ -20,6 +20,11 @@ class LifetimeProService {
    * Check if a user is eligible for lifetime pro (within first 20 users)
    */
   async checkLifetimeProEligibility(userId: string): Promise<{ isEligible: boolean; isLifetimePro: boolean; count: number }> {
+    // If lifetime pro is disabled, return false for everything
+    if (this.DISABLE_LIFETIME_PRO) {
+      return { isEligible: false, isLifetimePro: false, count: 0 };
+    }
+    
     try {
       // Get current count of lifetime pro users
       const { data: lifetimeProUsers, error: countError } = await supabase
