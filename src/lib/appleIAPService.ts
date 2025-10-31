@@ -120,12 +120,32 @@ class AppleIAPService {
         };
       }
 
-      const products = await InAppPurchases.getProductsAsync([
+      console.log('[IAP] Calling getProductsAsync with product IDs:', [
         PRODUCT_IDS.PREMIUM_MONTHLY,
         PRODUCT_IDS.PREMIUM_YEARLY
       ]);
-
-      return { success: true, products };
+      
+      const productsResult = await InAppPurchases.getProductsAsync([
+        PRODUCT_IDS.PREMIUM_MONTHLY,
+        PRODUCT_IDS.PREMIUM_YEARLY
+      ]);
+      
+      console.log('[IAP] getProductsAsync response:', JSON.stringify(productsResult, null, 2));
+      
+      // The response structure from expo-in-app-purchases:
+      // { results: Array<Product>, responseCode: number }
+      const products = productsResult.results || productsResult;
+      
+      if (products && products.length > 0) {
+        console.log('[IAP] ✅ Successfully loaded', products.length, 'products from App Store Connect:');
+        products.forEach((product: any) => {
+          console.log(`[IAP]   - ${product.productId}: ${product.title} (${product.price} ${product.currency})`);
+        });
+      } else {
+        console.warn('[IAP] ⚠️ No products returned from App Store Connect. Response:', productsResult);
+      }
+      
+      return { success: true, products: Array.isArray(products) ? products : [products] };
     } catch (error) {
       console.error('Failed to get products:', error);
       return { success: false, error: 'Failed to get products' };

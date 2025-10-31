@@ -52,19 +52,50 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // First, query products from App Store (required before purchase)
-      console.log('[IAP] Querying products from App Store...');
+      // First, query products from App Store Connect (required before purchase)
+      console.log('[IAP] Querying products from App Store Connect...');
       const productsResult = await appleIAPService.getProducts();
       
       if (!productsResult.success) {
-        console.error('[IAP] Failed to query products:', productsResult.error);
+        console.error('[IAP] ❌ Failed to query products from App Store Connect:', productsResult.error);
+        console.warn('[IAP] ⚠️ Falling back to static plan data. This should NOT happen in production!');
         // Fall back to static plans if query fails
       }
       
-      // Define our subscription plans (using App Store product data if available)
+      // Define our subscription plans (using App Store Connect product data if available)
       const appStoreProducts = productsResult.products || [];
-      const monthlyProduct = appStoreProducts.find(p => p.productId === PRODUCT_IDS.PREMIUM_MONTHLY);
-      const yearlyProduct = appStoreProducts.find(p => p.productId === PRODUCT_IDS.PREMIUM_YEARLY);
+      
+      if (appStoreProducts.length === 0) {
+        console.warn('[IAP] ⚠️ No products returned from App Store Connect. Using fallback data.');
+      } else {
+        console.log('[IAP] ✅ Using real product data from App Store Connect:', appStoreProducts.length, 'products');
+      }
+      
+      const monthlyProduct = appStoreProducts.find((p: any) => p.productId === PRODUCT_IDS.PREMIUM_MONTHLY);
+      const yearlyProduct = appStoreProducts.find((p: any) => p.productId === PRODUCT_IDS.PREMIUM_YEARLY);
+      
+      // Log which data source we're using
+      if (monthlyProduct) {
+        console.log('[IAP] ✅ Monthly product from App Store:', {
+          productId: monthlyProduct.productId,
+          title: monthlyProduct.title,
+          price: monthlyProduct.price,
+          currency: monthlyProduct.currency
+        });
+      } else {
+        console.warn('[IAP] ⚠️ Monthly product NOT found in App Store Connect. Using fallback data.');
+      }
+      
+      if (yearlyProduct) {
+        console.log('[IAP] ✅ Yearly product from App Store:', {
+          productId: yearlyProduct.productId,
+          title: yearlyProduct.title,
+          price: yearlyProduct.price,
+          currency: yearlyProduct.currency
+        });
+      } else {
+        console.warn('[IAP] ⚠️ Yearly product NOT found in App Store Connect. Using fallback data.');
+      }
       
       const plans: AppleSubscriptionPlan[] = [
         {
