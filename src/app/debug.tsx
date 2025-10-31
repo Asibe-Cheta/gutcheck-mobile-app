@@ -1,14 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+
+// Log capture system
+const logStorage: string[] = [];
+const MAX_LOGS = 100;
+
+// Override console.log to capture logs
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+console.log = (...args: any[]) => {
+  originalLog(...args);
+  const message = args.map(arg => 
+    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+  ).join(' ');
+  logStorage.push(`[LOG] ${new Date().toLocaleTimeString()}: ${message}`);
+  if (logStorage.length > MAX_LOGS) logStorage.shift();
+};
+
+console.error = (...args: any[]) => {
+  originalError(...args);
+  const message = args.map(arg => 
+    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+  ).join(' ');
+  logStorage.push(`[ERROR] ${new Date().toLocaleTimeString()}: ${message}`);
+  if (logStorage.length > MAX_LOGS) logStorage.shift();
+};
+
+console.warn = (...args: any[]) => {
+  originalWarn(...args);
+  const message = args.map(arg => 
+    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+  ).join(' ');
+  logStorage.push(`[WARN] ${new Date().toLocaleTimeString()}: ${message}`);
+  if (logStorage.length > MAX_LOGS) logStorage.shift();
+};
 
 export default function DebugScreen() {
   const [debugData, setDebugData] = useState<any>(null);
   const [envData, setEnvData] = useState<any>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [filter, setFilter] = useState<string>('');
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadDebugData();
+    // Refresh logs every second
+    const interval = setInterval(() => {
+      setLogs([...logStorage]);
+      // Auto-scroll to bottom
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadDebugData = async () => {
@@ -116,6 +164,51 @@ export default function DebugScreen() {
           </Text>
         </View>
       )}
+
+      {/* Console Logs Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Console Logs ({logs.length} entries)</Text>
+        <TextInput
+          style={styles.filterInput}
+          placeholder="Filter logs (e.g., IAP, ERROR)..."
+          value={filter}
+          onChangeText={setFilter}
+          placeholderTextColor="#888"
+        />
+        <TouchableOpacity 
+          style={[styles.button, { backgroundColor: '#ff4444', marginTop: 8 }]} 
+          onPress={() => {
+            logStorage.length = 0;
+            setLogs([]);
+          }}
+        >
+          <Text style={styles.buttonText}>Clear Logs</Text>
+        </TouchableOpacity>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.logsContainer}
+          nestedScrollEnabled={true}
+        >
+          {logs
+            .filter(log => !filter || log.toLowerCase().includes(filter.toLowerCase()))
+            .map((log, index) => (
+              <Text 
+                key={index} 
+                style={[
+                  styles.logText,
+                  log.includes('[ERROR]') && styles.errorLog,
+                  log.includes('[WARN]') && styles.warnLog,
+                  log.includes('[IAP]') && styles.iapLog
+                ]}
+              >
+                {log}
+              </Text>
+            ))}
+          {logs.length === 0 && (
+            <Text style={styles.text}>No logs yet. Try using the app to generate logs.</Text>
+          )}
+        </ScrollView>
+      </View>
     </ScrollView>
   );
 }
@@ -158,6 +251,38 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  filterInput: {
+    backgroundColor: '#1a1d29',
+    color: '#ffffff',
+    padding: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#444',
+    marginBottom: 10,
+  },
+  logsContainer: {
+    maxHeight: 400,
+    backgroundColor: '#0a0a0a',
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  logText: {
+    fontSize: 11,
+    color: '#cccccc',
+    fontFamily: 'monospace',
+    marginBottom: 2,
+  },
+  errorLog: {
+    color: '#ff6b6b',
+  },
+  warnLog: {
+    color: '#ffd93d',
+  },
+  iapLog: {
+    color: '#4ecdc4',
     fontWeight: 'bold',
   },
 });
