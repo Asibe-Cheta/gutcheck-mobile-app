@@ -7,30 +7,80 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-// Get environment variables from multiple sources
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+// SAFE: Get environment variables with comprehensive null checks
+// This prevents crashes if Constants.expoConfig is undefined/null
+function getEnvVar(key: string, defaultValue: string = ''): string {
+  try {
+    // First try process.env (works in development and EAS builds)
+    if (process.env[key]) {
+      return process.env[key] as string;
+    }
+    
+    // Then try Constants.expoConfig.extra (EAS builds inject here)
+    if (Constants?.expoConfig?.extra?.[key]) {
+      return Constants.expoConfig.extra[key] as string;
+    }
+    
+    return defaultValue;
+  } catch (error) {
+    console.error(`[SUPABASE] Error reading env var ${key}:`, error);
+    return defaultValue;
+  }
+}
 
-// Debug logging for production builds
-console.log('Supabase Configuration:', {
-  hasUrl: !!supabaseUrl,
-  hasKey: !!supabaseAnonKey,
-  urlPreview: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'MISSING',
-  keyPreview: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 10)}...` : 'MISSING',
-  isProduction: Constants.expoConfig?.extra?.EXPO_PUBLIC_APP_ENV === 'production',
-  allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
-  fullExtra: Constants.expoConfig?.extra
+const supabaseUrl = getEnvVar('EXPO_PUBLIC_SUPABASE_URL', 'https://placeholder.supabase.co');
+const supabaseAnonKey = getEnvVar('EXPO_PUBLIC_SUPABASE_ANON_KEY', 'placeholder-key');
+
+// Safe logging - handle potential undefined Constants
+const extra = Constants?.expoConfig?.extra || {};
+const appEnv = extra.EXPO_PUBLIC_APP_ENV || 'unknown';
+
+console.log('[SUPABASE] Configuration Check:', {
+  hasUrl: !!supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co',
+  hasKey: !!supabaseAnonKey && supabaseAnonKey !== 'placeholder-key',
+  urlPreview: supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co' ? `${supabaseUrl.substring(0, 20)}...` : 'MISSING',
+  keyPreview: supabaseAnonKey && supabaseAnonKey !== 'placeholder-key' ? `${supabaseAnonKey.substring(0, 10)}...` : 'MISSING',
+  isProduction: appEnv === 'production',
+  appEnv: appEnv,
+  allExtraKeys: Object.keys(extra),
+  hasConstants: !!Constants,
+  hasExpoConfig: !!Constants?.expoConfig,
+  hasExtra: !!extra,
 });
 
-// Create Supabase client with AsyncStorage for session persistence
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// SAFE: Create Supabase client with error handling
+// Wrap in try-catch to prevent crash if createClient fails
+let supabaseClient: any = null;
+
+try {
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  });
+  console.log('[SUPABASE] ✅ Client created successfully');
+} catch (error) {
+  console.error('[SUPABASE] ❌ Failed to create client:', error);
+  // Create a minimal mock client to prevent crashes
+  // The app will fail gracefully when trying to use it
+  supabaseClient = {
+    from: () => ({
+      select: () => ({ eq: () => ({ single: () => Promise.reject(new Error('Supabase not configured')) }) }),
+      insert: () => Promise.reject(new Error('Supabase not configured')),
+      update: () => Promise.reject(new Error('Supabase not configured')),
+    }),
+    auth: {
+      signIn: () => Promise.reject(new Error('Supabase not configured')),
+      signUp: () => Promise.reject(new Error('Supabase not configured')),
+      signOut: () => Promise.reject(new Error('Supabase not configured')),
+    },
+  };
+}
+
+export const supabase = supabaseClient;
 
 // Database helper functions
 export const db = {
