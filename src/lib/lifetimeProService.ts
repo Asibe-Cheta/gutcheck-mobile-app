@@ -11,6 +11,10 @@ export interface LifetimeProUser {
 class LifetimeProService {
   private readonly MAX_LIFETIME_PRO_USERS = 20;
   private readonly LIFETIME_PRO_KEY = 'lifetime_pro_users_count';
+  
+  // TEMPORARY: Set to true to disable lifetime pro feature entirely (for testing IAP)
+  // This prevents ALL lifetime pro grants and checks
+  private readonly DISABLE_LIFETIME_PRO = false; // Set to true to disable
 
   /**
    * Check if a user is eligible for lifetime pro (within first 20 users)
@@ -107,6 +111,11 @@ class LifetimeProService {
    * Always checks database to ensure accuracy (doesn't trust cache if database says false)
    */
   async checkUserLifetimeProStatus(userId: string): Promise<boolean> {
+    // If lifetime pro is disabled, always return false
+    if (this.DISABLE_LIFETIME_PRO) {
+      return false;
+    }
+    
     try {
       // Always check database first for accurate status
       const { data, error } = await supabase

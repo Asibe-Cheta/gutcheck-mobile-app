@@ -208,7 +208,26 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Defense in depth: Prevent lifetime pro users from attempting purchases
+      // Defense in depth: Check database directly before blocking (not just store state)
+      // This prevents stale store state from blocking purchases after removal
+      const userId = await AsyncStorage.getItem('user_id');
+      if (userId) {
+        const dbStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
+        if (dbStatus) {
+          // Database says user has lifetime pro, update store and block
+          set({ isLifetimePro: true, isLoading: false });
+          return { 
+            success: false, 
+            error: 'You already have lifetime pro access! No subscription needed.' 
+          };
+        }
+        // Database says no lifetime pro, ensure store matches
+        if (get().isLifetimePro) {
+          set({ isLifetimePro: false });
+        }
+      }
+      
+      // Also check store state as secondary defense
       const state = get();
       if (state.isLifetimePro) {
         set({ isLoading: false });
