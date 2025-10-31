@@ -208,6 +208,44 @@ class LifetimeProService {
       console.error('Error clearing lifetime pro status:', error);
     }
   }
+
+  /**
+   * Remove user from lifetime pro users table (for testing IAP subscriptions)
+   * This allows testing subscriptions even if you're in the first 20 users
+   */
+  async removeUserFromLifetimePro(userId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Remove from database
+      const { error } = await supabase
+        .from('lifetime_pro_users')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error removing user from lifetime pro:', error);
+        return { success: false, error: error.message };
+      }
+
+      // Update profile
+      await supabase
+        .from('profiles')
+        .update({
+          is_lifetime_pro: false,
+          subscription_plan: null,
+          subscription_status: 'inactive'
+        })
+        .eq('user_id', userId);
+
+      // Clear local storage
+      await this.clearLifetimeProStatus(userId);
+
+      console.log(`User ${userId} removed from lifetime pro for testing`);
+      return { success: true };
+    } catch (error) {
+      console.error('Error removing user from lifetime pro:', error);
+      return { success: false, error: 'Failed to remove lifetime pro status' };
+    }
+  }
 }
 
 export const lifetimeProService = new LifetimeProService();

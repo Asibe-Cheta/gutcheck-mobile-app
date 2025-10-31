@@ -12,6 +12,8 @@ import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { lifetimeProService } from '@/lib/lifetimeProService';
+import Constants from 'expo-constants';
 
 interface SubscriptionPlan {
   id: string;
@@ -536,6 +538,63 @@ export default function SubscriptionScreen() {
           <Ionicons name="refresh" size={20} color={colors.primary} />
           <Text style={styles.restoreButtonText}>Restore Purchases</Text>
         </TouchableOpacity>
+
+        {/* Test Button: Remove Lifetime Pro for IAP Testing (TestFlight/Dev only) */}
+        {(Constants.executionEnvironment === 'standalone' || __DEV__) && isLifetimePro && (
+          <TouchableOpacity 
+            style={[styles.restoreButton, { marginTop: 12, backgroundColor: colors.warning || '#FFA500' + '20' }]}
+            onPress={async () => {
+              Alert.alert(
+                'Remove Lifetime Pro for Testing?',
+                'This will remove your lifetime pro status so you can test IAP subscriptions. You can restore it later via SQL.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Remove', 
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        const userId = await AsyncStorage.getItem('user_id');
+                        if (!userId) {
+                          Alert.alert('Error', 'User ID not found');
+                          return;
+                        }
+                        
+                        const result = await lifetimeProService.removeUserFromLifetimePro(userId);
+                        if (result.success) {
+                          Alert.alert(
+                            'Success',
+                            'Lifetime pro removed. Please refresh the subscription screen.',
+                            [
+                              {
+                                text: 'OK',
+                                onPress: () => {
+                                  // Refresh subscription and lifetime pro status
+                                  loadSubscription();
+                                  checkLifetimePro(userId);
+                                }
+                              }
+                            ]
+                          );
+                        } else {
+                          Alert.alert('Error', result.error || 'Failed to remove lifetime pro');
+                        }
+                      } catch (error) {
+                        console.error('Error removing lifetime pro:', error);
+                        Alert.alert('Error', 'Failed to remove lifetime pro status');
+                      }
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Ionicons name="flask" size={20} color={colors.warning || '#FFA500'} />
+            <Text style={[styles.restoreButtonText, { color: colors.warning || '#FFA500' }]}>
+              Remove Lifetime Pro for Testing
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Payment Info */}
         <View style={styles.paymentInfo}>

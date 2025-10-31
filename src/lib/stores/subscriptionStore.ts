@@ -195,6 +195,16 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
+      // Defense in depth: Prevent lifetime pro users from attempting purchases
+      const state = get();
+      if (state.isLifetimePro) {
+        set({ isLoading: false });
+        return { 
+          success: false, 
+          error: 'You already have lifetime pro access! No subscription needed.' 
+        };
+      }
+      
       const plans = get().plans;
       const plan = plans.find(p => p.id === planId);
       if (!plan) {

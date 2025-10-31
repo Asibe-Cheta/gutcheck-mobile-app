@@ -3,15 +3,35 @@
  * Handles Apple IAP with graceful fallback for development
  */
 
+import Constants from 'expo-constants';
+
+// Check if we're in Expo Go (development) or standalone build (production/TestFlight)
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
 // Dynamic import to prevent native module errors in development
 let InAppPurchases: any = null;
 
-try {
-  InAppPurchases = require('expo-in-app-purchases').InAppPurchases;
-} catch (error) {
-  console.log('expo-in-app-purchases not available - using mock mode');
-  InAppPurchases = null;
+// Function to load IAP module - can be called at runtime if initial load fails
+function loadIAPModule(): boolean {
+  if (InAppPurchases) return true; // Already loaded
+  
+  try {
+    // Only load in standalone builds (production/TestFlight), not Expo Go
+    if (!isExpoGo) {
+      InAppPurchases = require('expo-in-app-purchases').InAppPurchases;
+      console.log('IAP module loaded successfully');
+      return true;
+    }
+  } catch (error) {
+    console.error('expo-in-app-purchases not available:', error);
+    InAppPurchases = null;
+  }
+  
+  return !!InAppPurchases;
 }
+
+// Try to load initially
+loadIAPModule();
 
 export interface AppleSubscription {
   productId: string;
@@ -93,16 +113,28 @@ class AppleIAPService {
 
   async purchaseProduct(productId: string): Promise<{ success: boolean; subscription?: AppleSubscription; error?: string }> {
     try {
-      if (!this.isInitialized) {
-        await this.initialize();
-      }
-
-      // In development/Expo Go, simulate purchase failure
-      if (!InAppPurchases) {
+      // Only block in Expo Go - TestFlight/App Store builds should have IAP available
+      if (isExpoGo) {
         return {
           success: false,
-          error: 'In-App Purchases not available in development mode. Use a development build for testing.'
+          error: 'In-App Purchases not available in Expo Go. Use a TestFlight or production build for testing.'
         };
+      }
+
+      // Try to load module if not already loaded (runtime fallback)
+      if (!InAppPurchases) {
+        const loaded = loadIAPModule();
+        if (!loaded) {
+          console.error('IAP module not available in standalone build - this is unexpected');
+          return {
+            success: false,
+            error: 'In-App Purchases are not available. Please ensure the app is built with expo-in-app-purchases included.'
+          };
+        }
+      }
+
+      if (!this.isInitialized) {
+        await this.initialize();
       }
 
       const result = await InAppPurchases.purchaseItemAsync(productId);
@@ -117,11 +149,14 @@ class AppleIAPService {
         };
         return { success: true, subscription };
       } else {
-        return { success: false, error: 'Purchase failed' };
+        return { success: false, error: `Purchase failed with code: ${result.responseCode}` };
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Purchase failed:', error);
-      return { success: false, error: 'Purchase failed' };
+      return { 
+        success: false, 
+        error: error?.message || 'Purchase failed. Please try again.' 
+      };
     }
   }
 
