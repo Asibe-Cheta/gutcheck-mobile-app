@@ -1,6 +1,13 @@
 // Environment variables are provided by EAS Build in production
-// No need to load from .env file in production builds
-const envVars = {};
+// EAS will inject variables from the EAS dashboard or eas.json build profile
+// These fallback to process.env for local development
+const envVars = {
+  // These will be overridden by EAS build env vars if set
+  EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+  EXPO_PUBLIC_ANTHROPIC_API_KEY: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+  EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV || 'development',
+};
 
 module.exports = {
   expo: {
