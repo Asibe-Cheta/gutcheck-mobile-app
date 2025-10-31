@@ -99,6 +99,7 @@ function AppContent() {
           <Stack.Screen name="chat" options={{ headerShown: false }} />
           <Stack.Screen name="profile" options={{ headerShown: false }} />
           <Stack.Screen name="subscription" options={{ headerShown: false }} />
+          <Stack.Screen name="subscription-test" options={{ headerShown: false }} />
           <Stack.Screen name="privacy" options={{ headerShown: false }} />
         </Stack>
       </GestureHandlerRootView>

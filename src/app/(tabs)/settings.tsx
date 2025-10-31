@@ -106,9 +106,14 @@ export default function SettingsScreen() {
   const handleSubscriptionPress = async () => {
     try {
       console.log('[SETTINGS] Navigating to subscription screen...');
-      // Wrap navigation in try-catch to catch any navigation/module loading errors
-      await router.push('/subscription');
-      console.log('[SETTINGS] ✅ Navigation to subscription completed');
+      
+      // TEST MODE: Try minimal test route first to isolate the issue
+      // Change this to '/subscription' after testing
+      const route = '/subscription-test'; // Start with test route
+      
+      console.log(`[SETTINGS] Attempting navigation to: ${route}`);
+      router.push(route);
+      console.log('[SETTINGS] ✅ Navigation call completed (async, may not have loaded yet)');
     } catch (error: any) {
       console.error('[SETTINGS] ❌ Error navigating to subscription:', error);
       console.error('[SETTINGS] Error details:', {
