@@ -31,14 +31,40 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const [mountError, setMountError] = useState<string | null>(null);
+  
+  console.log('[SUB] Subscription screen component mounting...');
+  
+  // Initialize store with error handling
+  let subscriptionStore;
+  try {
+    subscriptionStore = useSubscriptionStore();
+    console.log('[SUB] ✅ Store initialized successfully');
+  } catch (error: any) {
+    console.error('[SUB] ❌ Error initializing store:', error);
+    setMountError(`Store initialization failed: ${error?.message || 'Unknown error'}`);
+    // Return error UI early if store fails
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1d29', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 10 }}>❌ Error Loading Subscription</Text>
+        <Text style={{ color: '#ffffff', textAlign: 'center' }}>{mountError}</Text>
+        <TouchableOpacity 
+          style={{ marginTop: 20, padding: 10, backgroundColor: '#4CAF50', borderRadius: 5 }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#ffffff' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
   
   const { 
-    plans, 
+    plans = [], 
     currentPlan, 
     subscription, 
-    isLifetimePro,
-    lifetimeProCount,
-    isLoading, 
+    isLifetimePro = false,
+    lifetimeProCount = 0,
+    isLoading = false, 
     error,
     loadPlans,
     loadSubscription,
@@ -46,36 +72,69 @@ export default function SubscriptionScreen() {
     subscribeToPlan,
     restorePurchases,
     clearError
-  } = useSubscriptionStore();
+  } = subscriptionStore || {};
 
   // Debug: Log execution environment for troubleshooting test button visibility
   useEffect(() => {
-    console.log('Subscription Screen - Debug Info:', {
-      executionEnvironment: Constants.executionEnvironment,
-      isDEV: __DEV__,
-      isLifetimePro,
-      shouldShowTestButton: (Constants.executionEnvironment !== 'storeClient' || __DEV__) && isLifetimePro
-    });
+    try {
+      console.log('[SUB] Subscription Screen - Debug Info:', {
+        executionEnvironment: Constants.executionEnvironment,
+        isDEV: __DEV__,
+        isLifetimePro,
+        shouldShowTestButton: (Constants.executionEnvironment !== 'storeClient' || __DEV__) && isLifetimePro
+      });
+    } catch (error: any) {
+      console.error('[SUB] Error in debug useEffect:', error);
+      setMountError(`Debug error: ${error?.message || 'Unknown error'}`);
+    }
   }, [isLifetimePro]);
 
   // Load plans and subscription on mount
   useEffect(() => {
-    loadPlans();
-    loadSubscription();
-    
-    // Check for lifetime pro status
-    const checkLifetimeProStatus = async () => {
-      const userId = await AsyncStorage.getItem('user_id');
-      if (userId) {
-        await checkLifetimePro(userId);
+    const initialize = async () => {
+      try {
+        console.log('[SUB] Initializing subscription screen...');
+        
+        if (!loadPlans || !loadSubscription || !checkLifetimePro) {
+          throw new Error('Store methods not available');
+        }
+        
+        console.log('[SUB] Loading plans...');
+        await loadPlans();
+        console.log('[SUB] ✅ Plans loaded');
+        
+        console.log('[SUB] Loading subscription...');
+        await loadSubscription();
+        console.log('[SUB] ✅ Subscription loaded');
+        
+        // Check for lifetime pro status
+        const userId = await AsyncStorage.getItem('user_id');
+        console.log('[SUB] User ID:', userId);
+        if (userId) {
+          console.log('[SUB] Checking lifetime pro status...');
+          await checkLifetimePro(userId);
+          console.log('[SUB] ✅ Lifetime pro checked');
+        } else {
+          console.warn('[SUB] ⚠️ No user ID found');
+        }
+        
+        console.log('[SUB] ✅ Subscription screen initialized successfully');
+      } catch (error: any) {
+        console.error('[SUB] ❌ Error initializing subscription screen:', error);
+        console.error('[SUB] Error stack:', error?.stack);
+        setMountError(`Initialization failed: ${error?.message || 'Unknown error'}\nStack: ${error?.stack || 'No stack trace'}`);
       }
     };
     
-    checkLifetimeProStatus();
+    initialize();
   }, []);
 
   const handleSubscribe = async (planId: string) => {
     try {
+      console.log('[SUB] Subscribe button pressed for plan:', planId);
+      if (!subscribeToPlan) {
+        throw new Error('subscribeToPlan method not available');
+      }
       const result = await subscribeToPlan(planId);
       
       if (result.success) {
