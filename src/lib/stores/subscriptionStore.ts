@@ -105,10 +105,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // First check for lifetime pro status
+      // First check for lifetime pro status (always check database, not cache)
       const userId = await AsyncStorage.getItem('user_id');
       if (userId) {
         try {
+          // Force database check (bypasses AsyncStorage cache)
           const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
           if (isLifetimePro) {
             set({ 
@@ -118,6 +119,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
               isLoading: false 
             });
             return;
+          } else {
+            // If not lifetime pro, ensure cache is cleared
+            set({ isLifetimePro: false });
           }
         } catch (lifetimeProError) {
           console.warn('Lifetime pro check failed (non-critical):', lifetimeProError);
@@ -162,17 +166,23 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Check if user is eligible for lifetime pro
+      // First, check current status from database (bypasses cache)
+      const currentStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
+      
+      // Then check eligibility
       const { isEligible, isLifetimePro, count } = await lifetimeProService.checkLifetimeProEligibility(userId);
       
+      // Use database status as source of truth (not eligibility check, which may be stale)
+      const actualIsLifetimePro = currentStatus || isLifetimePro;
+      
       set({ 
-        isLifetimePro, 
+        isLifetimePro: actualIsLifetimePro, 
         lifetimeProCount: count, 
         isLoading: false 
       });
       
       // If eligible and not already lifetime pro, grant it
-      if (isEligible && !isLifetimePro) {
+      if (isEligible && !actualIsLifetimePro) {
         const result = await lifetimeProService.grantLifetimePro(userId);
         if (result.success) {
           set({ isLifetimePro: true });

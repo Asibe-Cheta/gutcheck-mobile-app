@@ -104,16 +104,11 @@ class LifetimeProService {
 
   /**
    * Check if current user has lifetime pro status
+   * Always checks database to ensure accuracy (doesn't trust cache if database says false)
    */
   async checkUserLifetimeProStatus(userId: string): Promise<boolean> {
     try {
-      // Check local storage first
-      const localStatus = await AsyncStorage.getItem(`lifetime_pro_${userId}`);
-      if (localStatus === 'true') {
-        return true;
-      }
-
-      // Check database
+      // Always check database first for accurate status
       const { data, error } = await supabase
         .from('lifetime_pro_users')
         .select('is_active')
@@ -123,18 +118,26 @@ class LifetimeProService {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error checking lifetime pro status:', error);
-        return false;
+        // On error, check local storage as fallback
+        const localStatus = await AsyncStorage.getItem(`lifetime_pro_${userId}`);
+        return localStatus === 'true';
       }
 
       const isLifetimePro = !!data?.is_active;
       
-      // Save to local storage
+      // Always update local storage to match database (cache should reflect truth)
       await this.saveLifetimeProStatus(userId, isLifetimePro);
       
       return isLifetimePro;
     } catch (error) {
       console.error('Error checking user lifetime pro status:', error);
-      return false;
+      // On error, check local storage as fallback
+      try {
+        const localStatus = await AsyncStorage.getItem(`lifetime_pro_${userId}`);
+        return localStatus === 'true';
+      } catch {
+        return false;
+      }
     }
   }
 
