@@ -51,8 +51,9 @@ function loadIAPModule(): boolean {
   return !!InAppPurchases;
 }
 
-// Try to load initially
-loadIAPModule();
+// DO NOT call loadIAPModule() here - it runs at module evaluation time
+// and crashes if the native module isn't ready. Only load when actually needed.
+// loadIAPModule() will be called when the service is first used.
 
 export interface AppleSubscription {
   productId: string;
@@ -92,6 +93,16 @@ class AppleIAPService {
   }
 
   async getProducts(): Promise<{ success: boolean; products?: any[]; error?: string }> {
+    // Load IAP module on first use (lazy loading)
+    if (!InAppPurchases) {
+      const loaded = loadIAPModule();
+      if (!loaded) {
+        return {
+          success: false,
+          error: 'IAP module not available'
+        };
+      }
+    }
     try {
       if (!this.isInitialized) {
         await this.initialize();
@@ -250,6 +261,17 @@ class AppleIAPService {
 
   async restorePurchases(): Promise<{ success: boolean; subscriptions?: AppleSubscription[]; error?: string }> {
     try {
+      // Load IAP module on first use (lazy loading)
+      if (!InAppPurchases) {
+        const loaded = loadIAPModule();
+        if (!loaded) {
+          return {
+            success: false,
+            error: 'IAP module not available'
+          };
+        }
+      }
+
       if (!this.isInitialized) {
         await this.initialize();
       }
