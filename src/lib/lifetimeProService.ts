@@ -15,7 +15,7 @@ class LifetimeProService {
   // TEMPORARY: Set to true to disable lifetime pro feature entirely (for testing IAP)
   // This prevents ALL lifetime pro grants and checks
   // TODO: Set back to false after IAP testing is complete
-  private readonly DISABLE_LIFETIME_PRO = true; // TEMPORARILY DISABLED FOR TESTING
+  private readonly DISABLE_LIFETIME_PRO = false; // Set to true to temporarily disable for testing
 
   /**
    * Check if a user is eligible for lifetime pro (within first 20 users)

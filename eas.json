@@ -14,7 +14,14 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EAS_ENABLE_EXPO_DOCTOR": "0"
+        "EAS_ENABLE_EXPO_DOCTOR": "0",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "development"
       }
     }
   },
