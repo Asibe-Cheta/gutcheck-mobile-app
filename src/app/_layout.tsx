@@ -98,7 +98,10 @@ function AppContent() {
           <Stack.Screen name="crisis-resources" options={{ headerShown: false }} />
           <Stack.Screen name="chat" options={{ headerShown: false }} />
           <Stack.Screen name="profile" options={{ headerShown: false }} />
+          {/* Use wrapper for subscription to prevent native crash during module resolution */}
           <Stack.Screen name="subscription" options={{ headerShown: false }} />
+          {/* Keep wrapper route as backup */}
+          <Stack.Screen name="subscription-wrapper" options={{ headerShown: false }} />
           <Stack.Screen name="subscription-test" options={{ headerShown: false }} />
           <Stack.Screen name="privacy" options={{ headerShown: false }} />
         </Stack>

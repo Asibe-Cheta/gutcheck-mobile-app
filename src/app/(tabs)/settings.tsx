@@ -107,9 +107,9 @@ export default function SettingsScreen() {
     try {
       console.log('[SETTINGS] Navigating to subscription screen...');
       
-      // FIXED: Now using real subscription route - the crash was fixed by removing
-      // the module-level loadIAPModule() call in appleIAPService.ts
-      const route = '/subscription'; // Real subscription route
+      // Use wrapper route to avoid native crash during module resolution
+      // The wrapper dynamically imports the subscription screen
+      const route = '/subscription-wrapper'; // Wrapper route that loads subscription dynamically
       
       console.log(`[SETTINGS] Attempting navigation to: ${route}`);
       router.push(route);
