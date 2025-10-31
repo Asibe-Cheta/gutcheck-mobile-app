@@ -541,6 +541,25 @@ export default function SubscriptionScreen() {
     },
   });
 
+  // Show error UI if mount error occurred
+  if (mountError) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#1a1d29', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 10 }}>❌ Error Loading Subscription</Text>
+        <Text style={{ color: '#ffffff', textAlign: 'center', marginBottom: 10 }}>{mountError}</Text>
+        <Text style={{ color: '#888', fontSize: 12, marginBottom: 20, textAlign: 'center' }}>
+          Check Debug Info screen for detailed logs
+        </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 10, padding: 15, backgroundColor: '#4CAF50', borderRadius: 5 }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ color: '#ffffff', fontWeight: 'bold' }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
