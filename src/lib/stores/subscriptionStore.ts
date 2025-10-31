@@ -211,10 +211,15 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       // Defense in depth: Check database directly before blocking (not just store state)
       // This prevents stale store state from blocking purchases after removal
       const userId = await AsyncStorage.getItem('user_id');
+      console.log('[IAP] subscribeToPlan called for user:', userId);
+      
       if (userId) {
         const dbStatus = await lifetimeProService.checkUserLifetimeProStatus(userId);
+        console.log('[IAP] Database lifetime pro status:', dbStatus);
+        
         if (dbStatus) {
           // Database says user has lifetime pro, update store and block
+          console.log('[IAP] Blocking purchase - user has lifetime pro in database');
           set({ isLifetimePro: true, isLoading: false });
           return { 
             success: false, 
@@ -222,20 +227,27 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           };
         }
         // Database says no lifetime pro, ensure store matches
-        if (get().isLifetimePro) {
+        const currentStoreState = get().isLifetimePro;
+        console.log('[IAP] Store state before update:', currentStoreState);
+        if (currentStoreState) {
+          console.log('[IAP] Updating store state to false (database says no lifetime pro)');
           set({ isLifetimePro: false });
         }
       }
       
       // Also check store state as secondary defense
       const state = get();
+      console.log('[IAP] Final store state check:', state.isLifetimePro);
       if (state.isLifetimePro) {
+        console.log('[IAP] Blocking purchase - store state says lifetime pro');
         set({ isLoading: false });
         return { 
           success: false, 
           error: 'You already have lifetime pro access! No subscription needed.' 
         };
       }
+      
+      console.log('[IAP] Proceeding with purchase...');
       
       const plans = get().plans;
       const plan = plans.find(p => p.id === planId);

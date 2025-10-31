@@ -14,7 +14,8 @@ class LifetimeProService {
   
   // TEMPORARY: Set to true to disable lifetime pro feature entirely (for testing IAP)
   // This prevents ALL lifetime pro grants and checks
-  private readonly DISABLE_LIFETIME_PRO = false; // Set to true to disable
+  // TODO: Set back to false after IAP testing is complete
+  private readonly DISABLE_LIFETIME_PRO = true; // TEMPORARILY DISABLED FOR TESTING
 
   /**
    * Check if a user is eligible for lifetime pro (within first 20 users)
@@ -243,8 +244,8 @@ class LifetimeProService {
         return { success: false, error: error.message };
       }
 
-      // Update profile
-      await supabase
+      // Update profile - use user_id column (TEXT), not id column (UUID)
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({
           is_lifetime_pro: false,
@@ -252,6 +253,11 @@ class LifetimeProService {
           subscription_status: 'inactive'
         })
         .eq('user_id', userId);
+      
+      if (profileError) {
+        console.error('Error updating profile:', profileError);
+        // Don't fail, but log the error
+      }
 
       // Clear local storage
       await this.clearLifetimeProStatus(userId);

@@ -581,11 +581,14 @@ export default function SubscriptionScreen() {
                           return;
                         }
                         
+                        console.log('[TEST] Removing lifetime pro for user:', userId);
                         const result = await lifetimeProService.removeUserFromLifetimePro(userId);
+                        console.log('[TEST] Remove result:', result);
                         if (result.success) {
                           // CRITICAL: Immediately update Zustand store state BEFORE showing alert
                           // This prevents the subscribe button from checking stale state
                           useSubscriptionStore.setState({ isLifetimePro: false });
+                          console.log('[TEST] Zustand store updated: isLifetimePro = false');
                           
                           Alert.alert(
                             'Success',
