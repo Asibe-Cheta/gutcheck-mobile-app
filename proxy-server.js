@@ -19,7 +19,10 @@ app.post('/api/v1/messages', async (req, res) => {
   try {
     console.log('Proxying request to Anthropic API...');
     
-    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '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';
+    // API key should be set via environment variable for security
+    // For local development, create a .env file with EXPO_PUBLIC_ANTHROPIC_API_KEY
+    // Production builds use EAS environment variables
+    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
     if (!apiKey) {
       return res.status(500).json({ error: 'API key not configured' });

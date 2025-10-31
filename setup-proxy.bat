@@ -8,8 +8,10 @@ npm install express cors http-proxy-middleware nodemon --save
 REM Copy package.json for proxy
 copy package-proxy.json proxy-package.json
 
-REM Set environment variable
-set EXPO_PUBLIC_ANTHROPIC_API_KEY=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
+REM Set environment variable (replace with your own API key)
+REM For security, use a .env file or set it manually:
+REM set EXPO_PUBLIC_ANTHROPIC_API_KEY=your-api-key-here
+REM Production builds use EAS environment variables automatically
 
 echo Proxy server setup complete!
 echo.
