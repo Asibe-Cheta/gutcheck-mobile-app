@@ -10,31 +10,16 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
-console.log('[SUB_FILE] Step A: About to import React...');
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
-console.log('[SUB_FILE] ✅ Step A: React imported');
-
-console.log('[SUB_FILE] Step B: About to import RN components...');
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-console.log('[SUB_FILE] ✅ Step B: RN components imported');
-
-console.log('[SUB_FILE] Step C: About to import SafeAreaView...');
 import { SafeAreaView } from 'react-native-safe-area-context';
-console.log('[SUB_FILE] ✅ Step C: SafeAreaView imported');
-
-console.log('[SUB_FILE] Step D: About to import router...');
 import { useRouter } from 'expo-router';
-console.log('[SUB_FILE] ✅ Step D: Router imported');
-
-console.log('[SUB_FILE] Step E: About to import AsyncStorage...');
 import AsyncStorage from '@react-native-async-storage/async-storage';
-console.log('[SUB_FILE] ✅ Step E: AsyncStorage imported');
-
-console.log('[SUB_FILE] Step F: About to import Constants...');
 import Constants from 'expo-constants';
-console.log('[SUB_FILE] ✅ Step F: Constants imported');
 
-// Wrap ALL imports in a try-catch that logs immediately
+console.log('[SUB_FILE] ✅ All basic imports completed successfully');
+
+// Wrap ALL heavy imports in a try-catch that logs immediately
 // This must run before React component evaluation
 console.log('[SUB_MODULE] Starting subscription module load...');
 
@@ -43,17 +28,25 @@ let lifetimeProService: any = null;
 let importError: string | null = null;
 
 try {
-  console.log('[SUB_MODULE] Step 1: Attempting to import subscriptionStore...');
+  console.log('[SUB_MODULE] Step 1: Attempting to require subscriptionStore...');
+  console.log('[SUB_MODULE] Step 1.0: About to call require()...');
   const storeModule = require('@/lib/stores/subscriptionStore');
-  console.log('[SUB_MODULE] Step 1.1: Module loaded, extracting useSubscriptionStore...');
+  console.log('[SUB_MODULE] Step 1.1: require() completed, module:', typeof storeModule);
+  console.log('[SUB_MODULE] Step 1.2: Extracting useSubscriptionStore...');
   useSubscriptionStore = storeModule.useSubscriptionStore;
+  console.log('[SUB_MODULE] Step 1.3: useSubscriptionStore extracted:', typeof useSubscriptionStore);
   console.log('[SUB_MODULE] ✅ Step 1: subscriptionStore imported successfully');
 } catch (error: any) {
   const errorMsg = `Failed to import subscriptionStore: ${error?.message || 'Unknown error'}`;
-  console.error('[SUB_MODULE] ❌ Step 1 FAILED:', errorMsg);
-  console.error('[SUB_MODULE] Error stack:', error?.stack);
-  console.error('[SUB_MODULE] Error name:', error?.name);
+  console.error('[SUB_MODULE] ❌ Step 1 FAILED at step:', error?.message);
+  console.error('[SUB_MODULE] Error full details:', JSON.stringify({
+    message: error?.message,
+    stack: error?.stack,
+    name: error?.name,
+    toString: String(error)
+  }, null, 2));
   importError = errorMsg;
+  // Don't rethrow - allow component to render with error UI
 }
 
 try {
