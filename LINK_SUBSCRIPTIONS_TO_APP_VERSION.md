@@ -14,19 +14,30 @@ Apple requires that your **first subscription must be submitted with an app vers
    - This is usually under the "App Store" tab
    - Look for a version number like "1.0.0" or "1.1.0"
 
-### Step 2: Find "In-App Purchases and Subscriptions" Section
+### Step 2: Find Where to Link Subscriptions
 
-Once on your app version page:
+The "In-App Purchases and Subscriptions" section might not be visible yet. Try these approaches:
 
-1. **Scroll down** through the version details
-2. Look for a section titled:
-   - **"In-App Purchases and Subscriptions"** 
-   - OR **"Subscriptions"**
-   - It might be near the bottom of the page
-3. If you don't see it, it might be:
-   - Under a **"Prepare for Submission"** section
-   - In a **"Metadata"** or **"App Information"** area
-   - Under **"Pricing and Availability"**
+**Option A: Scroll Down on Version Page**
+1. **On your app version page** (where you see "iOS App Version 1.0")
+2. **Scroll ALL the way down** - it's usually at the very bottom
+3. Look for sections like:
+   - **"In-App Purchases"** (might list both IAP and subscriptions here)
+   - **"In-App Purchases and Subscriptions"**
+   - **"Associated Subscriptions"**
+   - Any section about monetization or purchases
+
+**Option B: Check Left Sidebar "Subscriptions" Link**
+1. In the left sidebar, you see **"Subscriptions"** under "MONETIZATION"
+2. **Click on "Subscriptions"** in the sidebar
+3. This might take you to a page where you can link subscriptions to versions
+4. Look for options like:
+   - **"Link to App Version"**
+   - **"Associate with Version"**
+   - **"Add to Submission"**
+
+**Option C: It Might Auto-Link**
+For first-time subscriptions, Apple sometimes automatically links them when you submit the app version. The section might only appear AFTER you select subscriptions.
 
 ### Step 3: Select Your Subscriptions
 
@@ -56,25 +67,41 @@ Once subscriptions are linked:
 3. Click **"Submit for Review"** or **"Add for Review"**
 4. This will submit **both the app version AND the subscriptions together**
 
-## If You Can't Find the Section
+## Alternative: The Section Might Not Exist Yet
 
-### Option A: Create a New App Version
-Sometimes you need a fresh version to link subscriptions:
+**Important Discovery**: Apple may have changed how subscriptions are linked. Try these steps:
 
-1. Go to your app page
-2. Click **"+ Version"** or **"Add Version"**
-3. Enter a new version number (e.g., "1.1.0")
-4. The new version will have the "In-App Purchases and Subscriptions" section
+### Method 1: Click "Subscriptions" in Left Sidebar
+1. **On the app version page**, look at the left sidebar
+2. Under **"MONETIZATION"**, click **"Subscriptions"**
+3. This should show your subscription group "GutCheck Premium"
+4. Check if there's a way to link/associate with the app version from this page
+5. Look for buttons like:
+   - **"Add to App Version"**
+   - **"Link to Version"**
+   - **"Associate with Version"**
+   - Or a dropdown/selector for app versions
 
-### Option B: Check "Prepare for Submission" Page
-1. On your app page, look for **"Prepare for Submission"** tab
-2. This page sometimes has subscription linking options
-3. It might be in a different location than expected
+### Method 2: Scroll to Bottom of Version Page
+1. On the "iOS App Version 1.0" page
+2. **Scroll all the way to the bottom**
+3. Look past all sections (App Store, Screenshots, etc.)
+4. The subscription linking might be at the very end, or might appear after you fill other required fields
 
-### Option C: Subscriptions Tab
-1. Some apps have a **"Subscriptions"** tab separate from versions
-2. Check if there's a way to link subscriptions from there
-3. Look for **"Link to App Version"** or similar option
+### Method 3: It Auto-Links When Submitting
+Some users report that subscriptions automatically link when you:
+1. Complete all app version metadata
+2. Have subscriptions ready (not "Missing Metadata")
+3. Click **"Add for Review"**
+4. Apple associates the subscriptions automatically
+
+**Try submitting the app version** - if subscriptions aren't linked, Apple will tell you during review.
+
+### Method 4: Check Subscription Group Page
+1. Click **"Subscriptions"** in left sidebar
+2. Click on **"GutCheck Premium"** (your subscription group)
+3. Look for version linking options there
+4. Check if subscriptions show which app version they're associated with
 
 ## What This Does
 
