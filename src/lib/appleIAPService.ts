@@ -13,8 +13,9 @@ let InAppPurchases: any = null;
 
 // TEMPORARY: Flag to completely disable IAP native module loading
 // Set to true to bypass native module entirely (for testing crash)
-// CRASH IS FIXED - Now set to false to enable IAP functionality
-const BYPASS_IAP_NATIVE_MODULE = false; // Crash fixed, IAP can now be enabled
+// KEEP AS TRUE until we can properly debug the native module crash
+// The crash happens when require('expo-in-app-purchases') is called
+const BYPASS_IAP_NATIVE_MODULE = true; // Keep bypassed - native module causes crash
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
@@ -121,6 +122,30 @@ class AppleIAPService {
   }
 
   async getProducts(): Promise<{ success: boolean; products?: any[]; error?: string }> {
+    // If bypass is enabled, return mock products so app doesn't crash
+    if (BYPASS_IAP_NATIVE_MODULE) {
+      console.log('[IAP] getProducts: Bypass enabled, returning mock products');
+      return {
+        success: true,
+        products: [
+          {
+            productId: PRODUCT_IDS.PREMIUM_MONTHLY,
+            title: 'Premium Monthly',
+            description: 'Full access to all features',
+            price: 9.99,
+            currency: 'GBP',
+          },
+          {
+            productId: PRODUCT_IDS.PREMIUM_YEARLY,
+            title: 'Premium Yearly',
+            description: 'Full access to all features - Save 17%',
+            price: 99.99,
+            currency: 'GBP',
+          }
+        ]
+      };
+    }
+    
     // Load IAP module on first use (lazy loading)
     if (!InAppPurchases) {
       const loaded = loadIAPModule();
@@ -193,6 +218,14 @@ class AppleIAPService {
 
   async purchaseProduct(productId: string): Promise<{ success: boolean; subscription?: AppleSubscription; error?: string }> {
     try {
+      // If bypass is enabled, return a clear error message
+      if (BYPASS_IAP_NATIVE_MODULE) {
+        return {
+          success: false,
+          error: 'IAP functionality is currently disabled for testing. The native module causes crashes. Please contact support or wait for the next update.'
+        };
+      }
+      
       // Only block in Expo Go - TestFlight/App Store builds should have IAP available
       if (isExpoGo) {
         return {
