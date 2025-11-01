@@ -12,6 +12,11 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development"
+      },
+      "ios": {
+        "simulator": false,
+        "bundler": "metro",
+        "buildConfiguration": "Release"
       }
     },
     "production": {
@@ -19,6 +24,11 @@
       "env": {
         "EAS_ENABLE_EXPO_DOCTOR": "0",
         "EXPO_PUBLIC_APP_ENV": "production"
+      },
+      "ios": {
+        "simulator": false,
+        "bundler": "metro",
+        "buildConfiguration": "Release"
       }
     }
   },

@@ -4,6 +4,7 @@
  */
 
 import Constants from 'expo-constants';
+import { NativeModules } from 'react-native';
 
 // Check if we're in Expo Go (development) or standalone build (production/TestFlight)
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -36,12 +37,20 @@ function loadIAPModule(): boolean {
   try {
     // Only load in standalone builds (production/TestFlight), not Expo Go
     if (!isExpoGo) {
-      console.log('[IAP] Attempting to require expo-in-app-purchases...');
+      console.log('[IAP] Attempting to load expo-in-app-purchases...');
+      
+      // Try method 1: Check if native module is available first
+      const nativeModuleName = 'ExpoInAppPurchases';
+      if (NativeModules[nativeModuleName]) {
+        console.log('[IAP] ✅ Native module found in NativeModules:', nativeModuleName);
+        // Still need to require the JS wrapper
+      }
       
       // Wrap require in try-catch with detailed error handling
       let expoIAP: any = null;
       try {
-        // Use dynamic import-style require with error boundary
+        // Method 1: Try standard require
+        console.log('[IAP] Attempting require("expo-in-app-purchases")...');
         expoIAP = require('expo-in-app-purchases');
         console.log('[IAP] ✅ expo-in-app-purchases module loaded:', typeof expoIAP);
         console.log('[IAP] Module keys:', Object.keys(expoIAP || {}));
@@ -50,6 +59,14 @@ function loadIAPModule(): boolean {
         console.error('[IAP] Error type:', requireError?.constructor?.name);
         console.error('[IAP] Error message:', requireError?.message);
         console.error('[IAP] Error code:', requireError?.code);
+        console.error('[IAP] Available NativeModules:', Object.keys(NativeModules));
+        
+        // If require fails, check if it's a module linking issue
+        if (!NativeModules[nativeModuleName]) {
+          console.error('[IAP] ⚠️ Native module not found in NativeModules. This suggests a linking issue.');
+          console.error('[IAP] The module may not be properly linked in the build.');
+        }
+        
         // Re-throw to be caught by outer catch
         throw requireError;
       }
