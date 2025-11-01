@@ -48,7 +48,11 @@ module.exports = {
       predictiveBackGestureEnabled: false,
       package: 'org.mygutcheck.app',
     },
-    plugins: ['expo-router'],
+    plugins: [
+      'expo-router',
+      // expo-in-app-purchases auto-links in SDK 54+, but explicit config can help
+      // '@expo/config-plugins',
+    ],
     scheme: 'gutcheck',
     experiments: {
       typedRoutes: true,

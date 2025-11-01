@@ -12,10 +12,9 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient';
 let InAppPurchases: any = null;
 
 // TEMPORARY: Flag to completely disable IAP native module loading
-// Set to true to bypass native module entirely (for testing crash)
-// KEEP AS TRUE until we can properly debug the native module crash
-// The crash happens when require('expo-in-app-purchases') is called
-const BYPASS_IAP_NATIVE_MODULE = true; // Keep bypassed - native module causes crash
+// Set to false to enable IAP - will try to load with extensive error handling
+// If it crashes, set back to true
+const BYPASS_IAP_NATIVE_MODULE = false; // Enable IAP - try with error handling
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
@@ -36,8 +35,22 @@ function loadIAPModule(): boolean {
     // Only load in standalone builds (production/TestFlight), not Expo Go
     if (!isExpoGo) {
       console.log('[IAP] Attempting to require expo-in-app-purchases...');
-      const expoIAP = require('expo-in-app-purchases');
-      console.log('[IAP] expo-in-app-purchases module:', expoIAP);
+      
+      // Wrap require in try-catch with detailed error handling
+      let expoIAP: any = null;
+      try {
+        // Use dynamic import-style require with error boundary
+        expoIAP = require('expo-in-app-purchases');
+        console.log('[IAP] ✅ expo-in-app-purchases module loaded:', typeof expoIAP);
+        console.log('[IAP] Module keys:', Object.keys(expoIAP || {}));
+      } catch (requireError: any) {
+        console.error('[IAP] ❌ require() failed:', requireError);
+        console.error('[IAP] Error type:', requireError?.constructor?.name);
+        console.error('[IAP] Error message:', requireError?.message);
+        console.error('[IAP] Error code:', requireError?.code);
+        // Re-throw to be caught by outer catch
+        throw requireError;
+      }
       
       // Try different import structures
       if (expoIAP.InAppPurchases) {
