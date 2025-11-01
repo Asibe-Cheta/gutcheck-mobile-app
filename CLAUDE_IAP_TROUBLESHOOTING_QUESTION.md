@@ -117,6 +117,11 @@ function loadIAPModule(): boolean {
 - All metadata complete (pricing, localization, Review Notes)
 - Subscription group localized
 
+### 6. iOS Capability ✅
+- **In-App Purchase capability is ENABLED** in Apple Developer Portal
+- Verified in Certificates, Identifiers & Profiles → Identifiers → com.gutcheck.app
+- This is NOT the issue - capability was enabled from the start
+
 ## Current Status
 
 ### Working ✅

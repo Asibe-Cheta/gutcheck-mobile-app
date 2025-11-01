@@ -57,10 +57,19 @@ infoPlist: {
 
 ## Next Steps (In Order)
 
-### Step 1: Check iOS Capability (Manual - Do This First!)
-1. Follow `CHECK_IOS_IAP_CAPABILITY.md`
-2. Verify In-App Purchase is enabled in Apple Developer Portal
-3. This is the #1 most likely cause
+### Step 1: View Crash Logs on Windows ✅
+1. Follow `WINDOWS_CRASH_LOG_GUIDE.md`
+2. Access App Store Connect → TestFlight → Build → Crashes tab
+3. **This is critical** - crash logs will show the exact error
+4. Copy the stack trace and exception details
+
+**Note**: iOS IAP capability is already enabled ✅ - ruled out as cause
+
+### Step 1b: Check Enhanced Diagnostic Logs
+After rebuild, test and check logs for:
+- Which NativeModules are available before crash
+- Whether `ExpoInAppPurchases` appears in NativeModules
+- The exact point where crash occurs
 
 ### Step 2: Rebuild with Enhanced Config
 ```bash
@@ -111,12 +120,14 @@ eas build --platform ios --profile production --clear-cache
 - Clean rebuild will fix any stale caches
 - Fresh install ensures correct versions
 
-## Most Likely Outcome
+## Most Likely Outcome (UPDATED)
 
-Based on Claude's assessment:
-- **70% chance**: Missing iOS IAP capability → Check `CHECK_IOS_IAP_CAPABILITY.md`
-- **20% chance**: Native module linking → Clean rebuild will fix
-- **10% chance**: Version incompatibility → Package updates should fix
+Based on current status (IAP capability is enabled):
+- **60% chance**: Native module not properly linked in EAS build → Check build logs, clean rebuild
+- **30% chance**: Module initialization timing issue → Try delayed loading or initialization at app start
+- **10% chance**: Package/version incompatibility → Already updated, but may need different approach
+
+**Critical**: We need the crash logs from TestFlight to know for sure. Without them, we're guessing.
 
 ## Critical: Get Crash Logs
 
