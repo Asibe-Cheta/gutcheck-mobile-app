@@ -12,9 +12,9 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient';
 let InAppPurchases: any = null;
 
 // TEMPORARY: Flag to completely disable IAP native module loading
-// Set to false to enable IAP - will try to load with extensive error handling
-// If it crashes, set back to true
-const BYPASS_IAP_NATIVE_MODULE = false; // Enable IAP - try with error handling
+// Set to true to bypass native module entirely (crashes when loaded)
+// ROOT CAUSE: The native module crashes during require() - needs investigation
+const BYPASS_IAP_NATIVE_MODULE = true; // Keep bypassed - native module causes crash
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
