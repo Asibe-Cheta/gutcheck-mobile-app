@@ -40,11 +40,25 @@ class LifetimeProService {
 
       const currentCount = lifetimeProUsers?.length || 0;
 
-      // Check if user is already a lifetime pro user
+      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (profileError || !profile?.id) {
+        console.warn('[LIFETIME_PRO] Profile not found for user_id:', userId);
+        return { isEligible: false, isLifetimePro: false, count: currentCount };
+      }
+      
+      const profileId = profile.id; // UUID needed for lifetime_pro_users
+      
+      // Check if user is already a lifetime pro user (using UUID)
       const { data: existingUser, error: userError } = await supabase
         .from('lifetime_pro_users')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', profileId) // Use UUID, not TEXT
         .eq('is_active', true)
         .single();
 
@@ -82,11 +96,25 @@ class LifetimeProService {
         };
       }
 
-      // Grant lifetime pro status
+      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (profileError || !profile?.id) {
+        console.error('[LIFETIME_PRO] Profile not found for user_id:', userId);
+        return { success: false, error: 'Profile not found' };
+      }
+      
+      const profileId = profile.id; // UUID needed for lifetime_pro_users
+      
+      // Grant lifetime pro status (using UUID)
       const { data, error } = await supabase
         .from('lifetime_pro_users')
         .insert({
-          user_id: userId,
+          user_id: profileId, // Use UUID, not TEXT
           granted_at: new Date().toISOString(),
           is_active: true
         })
@@ -123,11 +151,27 @@ class LifetimeProService {
     }
     
     try {
-      // Always check database first for accurate status
+      // CRITICAL FIX: lifetime_pro_users.user_id is UUID (references profiles.id)
+      // but userId parameter is TEXT (profiles.user_id). Need to get profiles.id first.
+      // First, get the profiles.id (UUID) from profiles.user_id (TEXT)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (profileError || !profile?.id) {
+        console.warn('[LIFETIME_PRO] Profile not found for user_id:', userId);
+        return false;
+      }
+      
+      const profileId = profile.id; // This is the UUID we need
+      
+      // Now query lifetime_pro_users using profiles.id (UUID)
       const { data, error } = await supabase
         .from('lifetime_pro_users')
         .select('is_active')
-        .eq('user_id', userId)
+        .eq('user_id', profileId) // Use UUID, not TEXT
         .eq('is_active', true)
         .single();
 
@@ -233,11 +277,25 @@ class LifetimeProService {
    */
   async removeUserFromLifetimePro(userId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Remove from database
+      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+      
+      if (profileError || !profile?.id) {
+        console.error('[LIFETIME_PRO] Profile not found for user_id:', userId);
+        return { success: false, error: 'Profile not found' };
+      }
+      
+      const profileId = profile.id; // UUID needed for lifetime_pro_users
+      
+      // Remove from database (using UUID)
       const { error } = await supabase
         .from('lifetime_pro_users')
         .delete()
-        .eq('user_id', userId);
+        .eq('user_id', profileId); // Use UUID, not TEXT
 
       if (error) {
         console.error('Error removing user from lifetime pro:', error);

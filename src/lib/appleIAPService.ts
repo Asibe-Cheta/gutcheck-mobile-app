@@ -13,7 +13,8 @@ let InAppPurchases: any = null;
 
 // TEMPORARY: Flag to completely disable IAP native module loading
 // Set to true to bypass native module entirely (for testing crash)
-const BYPASS_IAP_NATIVE_MODULE = true; // TODO: Set back to false after confirming crash cause
+// CRASH IS FIXED - Now set to false to enable IAP functionality
+const BYPASS_IAP_NATIVE_MODULE = false; // Crash fixed, IAP can now be enabled
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
