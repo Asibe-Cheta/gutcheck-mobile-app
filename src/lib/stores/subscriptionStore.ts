@@ -305,24 +305,45 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       
       // First, check current status from database (bypasses cache) - this is the source of truth
       const currentStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+      console.log('[STORE] checkLifetimePro: Database status for user:', userId, 'is:', currentStatus);
       
-      // Then check eligibility to get count
+      // CRITICAL: If database explicitly says FALSE, do NOT re-grant even if eligible
+      // This prevents re-granting after explicit removal for testing
+      if (currentStatus === false) {
+        console.log('[STORE] checkLifetimePro: User has explicitly been removed from lifetime pro. Not re-granting.');
+        const { count } = await getLifetimeProService().checkLifetimeProEligibility(userId);
+        set({ 
+          isLifetimePro: false, 
+          lifetimeProCount: count, 
+          isLoading: false 
+        });
+        return; // EXIT EARLY - don't grant even if eligible
+      }
+      
+      // If database says true, user is lifetime pro - just update count
+      if (currentStatus === true) {
+        console.log('[STORE] checkLifetimePro: User already has lifetime pro in database.');
+        const { count } = await getLifetimeProService().checkLifetimeProEligibility(userId);
+        set({ 
+          isLifetimePro: true, 
+          lifetimeProCount: count, 
+          isLoading: false 
+        });
+        return; // EXIT EARLY - already lifetime pro
+      }
+      
+      // If database status is null/undefined (new user), check eligibility
       const { isEligible, isLifetimePro, count } = await getLifetimeProService().checkLifetimeProEligibility(userId);
       
-      // CRITICAL: Use database status as source of truth
-      // If database says false, user is NOT lifetime pro (even if they're in first 20)
-      // This prevents re-granting after explicit removal for testing
-      const actualIsLifetimePro = currentStatus;
-      
       set({ 
-        isLifetimePro: actualIsLifetimePro, 
+        isLifetimePro: isLifetimePro, 
         lifetimeProCount: count, 
         isLoading: false 
       });
       
-      // Only grant if eligible AND database confirms they're not already lifetime pro
-      // This prevents re-granting after removal
-      if (isEligible && !actualIsLifetimePro && !currentStatus) {
+      // Only grant if eligible AND user doesn't already have it (for new users only)
+      if (isEligible && !isLifetimePro) {
+        console.log('[STORE] checkLifetimePro: New user is eligible, granting lifetime pro...');
         const result = await getLifetimeProService().grantLifetimePro(userId);
         if (result.success) {
           set({ isLifetimePro: true });
