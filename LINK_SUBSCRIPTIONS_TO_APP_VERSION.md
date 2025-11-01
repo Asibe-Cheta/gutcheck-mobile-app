@@ -3,6 +3,10 @@
 ## Overview
 Apple requires that your **first subscription must be submitted with an app version**. You cannot submit subscriptions alone. This must be done in App Store Connect (web interface).
 
+**Official Apple Documentation:**
+- [Offer auto-renewable subscriptions](https://developer.apple.com/help/app-store-connect/manage-subscriptions/offer-auto-renewable-subscriptions)
+- [Overview of submitting for review](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/overview-of-submitting-for-review)
+
 ## Step-by-Step Instructions
 
 ### Step 1: Navigate to Your App Version
@@ -88,14 +92,18 @@ Once subscriptions are linked:
 3. Look past all sections (App Store, Screenshots, etc.)
 4. The subscription linking might be at the very end, or might appear after you fill other required fields
 
-### Method 3: It Auto-Links When Submitting
-Some users report that subscriptions automatically link when you:
-1. Complete all app version metadata
-2. Have subscriptions ready (not "Missing Metadata")
-3. Click **"Add for Review"**
-4. Apple associates the subscriptions automatically
+### Method 3: It Auto-Links When Submitting (Most Likely)
+According to Apple's workflow, subscriptions are typically associated with app versions **during the submission process**:
 
-**Try submitting the app version** - if subscriptions aren't linked, Apple will tell you during review.
+1. Complete all app version metadata (screenshots, description, etc.)
+2. Ensure subscriptions are ready (fill Review Notes if needed)
+3. Click **"Add for Review"** or **"Submit for Review"**
+4. **During submission**, Apple will:
+   - Show available subscriptions to include
+   - OR automatically associate ready subscriptions
+   - OR prompt you to select subscriptions if needed
+
+**Try submitting the app version** - if subscriptions aren't linked, Apple will tell you exactly what's missing during review.
 
 ### Method 4: Check Subscription Group Page
 1. Click **"Subscriptions"** in left sidebar
