@@ -84,11 +84,31 @@ function loadIAPModule(): boolean {
 - Tried wrapping `require()` in multiple try-catch blocks
 - **Result**: Crash still happens - native-level crash bypasses JavaScript error handling
 
-### 4. Bypass Flag ✅
-- Created `BYPASS_IAP_NATIVE_MODULE` flag
-- When `true`: App works perfectly, shows mock products
-- When `false`: App crashes immediately when module is required
-- Currently set to `true` to prevent crashes
+### 4. Bypass Flag - Circular Problem ⚠️
+- Created `BYPASS_IAP_NATIVE_MODULE` flag to toggle IAP module loading
+- **When `BYPASS_IAP_NATIVE_MODULE = true`**:
+  - ✅ App works perfectly
+  - ✅ Subscription screen loads without crashing
+  - ✅ Mock products display correctly
+  - ❌ Shows error message: "IAP functionality is currently disabled for testing"
+  - ❌ Cannot test real IAP purchases
+  - ❌ App Store will reject because IAP doesn't work
+  
+- **When `BYPASS_IAP_NATIVE_MODULE = false`**:
+  - ❌ App crashes immediately when user taps "Subscription" button
+  - ❌ Crash happens at native level (not catchable by JavaScript)
+  - ❌ App terminates completely
+  - ❌ No way to test IAP functionality
+
+**This creates a circular problem**: 
+- We MUST enable IAP for App Store approval
+- But enabling IAP causes the app to crash
+- So we're stuck: Can't submit without IAP, but can't enable IAP without crashing
+
+**We've repeatedly tried:**
+1. Enable IAP (`BYPASS_IAP_NATIVE_MODULE = false`) → App crashes
+2. Disable IAP (`BYPASS_IAP_NATIVE_MODULE = true`) → App works but IAP doesn't function
+3. This cycle has repeated multiple times with no resolution
 
 ### 5. App Store Connect Setup ✅
 - Subscriptions created in App Store Connect
@@ -194,10 +214,19 @@ module.exports = {
 
 1. ❌ Added to plugins array → Build failed
 2. ✅ Removed from plugins → Build succeeds
-3. ✅ Updated packages → Still crashes
+3. ✅ Updated packages (SDK 54.0.17 → 54.0.21) → Testing now, may still crash
 4. ✅ Lazy loading → Still crashes
 5. ✅ Multiple try-catch blocks → Still crashes (native-level)
-6. ✅ Bypass flag → Works but defeats purpose
+6. ⚠️ **Bypass flag creates circular problem**:
+   - Enable (`false`): App crashes, unusable
+   - Disable (`true`): App works but IAP non-functional, App Store will reject
+   - We're stuck in this loop with no solution
+
+**Critical Issue**: We've been going in circles because:
+- Every attempt to enable IAP results in crash
+- Disabling IAP prevents crash but makes IAP non-functional
+- App Store requires functional IAP for approval
+- We cannot break out of this cycle
 
 ## Next Steps I'm Considering
 
@@ -232,6 +261,31 @@ The app was previously using Stripe for payments, but switched to Apple IAP for 
 3. User taps "Subscribe"
 4. Store calls `appleIAPService.purchaseProduct()`
 5. **CRASH**: Happens when service tries to load native module
+
+### The Circular Problem Explained
+
+We are stuck in a development loop:
+
+**Attempt 1**: Enable IAP (`BYPASS_IAP_NATIVE_MODULE = false`)
+- Rebuild app
+- Test in TestFlight
+- User taps "Subscription"
+- **Result**: Immediate crash, app unusable
+
+**Attempt 2**: Disable IAP (`BYPASS_IAP_NATIVE_MODULE = true`)  
+- Rebuild app
+- Test in TestFlight
+- User taps "Subscription"
+- **Result**: App works, but shows "IAP functionality is currently disabled"
+- **Problem**: Apple will reject because IAP doesn't function
+
+**Attempt 3-N**: Repeated attempts to fix the crash
+- Updated packages
+- Changed app.config.js
+- Modified import methods
+- **Result**: Still crashes when enabled, still non-functional when disabled
+
+**Current State**: We've tried multiple iterations but cannot break out of this loop. The crash is reproducible every time IAP is enabled, and the only way to prevent the crash is to disable IAP, which makes the app non-compliant for App Store submission.
 
 ---
 
