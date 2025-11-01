@@ -2,42 +2,37 @@
 
 ## The Problem
 
-Your subscription shows "Missing Metadata" because of **two specific issues** visible in your screenshot:
+Your subscription shows "Missing Metadata" because of **one critical issue**:
 
-1. ❌ **"No pricing set for this subscription"** (Most Critical!)
-2. ❌ **Review Notes field is empty**
+1. ❌ **"Subscription Prices" section is EMPTY** (Most Critical!)
+   - The "Current Prices" section shows no prices configured
+   - This is why "Missing Metadata" status appears
 
-## Solution: Fix Both Issues
+**Note**: Review Notes ARE filled ✅ - that's not the issue.
 
-### Step 1: Set Subscription Pricing (CRITICAL - Do This First!)
+## Solution: Set Subscription Pricing
 
-1. **On the "Premium Monthly" subscription page**, scroll to **"Subscription Prices"** section
-2. **Expand the section** (click to open it)
-3. You should see options to set pricing. Click **"Set Up Pricing"** or similar button
-4. **Choose your pricing tier**:
-   - For UK: £9.99/month
-   - For other territories: Set default pricing or territory-specific prices
+### Step 1: Set Pricing for Premium Monthly (CRITICAL!)
+
+From the "Subscription Pricing" page you showed me, I can see the "Current Prices" section is **completely empty**. Here's how to fix it:
+
+1. **On the "Subscription Pricing" page** (the one showing "Subscription Prices" tab)
+2. **Click "All Prices and Currencies"** (blue link on the right) OR
+3. **Look for a "+" button or "Set Price" button** to add pricing
+4. **Set pricing tier**:
+   - For UK/GBP: £9.99/month
+   - OR set base price and let Apple calculate other territories
 5. **Save** the pricing
-6. **Repeat for "Premium Yearly"**:
-   - Set £99.99/year
+6. **Verify** the "Current Prices" section now shows your price
 
 **Important**: Until pricing is set, the subscription cannot be queried or purchased, even in sandbox!
 
-### Step 2: Fill Review Notes
+### Step 2: Set Pricing for Premium Yearly
 
-1. **Scroll to "Review Information"** section (at bottom of page)
-2. **Click in the "Review Notes"** text field
-3. **Paste this text**:
-   ```
-   This auto-renewable subscription provides unlimited AI conversations, image and document analysis, personalized guidance tailored to user needs, priority customer support, and advanced insights into conversations.
-   
-   The subscription auto-renews monthly/yearly unless cancelled. Users can test the subscription during review using their Apple ID. This subscription offers a 7-day free trial period for new subscribers.
-   
-   Previous rejection issues have been resolved:
-   - IAP crash has been fixed - subscription screen now loads properly
-   - Image has been updated to be clear and high resolution
-   ```
-4. **Save** changes
+1. **Navigate to "Premium Yearly" subscription**
+2. **Go to "Subscription Pricing"** section
+3. **Set £99.99/year**
+4. **Save**
 
 ### Step 3: Verify Both Subscriptions
 
@@ -71,18 +66,19 @@ Once both issues are resolved:
 ## Quick Checklist
 
 For **Premium Monthly**:
-- [ ] Expand "Subscription Prices" section
+- [ ] Go to "Subscription Pricing" page
+- [ ] Click "All Prices and Currencies" or find "Set Price" button
 - [ ] Set £9.99/month (or appropriate pricing tier)
 - [ ] Save pricing
-- [ ] Fill Review Notes
-- [ ] Save all changes
+- [ ] Verify "Current Prices" section now shows the price
+- ✅ Review Notes already filled - no action needed
 
 For **Premium Yearly**:
-- [ ] Expand "Subscription Prices" section
+- [ ] Go to "Subscription Pricing" page
 - [ ] Set £99.99/year (or appropriate pricing tier)
 - [ ] Save pricing
-- [ ] Fill Review Notes
-- [ ] Save all changes
+- [ ] Verify "Current Prices" section now shows the price
+- [ ] Fill Review Notes (if not already done)
 
 Then:
 - [ ] Wait 5-10 minutes
@@ -103,8 +99,10 @@ After fixing pricing and Review Notes:
 ## Most Likely Scenario
 
 Once you:
-1. ✅ Set pricing (fixes "No pricing set" message)
-2. ✅ Fill Review Notes
+1. ✅ Set pricing (fixes empty "Current Prices" section)
+2. ✅ Review Notes are already filled ✅
 
 The "Missing Metadata" status should disappear and you'll be able to test in sandbox! 🚀
+
+**The issue is ONLY the missing pricing configuration** - Review Notes are already complete.
 
