@@ -39,20 +39,36 @@ function loadIAPModule(): boolean {
     if (!isExpoGo) {
       console.log('[IAP] Attempting to load expo-in-app-purchases...');
       
-      // Try method 1: Check if native module is available first
+      // DIAGNOSTIC: Check what NativeModules are available BEFORE require
       const nativeModuleName = 'ExpoInAppPurchases';
+      console.log('[IAP] === DIAGNOSTIC: Before require() ===');
+      console.log('[IAP] Total NativeModules count:', Object.keys(NativeModules).length);
+      console.log('[IAP] All NativeModules:', Object.keys(NativeModules));
+      
+      const expoModules = Object.keys(NativeModules).filter(name => 
+        name.toLowerCase().includes('expo') || 
+        name.toLowerCase().includes('purchase') || 
+        name.toLowerCase().includes('iap')
+      );
+      console.log('[IAP] Expo/IAP-related modules:', expoModules);
+      
       if (NativeModules[nativeModuleName]) {
         console.log('[IAP] ✅ Native module found in NativeModules:', nativeModuleName);
-        // Still need to require the JS wrapper
+      } else {
+        console.log('[IAP] ⚠️ Native module NOT found in NativeModules:', nativeModuleName);
+        console.log('[IAP] ⚠️ This strongly suggests module is not linked in build');
+        console.log('[IAP] ⚠️ Module may need to be explicitly included in EAS build');
       }
       
       // Wrap require in try-catch with detailed error handling
       let expoIAP: any = null;
       try {
-        // Method 1: Try standard require
-        console.log('[IAP] Attempting require("expo-in-app-purchases")...');
+        // Method 1: Try standard require (this is where crash happens)
+        console.log('[IAP] === ABOUT TO CALL require() - CRASH POINT ===');
+        console.log('[IAP] If app crashes now, it happens during require()');
+        console.log('[IAP] This suggests native module initialization failure');
         expoIAP = require('expo-in-app-purchases');
-        console.log('[IAP] ✅ expo-in-app-purchases module loaded:', typeof expoIAP);
+        console.log('[IAP] ✅ require() SUCCESS - expo-in-app-purchases module loaded:', typeof expoIAP);
         console.log('[IAP] Module keys:', Object.keys(expoIAP || {}));
       } catch (requireError: any) {
         console.error('[IAP] ❌ require() failed:', requireError);
