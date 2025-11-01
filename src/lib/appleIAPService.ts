@@ -97,8 +97,9 @@ export interface AppleSubscription {
 }
 
 export const PRODUCT_IDS = {
-  PREMIUM_MONTHLY: 'com.mygutcheck.premium.monthly',
-  PREMIUM_YEARLY: 'com.mygutcheck.premium.yearly',
+  // UPDATED: Match Product IDs from App Store Connect Subscriptions tab
+  PREMIUM_MONTHLY: 'com.gutcheck.app.premium.monthly',
+  PREMIUM_YEARLY: 'com.gutcheck.app.premium.yearly',
 };
 
 class AppleIAPService {

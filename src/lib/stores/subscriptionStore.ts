@@ -51,8 +51,8 @@ function getIAPService() {
         restorePurchases: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
       };
       PRODUCT_IDS = {
-        PREMIUM_MONTHLY: 'com.mygutcheck.premium.monthly',
-        PREMIUM_YEARLY: 'com.mygutcheck.premium.yearly',
+        PREMIUM_MONTHLY: 'com.gutcheck.app.premium.monthly',
+        PREMIUM_YEARLY: 'com.gutcheck.app.premium.yearly',
       };
     }
   }
@@ -145,8 +145,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       // Ensure productIds exists even if IAP service failed
       if (!productIds) {
         productIds = {
-          PREMIUM_MONTHLY: 'com.mygutcheck.premium.monthly',
-          PREMIUM_YEARLY: 'com.mygutcheck.premium.yearly',
+          PREMIUM_MONTHLY: 'com.gutcheck.app.premium.monthly',
+          PREMIUM_YEARLY: 'com.gutcheck.app.premium.yearly',
         };
         console.warn('[STORE] ⚠️ Using fallback product IDs');
       }
