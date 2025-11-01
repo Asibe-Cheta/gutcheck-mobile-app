@@ -26,7 +26,9 @@ export default function PaymentForm({ planId, amount, currency, onSuccess, onErr
 
   const handlePayment = async () => {
     // DEPRECATED: This component is not used - Apple IAP is used instead
+    setIsLoading(true);
     onError('This payment method is deprecated. Please use Apple In-App Purchase.');
+    setIsLoading(false);
     return;
     
     // Original Stripe code (commented out):
