@@ -50,7 +50,7 @@ module.exports = {
     },
     plugins: [
       'expo-router',
-      // expo-in-app-purchases auto-links in SDK 54+, but explicit config can help
+      'expo-in-app-purchases', // Explicit plugin for IAP native module linking
       // '@expo/config-plugins',
     ],
     scheme: 'gutcheck',
