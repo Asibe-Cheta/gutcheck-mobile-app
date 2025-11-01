@@ -278,13 +278,13 @@ class LifetimeProService {
   async removeUserFromLifetimePro(userId: string): Promise<{ success: boolean; error?: string }> {
     try {
       // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile, error: profileFetchError } = await supabase
         .from('profiles')
         .select('id')
         .eq('user_id', userId)
         .single();
       
-      if (profileError || !profile?.id) {
+      if (profileFetchError || !profile?.id) {
         console.error('[LIFETIME_PRO] Profile not found for user_id:', userId);
         return { success: false, error: 'Profile not found' };
       }
@@ -292,18 +292,18 @@ class LifetimeProService {
       const profileId = profile.id; // UUID needed for lifetime_pro_users
       
       // Remove from database (using UUID)
-      const { error } = await supabase
+      const { error: deleteError } = await supabase
         .from('lifetime_pro_users')
         .delete()
         .eq('user_id', profileId); // Use UUID, not TEXT
 
-      if (error) {
-        console.error('Error removing user from lifetime pro:', error);
-        return { success: false, error: error.message };
+      if (deleteError) {
+        console.error('Error removing user from lifetime pro:', deleteError);
+        return { success: false, error: deleteError.message };
       }
 
       // Update profile - use user_id column (TEXT), not id column (UUID)
-      const { error: profileError } = await supabase
+      const { error: profileUpdateError } = await supabase
         .from('profiles')
         .update({
           is_lifetime_pro: false,
@@ -312,8 +312,8 @@ class LifetimeProService {
         })
         .eq('user_id', userId);
       
-      if (profileError) {
-        console.error('Error updating profile:', profileError);
+      if (profileUpdateError) {
+        console.error('Error updating profile:', profileUpdateError);
         // Don't fail, but log the error
       }
 
