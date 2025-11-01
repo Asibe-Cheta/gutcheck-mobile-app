@@ -93,6 +93,13 @@ class AppleIAPService {
 
   async initialize(): Promise<{ success: boolean; error?: string }> {
     try {
+      // If bypass is enabled, return success immediately (mock mode)
+      if (BYPASS_IAP_NATIVE_MODULE) {
+        console.log('[IAP] initialize: Bypass enabled, using mock mode');
+        this.isInitialized = true; // Mark as initialized so we don't try again
+        return { success: true };
+      }
+      
       if (this.isInitialized) {
         return { success: true };
       }
