@@ -38,23 +38,28 @@ In App Store Connect Subscriptions tab:
 3. Repeat for "Premium Yearly"
 4. Submit for review
 
-### Step 2: Wait for Apple Approval ⏳
+### Step 2: Test in Sandbox (Optional - Before Approval) 🧪
+**Good news**: You can test in TestFlight sandbox BEFORE approval if metadata is complete!
+
+Once "Missing Metadata" is resolved:
+1. Set `BYPASS_IAP_NATIVE_MODULE = false` in `src/lib/appleIAPService.ts`
+2. Rebuild: `eas build --platform ios --profile production`
+3. Test in TestFlight with sandbox account
+4. Sandbox works even when subscriptions are "Waiting for Review" ✅
+
+**Note**: Sandbox testing only works if metadata is complete (no "Missing Metadata" status)
+
+### Step 3: Wait for Apple Approval ⏳
 - Apple typically approves subscriptions within 24-48 hours
 - You'll receive an email when approved
 - Status will change from "Waiting for Review" to "Ready to Submit" or "Approved"
+- **OR test in sandbox while waiting!**
 
-### Step 3: Rebuild App 🏗️
-Once subscriptions are approved:
-```bash
-eas build --platform ios --profile production
-```
-
-### Step 4: Test IAP 🔍
-After rebuilding:
-1. Try enabling IAP (set `BYPASS_IAP_NATIVE_MODULE = false`)
-2. Test in TestFlight
-3. If it still crashes, investigate native module linking
-4. If it works, celebrate! 🎉
+### Step 4: Production Ready ✅
+Once approved:
+- Sandbox testing still works
+- Production purchases now enabled
+- Full functionality available
 
 ## Why We're Waiting
 
