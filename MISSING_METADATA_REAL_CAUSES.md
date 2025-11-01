@@ -120,9 +120,11 @@ Since pricing is set, verify:
 - [ ] Screenshot is valid (1024x1024, high resolution)
 - [ ] Wait 1-2 hours after changes for status to update
 
-## Most Likely Cause
+## Most Likely Cause ✅ RESOLVED
 
-Given that pricing and Review Notes are complete, **Subscription Group Localization** is the most common remaining cause. Check that first!
+Given that pricing and Review Notes are complete, **Subscription Group Localization** is the most common remaining cause. 
+
+**✅ CONFIRMED**: Adding subscription group localization ("GutCheck Premium") resolved the "Missing Metadata" status. Both subscriptions now show "Ready to Submit"!
 
 ## Reference
 
