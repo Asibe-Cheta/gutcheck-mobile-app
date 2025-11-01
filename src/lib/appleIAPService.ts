@@ -14,9 +14,9 @@ let InAppPurchases: any = null;
 // TEMPORARY: Flag to completely disable IAP native module loading
 // Set to true to bypass native module entirely (crashes when loaded)
 // ROOT CAUSE: The native module crashes during require() - needs investigation
-// CRASH: App crashes when native module is loaded, even with metadata complete
-// REVERTED: Re-enabling bypass until we can fix native module linking issue
-const BYPASS_IAP_NATIVE_MODULE = true; // Keep bypassed - native module still crashes
+// UPDATED: Packages updated to Expo SDK 54.0.21 - testing if this fixes the crash
+// TESTING: Try setting to false after package updates and rebuild
+const BYPASS_IAP_NATIVE_MODULE = false; // Testing with updated packages - may still crash
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
