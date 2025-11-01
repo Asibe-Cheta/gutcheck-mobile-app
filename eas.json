@@ -15,7 +15,6 @@
       },
       "ios": {
         "simulator": false,
-        "bundler": "metro",
         "buildConfiguration": "Release"
       }
     },
@@ -27,7 +26,6 @@
       },
       "ios": {
         "simulator": false,
-        "bundler": "metro",
         "buildConfiguration": "Release"
       }
     }
