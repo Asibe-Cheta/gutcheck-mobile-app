@@ -11,6 +11,10 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient';
 // Dynamic import to prevent native module errors in development
 let InAppPurchases: any = null;
 
+// TEMPORARY: Flag to completely disable IAP native module loading
+// Set to true to bypass native module entirely (for testing crash)
+const BYPASS_IAP_NATIVE_MODULE = true; // TODO: Set back to false after confirming crash cause
+
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
   if (InAppPurchases) {
@@ -18,9 +22,18 @@ function loadIAPModule(): boolean {
     return true; // Already loaded
   }
   
+  // TEMPORARY: Completely bypass native module loading if flag is set
+  if (BYPASS_IAP_NATIVE_MODULE) {
+    console.log('[IAP] ⚠️ BYPASS_IAP_NATIVE_MODULE is true - skipping native module load');
+    console.log('[IAP] This is a test mode to determine if native module is causing crash');
+    InAppPurchases = null;
+    return false; // Return false but don't crash
+  }
+  
   try {
     // Only load in standalone builds (production/TestFlight), not Expo Go
     if (!isExpoGo) {
+      console.log('[IAP] Attempting to require expo-in-app-purchases...');
       const expoIAP = require('expo-in-app-purchases');
       console.log('[IAP] expo-in-app-purchases module:', expoIAP);
       
@@ -45,6 +58,11 @@ function loadIAPModule(): boolean {
     }
   } catch (error) {
     console.error('[IAP] expo-in-app-purchases not available:', error);
+    console.error('[IAP] Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    });
     InAppPurchases = null;
   }
   
