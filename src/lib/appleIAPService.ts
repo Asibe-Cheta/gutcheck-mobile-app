@@ -14,7 +14,8 @@ let InAppPurchases: any = null;
 // TEMPORARY: Flag to completely disable IAP native module loading
 // Set to true to bypass native module entirely (crashes when loaded)
 // ROOT CAUSE: The native module crashes during require() - needs investigation
-const BYPASS_IAP_NATIVE_MODULE = true; // Keep bypassed - native module causes crash
+// UPDATED: Metadata is now complete, enabling for sandbox testing
+const BYPASS_IAP_NATIVE_MODULE = false; // Enabled for sandbox testing - metadata complete
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
