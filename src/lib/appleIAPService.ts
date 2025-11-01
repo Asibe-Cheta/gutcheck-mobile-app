@@ -322,6 +322,15 @@ class AppleIAPService {
 
   async restorePurchases(): Promise<{ success: boolean; subscriptions?: AppleSubscription[]; error?: string }> {
     try {
+      // If bypass is enabled, return empty subscriptions
+      if (BYPASS_IAP_NATIVE_MODULE) {
+        console.log('[IAP] restorePurchases: Bypass enabled, returning empty list');
+        return {
+          success: true,
+          subscriptions: []
+        };
+      }
+      
       // Load IAP module on first use (lazy loading)
       if (!InAppPurchases) {
         const loaded = loadIAPModule();
