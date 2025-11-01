@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useStripe } from '@stripe/stripe-react-native';
+// DEPRECATED: Stripe not used - using Apple IAP instead
+// import { useStripe } from '@stripe/stripe-react-native';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 
@@ -18,11 +19,18 @@ interface PaymentFormProps {
 }
 
 export default function PaymentForm({ planId, amount, currency, onSuccess, onError }: PaymentFormProps) {
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  // DEPRECATED: Stripe not used - using Apple IAP instead
+  // const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const { colors } = getThemeColors(useTheme().isDark);
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePayment = async () => {
+    // DEPRECATED: This component is not used - Apple IAP is used instead
+    onError('This payment method is deprecated. Please use Apple In-App Purchase.');
+    return;
+    
+    // Original Stripe code (commented out):
+    /*
     setIsLoading(true);
     
     try {
@@ -56,6 +64,7 @@ export default function PaymentForm({ planId, amount, currency, onSuccess, onErr
     } finally {
       setIsLoading(false);
     }
+    */
   };
 
   const formatPrice = (amount: number, currency: string) => {
