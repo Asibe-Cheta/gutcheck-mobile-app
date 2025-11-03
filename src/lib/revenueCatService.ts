@@ -12,6 +12,7 @@ import Purchases, {
   PurchaseError,
 } from 'react-native-purchases';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // Product IDs (same as before - matches App Store Connect)
 export const PRODUCT_IDS = {
@@ -49,19 +50,25 @@ class RevenueCatService {
         return { success: true };
       }
 
-      // Get API key from environment
-      // For iOS, use the Apple API key
-      // Set this in EAS environment variables: EXPO_PUBLIC_REVENUECAT_IOS_API_KEY
+      // Get API key from environment based on platform
+      // For iOS, use: EXPO_PUBLIC_REVENUECAT_IOS_API_KEY
+      // For Android, use: EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY
+      // Set these in EAS environment variables
+      const isIOS = Platform.OS === 'ios';
+      const apiKeyEnvName = isIOS ? 'EXPO_PUBLIC_REVENUECAT_IOS_API_KEY' : 'EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY';
+      
       const apiKey = 
-        Constants.expoConfig?.extra?.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY ||
-        process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
+        Constants.expoConfig?.extra?.[apiKeyEnvName] ||
+        process.env[apiKeyEnvName];
 
       if (!apiKey) {
-        console.warn('[RevenueCat] No API key found. Set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS environment variables.');
+        console.warn(`[RevenueCat] No API key found for ${Platform.OS}. Set ${apiKeyEnvName} in EAS environment variables.`);
         console.warn('[RevenueCat] Continuing with mock mode for development.');
         this.isInitialized = true; // Allow app to continue
         return { success: true }; // Return success so app doesn't crash
       }
+
+      console.log(`[RevenueCat] Using ${Platform.OS} API key (${apiKey.substring(0, 10)}...)`);
 
       this.apiKey = apiKey;
 
