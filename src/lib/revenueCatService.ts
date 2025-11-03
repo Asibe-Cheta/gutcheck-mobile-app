@@ -202,11 +202,36 @@ class RevenueCatService {
         await this.initialize();
       }
 
+      // Re-check API key - it might not have been loaded properly
       if (!this.apiKey) {
-        return {
-          success: false,
-          error: 'RevenueCat not configured. Please set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY.'
-        };
+        const apiKeyEnvName = Platform.OS === 'ios' 
+          ? 'EXPO_PUBLIC_REVENUECAT_IOS_API_KEY' 
+          : 'EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY';
+        
+        // Try to get the key directly as a fallback
+        const apiKey = 
+          Constants.expoConfig?.extra?.[apiKeyEnvName] ||
+          process.env[apiKeyEnvName];
+        
+        console.log(`[RevenueCat] purchaseProduct: Platform.OS = ${Platform.OS}`);
+        console.log(`[RevenueCat] purchaseProduct: Looking for key: ${apiKeyEnvName}`);
+        console.log(`[RevenueCat] purchaseProduct: Key found in Constants: ${!!Constants.expoConfig?.extra?.[apiKeyEnvName]}`);
+        console.log(`[RevenueCat] purchaseProduct: Key found in process.env: ${!!process.env[apiKeyEnvName]}`);
+        console.log(`[RevenueCat] purchaseProduct: Available keys in extra:`, Object.keys(Constants.expoConfig?.extra || {}));
+        
+        if (!apiKey) {
+          return {
+            success: false,
+            error: `RevenueCat not configured. Please set ${apiKeyEnvName} in EAS environment variables.`
+          };
+        }
+        
+        // If we found the key, use it
+        this.apiKey = apiKey;
+        await Purchases.configure({ apiKey });
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+        this.isInitialized = true;
+        console.log(`[RevenueCat] ✅ Configured with ${Platform.OS} API key after re-check`);
       }
 
       // Get current offerings to find the package for this product
