@@ -68,12 +68,23 @@ class RevenueCatService {
         return { success: true }; // Return success so app doesn't crash
       }
 
-      console.log(`[RevenueCat] Using ${Platform.OS} API key (${apiKey.substring(0, 10)}...)`);
+      // Trim whitespace in case there's any
+      const trimmedApiKey = apiKey.trim();
+      
+      // Validate key format
+      if (Platform.OS === 'android' && !trimmedApiKey.startsWith('goog_')) {
+        console.error(`[RevenueCat] Invalid Android API key format. Expected 'goog_' prefix, got: ${trimmedApiKey.substring(0, 5)}...`);
+      } else if (Platform.OS === 'ios' && !trimmedApiKey.startsWith('appl_')) {
+        console.error(`[RevenueCat] Invalid iOS API key format. Expected 'appl_' prefix, got: ${trimmedApiKey.substring(0, 5)}...`);
+      }
 
-      this.apiKey = apiKey;
+      console.log(`[RevenueCat] Using ${Platform.OS} API key (${trimmedApiKey.substring(0, 10)}...)`);
+      console.log(`[RevenueCat] API key length: ${trimmedApiKey.length} characters`);
+
+      this.apiKey = trimmedApiKey;
 
       // Initialize RevenueCat
-      await Purchases.configure({ apiKey });
+      await Purchases.configure({ apiKey: trimmedApiKey });
       
       // Enable debug logging
       Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
