@@ -1234,6 +1234,12 @@ Always respond naturally and conversationally. Build on previous messages to mai
       hasImage,
       messagesCount: messages.length
     });
+    console.log('API Key debugging:', {
+      hasProcessEnv: !!process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+      hasConstants: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+      apiKeyPresent: !!apiKey,
+      apiKeyPreview: apiKey ? `${apiKey.substring(0, 15)}...` : 'MISSING'
+    });
     
     // If there's an image or document, add context to the system prompt
     let enhancedSystemPrompt = systemPrompt;
@@ -1410,7 +1416,12 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
         console.error('Claude API Error:', {
           status: response.status,
           statusText: response.statusText,
-          errorText: errorText
+          errorText: errorText,
+          apiKeyPresent: !!apiKey,
+          apiKeyLength: apiKey?.length || 0,
+          apiKeyPreview: apiKey ? `${apiKey.substring(0, 15)}...` : 'MISSING',
+          isWeb: isWeb,
+          apiUrl: apiUrl
         });
         throw new Error(`Claude API error: ${response.status} - ${errorText}`);
       }

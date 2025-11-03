@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
+import { revenueCatService } from './revenueCatService';
 
 export interface AuthUser {
   id: string;
@@ -92,6 +93,9 @@ class AuthService {
       } catch (dbError) {
         console.warn('Database operation failed (non-critical):', dbError);
       }
+
+      // Set RevenueCat user ID to associate purchases with this user
+      await revenueCatService.setAppUserID(userId);
 
       const user: AuthUser = {
         id: userId,
@@ -258,6 +262,9 @@ class AuthService {
         return { success: false, error: `Database operation failed: ${dbError.message}` };
       }
 
+      // Set RevenueCat user ID to associate purchases with this user
+      await revenueCatService.setAppUserID(userId);
+
       const user: AuthUser = {
         id: userId,
         username,
@@ -302,6 +309,9 @@ class AuthService {
       await AsyncStorage.setItem('username', data.username);
       await AsyncStorage.setItem('user_type', data.user_type);
       await AsyncStorage.setItem('is_logged_in', 'true');
+
+      // Set RevenueCat user ID to associate purchases with this user
+      await revenueCatService.setAppUserID(data.user_id);
 
       const user: AuthUser = {
         id: data.user_id,
@@ -368,18 +378,28 @@ class AuthService {
    */
   async logout(): Promise<{ success: boolean; error?: string }> {
     try {
+      // Clear RevenueCat user data
+      const { revenueCatService } = await import('./revenueCatService');
+      await revenueCatService.logOut();
+
+      // Clear chat history (user-specific)
+      const { useChatHistoryStore } = await import('./stores/chatHistoryStore');
+      await useChatHistoryStore.getState().clearAllChats();
+
       // Clear all auth-related data from local storage
-      await AsyncStorage.removeItem('user_id');
-      await AsyncStorage.removeItem('username');
-      await AsyncStorage.removeItem('user_type');
-      await AsyncStorage.removeItem('is_logged_in');
+      await AsyncStorage.multiRemove([
+        'user_id',
+        'username',
+        'user_type',
+        'is_logged_in',
+        'subscription_status',
+        'subscription_plan',
+        'user_profile',
+        'user_age_range',
+        'user_goal'
+      ]);
       
-      // Clear onboarding flag so they don't see it again on login
-      // (keep it cleared because they already completed it)
-      
-      // Clear other user-specific data
-      await AsyncStorage.removeItem('subscription_status');
-      await AsyncStorage.removeItem('subscription_plan');
+      // Note: We keep 'onboarding_completed' cleared so they don't see it again on login
 
       return { success: true };
     } catch (error) {

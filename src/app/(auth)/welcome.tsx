@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme, getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
+import { revenueCatService } from '@/lib/revenueCatService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -41,6 +42,12 @@ export default function WelcomeScreen() {
           const userId = await AsyncStorage.getItem('user_id');
           const username = await AsyncStorage.getItem('username');
           console.log('[AUTH] User is logged in:', { userId, username });
+          
+          // Restore RevenueCat user ID to associate purchases
+          if (userId) {
+            await revenueCatService.setAppUserID(userId);
+          }
+          
           // User is already logged in, redirect to main app
           router.replace('/(tabs)');
         } else {

@@ -27,25 +27,27 @@ function getLifetimeProService() {
   return lifetimeProService;
 }
 
-// Import Apple IAP service (with graceful fallback for development)
+// Import RevenueCat IAP service (replaces expo-in-app-purchases)
 // Lazy import to prevent crash if module fails to load
-let appleIAPService: any = null;
+let revenueCatService: any = null;
 let AppleSubscription: any = null;
 let PRODUCT_IDS: any = null;
 
-// Lazy load IAP service
+// Lazy load RevenueCat service
 function getIAPService() {
-  if (!appleIAPService) {
+  if (!revenueCatService) {
     try {
-      const iapModule = require('@/lib/appleIAPService');
-      appleIAPService = iapModule.appleIAPService;
+      const iapModule = require('@/lib/revenueCatService');
+      revenueCatService = iapModule.revenueCatService;
+      // Keep backward compatibility
+      const appleIAPService = iapModule.appleIAPService || revenueCatService;
       AppleSubscription = iapModule.AppleSubscription;
       PRODUCT_IDS = iapModule.PRODUCT_IDS;
-      console.log('[STORE] IAP service loaded successfully');
+      console.log('[STORE] RevenueCat service loaded successfully');
     } catch (error: any) {
-      console.error('[STORE] Failed to load IAP service:', error);
+      console.error('[STORE] Failed to load RevenueCat service:', error);
       // Create a mock service that returns errors
-      appleIAPService = {
+      revenueCatService = {
         getProducts: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
         purchaseProduct: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
         restorePurchases: () => Promise.resolve({ success: false, error: 'IAP service not available' }),
@@ -56,7 +58,7 @@ function getIAPService() {
       };
     }
   }
-  return { appleIAPService, PRODUCT_IDS };
+  return { appleIAPService: revenueCatService, PRODUCT_IDS };
 }
 
 interface AppleSubscriptionPlan {
@@ -263,32 +265,72 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         }
       }
       
-      // If not lifetime pro, check for regular subscription
-      // Note: Apple IAP service doesn't have getActiveSubscription method
-      // We'll check subscription status from local storage for now
-      const subscriptionStatus = await AsyncStorage.getItem('subscription_status');
-      const subscriptionPlan = await AsyncStorage.getItem('subscription_plan');
-      const subscription = subscriptionStatus === 'active' ? {
-        productId: (() => {
-          const { PRODUCT_IDS: ids } = getIAPService();
-          return subscriptionPlan === 'monthly' ? ids.PREMIUM_MONTHLY : ids.PREMIUM_YEARLY;
-        })(),
-        transactionId: 'local_storage',
-        purchaseDate: new Date().toISOString(),
-        isActive: true
-      } : null;
+      // If not lifetime pro, check for regular subscription from RevenueCat
+      console.log('[STORE] loadSubscription: Checking RevenueCat for active subscription...');
+      const { appleIAPService: iapService } = getIAPService();
       
-      if (subscription) {
-        set({ subscription, isLoading: false });
+      try {
+        // Check if user has active subscription via RevenueCat
+        const hasActive = await iapService.hasActiveSubscription();
+        console.log('[STORE] loadSubscription: hasActiveSubscription result:', hasActive);
         
-        // Find current plan based on product ID
-        const plans = get().plans;
-        const plan = plans.find(p => p.productId === subscription.productId);
-        if (plan) {
-          set({ currentPlan: plan });
+        if (hasActive) {
+          // Get detailed subscription info
+          const customerInfo = await iapService.getCustomerInfo();
+          if (customerInfo) {
+            const entitlement = customerInfo.entitlements.active['GutCheck Premium'];
+            if (entitlement) {
+              const subscription = {
+                productId: entitlement.productIdentifier,
+                transactionId: entitlement.transactionIdentifier || '',
+                purchaseDate: entitlement.latestPurchaseDate || new Date().toISOString(),
+                expirationDate: entitlement.expirationDate || undefined,
+                isActive: true,
+              };
+              
+              console.log('[STORE] ✅ Active subscription found:', subscription.productId);
+              set({ subscription, isLoading: false });
+              
+              // Find current plan based on product ID
+              const plans = get().plans;
+              const plan = plans.find(p => p.productId === subscription.productId);
+              if (plan) {
+                set({ currentPlan: plan });
+              }
+              
+              return;
+            }
+          }
         }
-      } else {
+        
+        // No active subscription found
+        console.log('[STORE] loadSubscription: No active subscription found');
         set({ subscription: null, currentPlan: null, isLoading: false });
+      } catch (iapError: any) {
+        console.error('[STORE] Failed to check subscription status:', iapError);
+        // Fallback to local storage if RevenueCat fails
+        const subscriptionStatus = await AsyncStorage.getItem('subscription_status');
+        const subscriptionPlan = await AsyncStorage.getItem('subscription_plan');
+        const subscription = subscriptionStatus === 'active' ? {
+          productId: (() => {
+            const { PRODUCT_IDS: ids } = getIAPService();
+            return subscriptionPlan === 'monthly' ? ids.PREMIUM_MONTHLY : ids.PREMIUM_YEARLY;
+          })(),
+          transactionId: 'local_storage',
+          purchaseDate: new Date().toISOString(),
+          isActive: true
+        } : null;
+        
+        if (subscription) {
+          set({ subscription, isLoading: false });
+          const plans = get().plans;
+          const plan = plans.find(p => p.productId === subscription.productId);
+          if (plan) {
+            set({ currentPlan: plan });
+          }
+        } else {
+          set({ subscription: null, currentPlan: null, isLoading: false });
+        }
       }
     } catch (error) {
       console.error('Load subscription error:', error);

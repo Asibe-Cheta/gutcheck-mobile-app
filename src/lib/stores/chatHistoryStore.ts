@@ -32,9 +32,14 @@ interface ChatHistoryStoreState {
   deleteChat: (chatId: string) => Promise<void>;
   loadChats: () => Promise<void>;
   getChatById: (chatId: string) => SavedChat | undefined;
+  clearAllChats: () => Promise<void>;
 }
 
-const STORAGE_KEY = 'gutcheck_saved_chats';
+// Get storage key specific to current user
+const getStorageKey = async (): Promise<string> => {
+  const userId = await AsyncStorage.getItem('user_id');
+  return userId ? `gutcheck_saved_chats_${userId}` : 'gutcheck_saved_chats';
+};
 
 export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => ({
   savedChats: [],
@@ -55,7 +60,8 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
       const currentChats = get().savedChats;
       const updatedChats = [newChat, ...currentChats];
       
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedChats));
+      const storageKey = await getStorageKey();
+      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
       
       set({ 
         savedChats: updatedChats,
@@ -81,7 +87,8 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
           : chat
       );
       
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedChats));
+      const storageKey = await getStorageKey();
+      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
       
       set({ 
         savedChats: updatedChats,
@@ -103,7 +110,8 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
       const currentChats = get().savedChats;
       const updatedChats = currentChats.filter(chat => chat.id !== chatId);
       
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedChats));
+      const storageKey = await getStorageKey();
+      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
       
       set({ 
         savedChats: updatedChats,
@@ -122,7 +130,8 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
     try {
       set({ isLoading: true, error: null });
       
-      const storedChats = await AsyncStorage.getItem(STORAGE_KEY);
+      const storageKey = await getStorageKey();
+      const storedChats = await AsyncStorage.getItem(storageKey);
       
       if (storedChats) {
         const parsedChats = JSON.parse(storedChats).map((chat: any) => ({
@@ -156,5 +165,25 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
 
   getChatById: (chatId) => {
     return get().savedChats.find(chat => chat.id === chatId);
+  },
+
+  clearAllChats: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const storageKey = await getStorageKey();
+      await AsyncStorage.removeItem(storageKey);
+      
+      set({ 
+        savedChats: [],
+        isLoading: false 
+      });
+    } catch (error) {
+      console.error('Error clearing chats:', error);
+      set({ 
+        error: 'Failed to clear chats',
+        isLoading: false 
+      });
+    }
   },
 }));

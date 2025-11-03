@@ -14,10 +14,11 @@ let InAppPurchases: any = null;
 
 // TEMPORARY: Flag to completely disable IAP native module loading
 // Set to true to bypass native module entirely (crashes when loaded)
-// ROOT CAUSE: The native module crashes during require() - needs investigation
-// UPDATED: Packages updated to Expo SDK 54.0.21 - testing if this fixes the crash
-// TESTING: Try setting to false after package updates and rebuild
-const BYPASS_IAP_NATIVE_MODULE = false; // Testing with updated packages - may still crash
+// ROOT CAUSE: The native module compiles but is NOT LINKED into the final binary
+// CONFIRMED: Build 93 crash log shows module missing from usedImages (not linked)
+// ISSUE: Static library (libEXInAppPurchases.a) is created but not included in linker command
+// STATUS: Module linking blocked - preventing App Store submission
+const BYPASS_IAP_NATIVE_MODULE = true; // Re-enabled: Module not linked despite compilation success
 
 // Function to load IAP module - can be called at runtime if initial load fails
 function loadIAPModule(): boolean {
