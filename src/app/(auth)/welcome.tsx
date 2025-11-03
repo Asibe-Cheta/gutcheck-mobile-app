@@ -12,6 +12,7 @@ import { theme, getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
 import { revenueCatService } from '@/lib/revenueCatService';
+import { getLifetimeProService } from '@/lib/lifetimeProService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -46,10 +47,37 @@ export default function WelcomeScreen() {
           // Restore RevenueCat user ID to associate purchases
           if (userId) {
             await revenueCatService.setAppUserID(userId);
+            
+            // Check subscription status before allowing access
+            try {
+              // First check lifetime pro
+              const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+              if (lifetimeProStatus) {
+                console.log('[AUTH] User has lifetime pro, allowing access');
+                router.replace('/(tabs)');
+                return;
+              }
+              
+              // Then check RevenueCat subscription
+              await revenueCatService.initialize(userId);
+              const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+              
+              if (hasActiveSubscription) {
+                console.log('[AUTH] User has active subscription, allowing access');
+                router.replace('/(tabs)');
+              } else {
+                console.log('[AUTH] User does not have active subscription, redirecting to subscription screen');
+                router.replace('/subscription-wrapper');
+              }
+            } catch (subError) {
+              console.error('[AUTH] Error checking subscription:', subError);
+              // On error, redirect to subscription to be safe
+              router.replace('/subscription-wrapper');
+            }
+          } else {
+            // No user ID, redirect to subscription
+            router.replace('/subscription-wrapper');
           }
-          
-          // User is already logged in, redirect to main app
-          router.replace('/(tabs)');
         } else {
           console.log('[AUTH] No existing session found');
           setIsCheckingSession(false);

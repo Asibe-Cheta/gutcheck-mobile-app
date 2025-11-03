@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/Button';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+import { revenueCatService } from '@/lib/revenueCatService';
+import { getLifetimeProService } from '@/lib/lifetimeProService';
 // import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import Onboarding from '../onboarding';
 
@@ -27,6 +29,7 @@ export default function HomeScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -44,6 +47,46 @@ export default function HomeScreen() {
     "New person in my life"
   ];
 
+  // Check subscription status on mount
+  useEffect(() => {
+    const checkSubscription = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('user_id');
+        if (!userId) {
+          console.log('[HOME] No user ID, redirecting to subscription');
+          router.replace('/subscription-wrapper');
+          return;
+        }
+        
+        // Check lifetime pro first
+        const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+        if (lifetimeProStatus) {
+          console.log('[HOME] User has lifetime pro, allowing access');
+          setIsCheckingSubscription(false);
+          return;
+        }
+        
+        // Check RevenueCat subscription
+        await revenueCatService.initialize(userId);
+        const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+        
+        if (hasActiveSubscription) {
+          console.log('[HOME] User has active subscription, allowing access');
+          setIsCheckingSubscription(false);
+        } else {
+          console.log('[HOME] User does not have active subscription, redirecting to subscription screen');
+          router.replace('/subscription-wrapper');
+        }
+      } catch (error) {
+        console.error('[HOME] Error checking subscription:', error);
+        // On error, redirect to subscription to be safe
+        router.replace('/subscription-wrapper');
+      }
+    };
+    
+    checkSubscription();
+  }, []);
+
   // Handle when user returns from chat screen
   useFocusEffect(
     React.useCallback(() => {
@@ -56,6 +99,9 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkOnboardingAndLifetimePro = async () => {
       try {
+        // Only check onboarding after subscription check is done
+        if (isCheckingSubscription) return;
+        
         const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
         if (!onboardingCompleted) {
           setShowOnboarding(true);
@@ -74,7 +120,7 @@ export default function HomeScreen() {
     };
 
     checkOnboardingAndLifetimePro();
-  }, []);
+  }, [isCheckingSubscription]);
 
   // Reset form when conversation is cleared
   useEffect(() => {
@@ -210,18 +256,21 @@ export default function HomeScreen() {
 
   const styles = createStyles(currentTheme);
   
-  // Show onboarding for new users
-  if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
-  }
-
-  // Show loading while checking onboarding
-  if (isCheckingOnboarding) {
+  // Show loading while checking subscription or onboarding
+  if (isCheckingSubscription || isCheckingOnboarding) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={currentTheme.primary} />
+        <Text style={[styles.loadingText, { color: currentTheme.textSecondary, marginTop: 16 }]}>
+          {isCheckingSubscription ? 'Checking subscription...' : 'Loading...'}
+        </Text>
       </SafeAreaView>
     );
+  }
+  
+  // Show onboarding for new users
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
   return (
@@ -613,5 +662,9 @@ const createStyles = (colors: any) => StyleSheet.create({
   fullImagePreview: {
     width: Dimensions.get('window').width * 0.9,
     height: Dimensions.get('window').height * 0.7,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter',
   },
 });
