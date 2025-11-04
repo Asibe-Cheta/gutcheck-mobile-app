@@ -254,18 +254,10 @@ export default function SubscriptionScreen() {
   const isNavigatingRef = React.useRef(false);
   const lastCheckTimeRef = React.useRef(0);
 
-  // Check subscription status when screen comes into focus (e.g., returning from purchase flow)
-  // Only check if we're not already navigating and haven't checked recently
+  // Check subscription status when screen comes into focus (ONLY when returning from purchase flow)
+  // This should NOT run on normal navigation to the subscription screen
   useFocusEffect(
     React.useCallback(() => {
-      // Prevent rapid repeated checks (debounce)
-      const now = Date.now();
-      const timeSinceLastCheck = now - lastCheckTimeRef.current;
-      if (timeSinceLastCheck < 2000) {
-        console.log('[SUB] Skipping focus check - checked too recently');
-        return;
-      }
-
       // Don't check if we're already navigating
       if (isNavigatingRef.current) {
         console.log('[SUB] Skipping focus check - navigation in progress');
@@ -274,6 +266,27 @@ export default function SubscriptionScreen() {
 
       const checkAndNavigate = async () => {
         try {
+          // CRITICAL: Only auto-navigate if we're explicitly returning from a purchase flow
+          // Check for the flag that indicates we just completed a purchase
+          const returningFromPurchase = await AsyncStorage.getItem('_returning_from_purchase');
+          
+          if (!returningFromPurchase) {
+            // Normal navigation to subscription screen - don't auto-navigate
+            console.log('[SUB] Normal navigation detected - not auto-navigating');
+            return;
+          }
+          
+          // Clear the flag immediately to prevent multiple checks
+          await AsyncStorage.removeItem('_returning_from_purchase');
+          
+          // Prevent rapid repeated checks (debounce)
+          const now = Date.now();
+          const timeSinceLastCheck = now - lastCheckTimeRef.current;
+          if (timeSinceLastCheck < 2000) {
+            console.log('[SUB] Skipping focus check - checked too recently');
+            return;
+          }
+          
           lastCheckTimeRef.current = Date.now();
           
           const userId = await AsyncStorage.getItem('user_id');
@@ -296,13 +309,11 @@ export default function SubscriptionScreen() {
           const hasActive = currentState.subscription || currentState.isLifetimePro;
           
           if (hasActive && !isNavigatingRef.current) {
-            console.log('[SUB] ✅ Active subscription detected on focus, navigating to app...');
+            console.log('[SUB] ✅ Active subscription detected after purchase, navigating to app...');
             isNavigatingRef.current = true;
             
             // Set flag to tell home screen to skip subscription check
-            AsyncStorage.setItem('_skip_sub_check', 'true').catch(err => {
-              console.error('[SUB] Error setting skip flag:', err);
-            });
+            await AsyncStorage.setItem('_skip_sub_check', 'true');
             
             // Small delay to ensure UI updates
             setTimeout(async () => {
@@ -327,6 +338,11 @@ export default function SubscriptionScreen() {
   const handleSubscribe = async (planId: string) => {
     try {
       console.log('[SUB] Subscribe button pressed for plan:', planId);
+      
+      // Set flag to indicate we're starting a purchase flow
+      // This allows useFocusEffect to auto-navigate if user returns from external purchase dialog
+      await AsyncStorage.setItem('_returning_from_purchase', 'true');
+      
       if (!subscribeToPlan) {
         throw new Error('subscribeToPlan method not available');
       }
@@ -356,6 +372,9 @@ export default function SubscriptionScreen() {
                  if (isActiveNow) {
            console.log('[SUB] ✅ Subscription confirmed active, navigating to app...');
            isNavigatingRef.current = true;
+           
+           // Clear the purchase flag since we're handling navigation directly here
+           await AsyncStorage.removeItem('_returning_from_purchase');
            
            Alert.alert(
              '🎉 Subscription Active!',
@@ -390,6 +409,8 @@ export default function SubscriptionScreen() {
           if (finalCheck) {
             console.log('[SUB] ✅ Subscription synced, navigating...');
             isNavigatingRef.current = true;
+            // Clear the purchase flag since we're handling navigation directly here
+            await AsyncStorage.removeItem('_returning_from_purchase');
             // Set flag to tell home screen to skip subscription check
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             await AsyncStorage.removeItem('_sub_nav_from_home');
@@ -414,10 +435,14 @@ export default function SubscriptionScreen() {
           }
         }
       } else {
+        // Clear the purchase flag if purchase failed
+        await AsyncStorage.removeItem('_returning_from_purchase');
         Alert.alert('Subscription Failed', result.error || 'Failed to subscribe. Please try again.');
       }
     } catch (error) {
       console.error('Subscription error:', error);
+      // Clear the purchase flag on error
+      await AsyncStorage.removeItem('_returning_from_purchase').catch(() => {});
       Alert.alert('Error', 'Failed to process subscription. Please try again.');
     }
   };
