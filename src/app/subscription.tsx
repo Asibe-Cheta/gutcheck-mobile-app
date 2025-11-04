@@ -13,7 +13,7 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
@@ -250,6 +250,38 @@ export default function SubscriptionScreen() {
     initialize();
   }, []);
 
+  // Check subscription status when screen comes into focus (e.g., returning from purchase flow)
+  useFocusEffect(
+    React.useCallback(() => {
+      const checkAndNavigate = async () => {
+        try {
+          const userId = await AsyncStorage.getItem('user_id');
+          if (!userId) return;
+
+          // Refresh subscription status
+          await loadSubscription();
+          await checkLifetimePro(userId);
+
+          // After refresh, read fresh values from store (destructured values are stale in closure)
+          const currentState = useSubscriptionStore.getState();
+          const hasActive = currentState.subscription || currentState.isLifetimePro;
+          
+          if (hasActive) {
+            console.log('[SUB] ✅ Active subscription detected on focus, navigating to app...');
+            // Small delay to ensure UI updates
+            setTimeout(() => {
+              router.replace('/(tabs)');
+            }, 500);
+          }
+        } catch (error) {
+          console.error('[SUB] Error checking subscription on focus:', error);
+        }
+      };
+
+      checkAndNavigate();
+    }, [loadSubscription, checkLifetimePro])
+  );
+
   const handleSubscribe = async (planId: string) => {
     try {
       console.log('[SUB] Subscribe button pressed for plan:', planId);
@@ -259,16 +291,69 @@ export default function SubscriptionScreen() {
       const result = await subscribeToPlan(planId);
       
       if (result.success) {
-        Alert.alert(
-          '🎉 Subscription Active!',
-          'Welcome to Premium! You now have access to all premium features.',
-          [
-            {
-              text: 'Continue to App',
-              onPress: () => router.push('/(tabs)')
-            }
-          ]
-        );
+        // Refresh subscription status from RevenueCat (may take a moment to sync)
+        console.log('[SUB] Purchase successful, refreshing subscription status...');
+        
+        // Wait a moment for RevenueCat to sync
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Refresh subscription status from RevenueCat
+        await loadSubscription();
+        
+        // Double-check subscription is active before navigating
+        const userId = await AsyncStorage.getItem('user_id');
+        if (userId) {
+          await checkLifetimePro(userId);
+        }
+        
+        // Check again if we have active subscription or lifetime pro
+        // After async operations, read fresh values from store (destructured values are stale)
+        const currentState = useSubscriptionStore.getState();
+        const isActiveNow = currentState.subscription || currentState.isLifetimePro;
+        
+        if (isActiveNow) {
+          console.log('[SUB] ✅ Subscription confirmed active, navigating to app...');
+          Alert.alert(
+            '🎉 Subscription Active!',
+            'Welcome to Premium! You now have access to all premium features.',
+            [
+              {
+                text: 'Continue to App',
+                onPress: () => {
+                  // Use replace to prevent going back to subscription screen
+                  router.replace('/(tabs)');
+                }
+              }
+            ]
+          );
+        } else {
+          // Subscription might still be syncing, give it another try
+          console.log('[SUB] ⚠️ Subscription not immediately available, waiting for sync...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          await loadSubscription();
+          
+          // After wait, read fresh values from store
+          const stateAfterWait = useSubscriptionStore.getState();
+          const finalCheck = stateAfterWait.subscription || stateAfterWait.isLifetimePro;
+          if (finalCheck) {
+            console.log('[SUB] ✅ Subscription synced, navigating...');
+            router.replace('/(tabs)');
+          } else {
+            Alert.alert(
+              'Subscription Processing',
+              'Your subscription is being processed. Please restart the app or wait a moment and try again.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Refresh the screen to show updated status
+                    loadSubscription();
+                  }
+                }
+              ]
+            );
+          }
+        }
       } else {
         Alert.alert('Subscription Failed', result.error || 'Failed to subscribe. Please try again.');
       }
@@ -734,7 +819,27 @@ export default function SubscriptionScreen() {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={async () => {
+            // Check subscription before going back
+            const userId = await AsyncStorage.getItem('user_id');
+            if (userId) {
+              // Refresh subscription status
+              await loadSubscription();
+              await checkLifetimePro(userId);
+              
+              // If user has active subscription, navigate to app
+              // After refresh, read fresh values from store
+              const currentState = useSubscriptionStore.getState();
+              const hasActive = currentState.subscription || currentState.isLifetimePro;
+              if (hasActive) {
+                console.log('[SUB] User has active subscription, navigating to app...');
+                router.replace('/(tabs)');
+                return;
+              }
+            }
+            // Otherwise just go back
+            router.back();
+          }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
