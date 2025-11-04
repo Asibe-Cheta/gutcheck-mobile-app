@@ -11,7 +11,7 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -94,6 +94,8 @@ interface SubscriptionPlan {
   description: string;
   features: string[];
   popular?: boolean;
+  hasFreeTrial?: boolean;
+  freeTrialDays?: number | null;
 }
 
 export default function SubscriptionScreen() {
@@ -340,6 +342,16 @@ export default function SubscriptionScreen() {
             <Text style={styles.price}>£{plan.price.toFixed(2)}</Text>
             <Text style={styles.period}>/{plan.interval}</Text>
           </View>
+          
+          {/* Free Trial Badge - FIXES APPLE REVIEW ISSUE */}
+          {plan.hasFreeTrial && plan.freeTrialDays && (
+            <View style={styles.freeTrialBadge}>
+              <Ionicons name="gift" size={16} color={colors.primary} />
+              <Text style={styles.freeTrialText}>
+                {plan.freeTrialDays}-day free trial
+              </Text>
+            </View>
+          )}
           
           {/* Subordinate: Daily Cost */}
           <View style={styles.dailyCostContainer}>
@@ -658,6 +670,43 @@ export default function SubscriptionScreen() {
       color: colors.textSecondary,
       lineHeight: 20,
     },
+    freeTrialBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary + '20',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      marginTop: 8,
+      marginBottom: 8,
+    },
+    freeTrialText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.primary,
+      marginLeft: 6,
+    },
+    legalSection: {
+      marginTop: 32,
+      marginBottom: 32,
+      paddingTop: 20,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    legalLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+    },
+    legalLinkText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: '500',
+      marginRight: 6,
+      textDecorationLine: 'underline',
+    },
   });
 
   // Show error UI if mount error occurred
@@ -863,6 +912,23 @@ export default function SubscriptionScreen() {
               Your subscription is billed through your Apple ID. You can manage billing and payment methods in your Apple ID settings.
             </Text>
           </View>
+        </View>
+
+        {/* Terms of Use Link - REQUIRED BY APPLE REVIEW */}
+        <View style={styles.legalSection}>
+          <TouchableOpacity
+            onPress={() => {
+              const termsUrl = 'https://mygutcheck.org/terms';
+              Linking.openURL(termsUrl).catch(err => {
+                console.error('Failed to open Terms of Use:', err);
+                Alert.alert('Error', 'Could not open Terms of Use. Please visit mygutcheck.org/terms');
+              });
+            }}
+            style={styles.legalLink}
+          >
+            <Text style={styles.legalLinkText}>Terms of Use (EULA)</Text>
+            <Ionicons name="open-outline" size={16} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

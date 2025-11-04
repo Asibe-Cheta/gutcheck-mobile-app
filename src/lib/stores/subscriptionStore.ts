@@ -69,6 +69,8 @@ interface AppleSubscriptionPlan {
   interval: 'month' | 'year';
   productId: string;
   description: string;
+  hasFreeTrial?: boolean;
+  freeTrialDays?: number | null;
 }
 
 interface SubscriptionState {
@@ -191,12 +193,14 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const plans: AppleSubscriptionPlan[] = [
         {
           id: 'monthly',
-          name: monthlyProduct?.title || 'Premium Monthly',
+          name: 'Premium Monthly', // Force correct name (not from App Store Connect which might be wrong)
           price: monthlyProduct?.price || 9.99,
           currency: monthlyProduct?.currency || 'GBP',
           interval: 'month',
           productId: productIds.PREMIUM_MONTHLY,
           description: monthlyProduct?.description || 'Full access to all features',
+          hasFreeTrial: monthlyProduct?.hasFreeTrial || false,
+          freeTrialDays: monthlyProduct?.freeTrialDays || null,
           features: [
             'Unlimited AI conversations',
             'Image and document analysis',
@@ -208,12 +212,14 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         },
         {
           id: 'yearly',
-          name: yearlyProduct?.title || 'Premium Yearly',
+          name: 'Premium Yearly', // Force correct name - FIXES APPLE REVIEW ISSUE
           price: yearlyProduct?.price || 99.99,
           currency: yearlyProduct?.currency || 'GBP',
           interval: 'year',
           productId: productIds.PREMIUM_YEARLY,
           description: yearlyProduct?.description || 'Full access to all features - Save 17%',
+          hasFreeTrial: yearlyProduct?.hasFreeTrial || false,
+          freeTrialDays: yearlyProduct?.freeTrialDays || null,
           features: [
             'Unlimited AI conversations',
             'Image and document analysis',

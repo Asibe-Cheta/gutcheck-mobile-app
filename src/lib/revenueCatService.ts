@@ -176,15 +176,53 @@ class RevenueCatService {
           console.error('[RevenueCat] Invalid package:', pkg);
           throw new Error('Package or product is undefined');
         }
+        
+        // Extract introductory pricing (free trial) information
+        const introPrice = pkg.product.introPrice;
+        const hasFreeTrial = introPrice && introPrice.price === 0 && introPrice.periodUnit && introPrice.periodNumberOfUnits;
+        
+        // Calculate free trial period in days
+        let freeTrialDays: number | null = null;
+        if (hasFreeTrial && introPrice) {
+          const periodUnit = introPrice.periodUnit; // 'DAY', 'WEEK', 'MONTH', 'YEAR'
+          const periodCount = introPrice.periodNumberOfUnits || 0;
+          
+          if (periodUnit === 'DAY') {
+            freeTrialDays = periodCount;
+          } else if (periodUnit === 'WEEK') {
+            freeTrialDays = periodCount * 7;
+          } else if (periodUnit === 'MONTH') {
+            freeTrialDays = periodCount * 30; // Approximate
+          } else if (periodUnit === 'YEAR') {
+            freeTrialDays = periodCount * 365; // Approximate
+          }
+        }
+        
+        // Fix: Ensure correct title based on product ID (not App Store Connect metadata)
+        let correctedTitle = pkg.product.title;
+        if (pkg.product.identifier === PRODUCT_IDS.PREMIUM_YEARLY) {
+          correctedTitle = 'Premium Yearly'; // Force correct name
+        } else if (pkg.product.identifier === PRODUCT_IDS.PREMIUM_MONTHLY) {
+          correctedTitle = 'Premium Monthly'; // Ensure consistency
+        }
+        
         return {
           productId: pkg.product.identifier,
-          title: pkg.product.title,
+          title: correctedTitle,
           description: pkg.product.description,
           price: pkg.product.price,
           currency: pkg.product.currencyCode,
           // RevenueCat-specific fields
           packageIdentifier: pkg.identifier,
           packageType: pkg.packageType,
+          // Free trial information
+          hasFreeTrial: hasFreeTrial || false,
+          freeTrialDays: freeTrialDays,
+          introPrice: introPrice ? {
+            price: introPrice.price,
+            periodUnit: introPrice.periodUnit,
+            periodNumberOfUnits: introPrice.periodNumberOfUnits,
+          } : null,
         };
       });
 
