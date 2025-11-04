@@ -299,13 +299,19 @@ export default function SubscriptionScreen() {
             console.log('[SUB] ✅ Active subscription detected on focus, navigating to app...');
             isNavigatingRef.current = true;
             
+            // Set flag to tell home screen to skip subscription check
+            AsyncStorage.setItem('_skip_sub_check', 'true').catch(err => {
+              console.error('[SUB] Error setting skip flag:', err);
+            });
+            
             // Small delay to ensure UI updates
-            setTimeout(() => {
+            setTimeout(async () => {
+              await AsyncStorage.removeItem('_sub_nav_from_home');
               router.replace('/(tabs)');
               // Reset navigation flag after navigation completes
               setTimeout(() => {
                 isNavigatingRef.current = false;
-              }, 1000);
+              }, 2000);
             }, 500);
           }
         } catch (error) {
@@ -347,29 +353,31 @@ export default function SubscriptionScreen() {
         const currentState = useSubscriptionStore.getState();
         const isActiveNow = currentState.subscription || currentState.isLifetimePro;
         
-        if (isActiveNow) {
-          console.log('[SUB] ✅ Subscription confirmed active, navigating to app...');
-          isNavigatingRef.current = true;
-          
-          Alert.alert(
-            '🎉 Subscription Active!',
-            'Welcome to Premium! You now have access to all premium features.',
-            [
-              {
-                text: 'Continue to App',
-                onPress: () => {
-                  // Clear the navigation flag
-                  AsyncStorage.removeItem('_sub_nav_from_home');
-                  // Use replace to prevent going back to subscription screen
-                  router.replace('/(tabs)');
-                  // Reset navigation flag after delay
-                  setTimeout(() => {
-                    isNavigatingRef.current = false;
-                  }, 1000);
-                }
-              }
-            ]
-          );
+                 if (isActiveNow) {
+           console.log('[SUB] ✅ Subscription confirmed active, navigating to app...');
+           isNavigatingRef.current = true;
+           
+           Alert.alert(
+             '🎉 Subscription Active!',
+             'Welcome to Premium! You now have access to all premium features.',
+             [
+               {
+                 text: 'Continue to App',
+                 onPress: async () => {
+                   // Set flag to tell home screen to skip subscription check
+                   await AsyncStorage.setItem('_skip_sub_check', 'true');
+                   // Clear the navigation flag
+                   await AsyncStorage.removeItem('_sub_nav_from_home');
+                   // Use replace to prevent going back to subscription screen
+                   router.replace('/(tabs)');
+                   // Reset navigation flag after delay
+                   setTimeout(() => {
+                     isNavigatingRef.current = false;
+                   }, 2000);
+                 }
+               }
+             ]
+           );
         } else {
           // Subscription might still be syncing, give it another try
           console.log('[SUB] ⚠️ Subscription not immediately available, waiting for sync...');
@@ -382,11 +390,13 @@ export default function SubscriptionScreen() {
           if (finalCheck) {
             console.log('[SUB] ✅ Subscription synced, navigating...');
             isNavigatingRef.current = true;
-            AsyncStorage.removeItem('_sub_nav_from_home');
+            // Set flag to tell home screen to skip subscription check
+            await AsyncStorage.setItem('_skip_sub_check', 'true');
+            await AsyncStorage.removeItem('_sub_nav_from_home');
             router.replace('/(tabs)');
             setTimeout(() => {
               isNavigatingRef.current = false;
-            }, 1000);
+            }, 2000);
           } else {
             Alert.alert(
               'Subscription Processing',
@@ -869,30 +879,35 @@ export default function SubscriptionScreen() {
         <TouchableOpacity 
           style={styles.backButton}
           onPress={async () => {
-            // Check subscription before going back
-            const userId = await AsyncStorage.getItem('user_id');
-            if (userId) {
-              // Refresh subscription status
-              await loadSubscription();
-              await checkLifetimePro(userId);
-              
-                             // If user has active subscription, navigate to app
-               // After refresh, read fresh values from store
-               const currentState = useSubscriptionStore.getState();
-               const hasActive = currentState.subscription || currentState.isLifetimePro;
-               if (hasActive && !isNavigatingRef.current) {
-                 console.log('[SUB] User has active subscription, navigating to app...');
-                 isNavigatingRef.current = true;
-                 AsyncStorage.removeItem('_sub_nav_from_home');
-                 router.replace('/(tabs)');
-                 setTimeout(() => {
-                   isNavigatingRef.current = false;
-                 }, 1000);
-                 return;
-               }
+            // Don't check if we're already navigating
+            if (isNavigatingRef.current) {
+              console.log('[SUB] Already navigating, ignoring back button');
+              return;
             }
-            // Otherwise just go back
-            router.back();
+
+            // Check CURRENT state from store (no async refresh needed for back button)
+            const currentState = useSubscriptionStore.getState();
+            const hasActive = currentState.subscription || currentState.isLifetimePro;
+            
+            if (hasActive) {
+              // User has active subscription - navigate to home with flag to skip check
+              console.log('[SUB] User has active subscription, navigating to home...');
+              isNavigatingRef.current = true;
+              
+              // Set flag to tell home screen to skip subscription check
+              await AsyncStorage.setItem('_skip_sub_check', 'true');
+              await AsyncStorage.removeItem('_sub_nav_from_home');
+              
+              router.replace('/(tabs)');
+              
+              setTimeout(() => {
+                isNavigatingRef.current = false;
+              }, 2000);
+            } else {
+              // No active subscription - just go back normally
+              console.log('[SUB] No active subscription, going back...');
+              router.back();
+            }
           }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />

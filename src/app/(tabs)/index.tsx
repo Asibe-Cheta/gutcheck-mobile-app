@@ -51,6 +51,15 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkSubscription = async () => {
       try {
+        // Check if we should skip subscription check (coming from subscription screen with active subscription)
+        const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
+        if (skipCheck === 'true') {
+          console.log('[HOME] Skipping subscription check - coming from subscription screen with active subscription');
+          await AsyncStorage.removeItem('_skip_sub_check');
+          setIsCheckingSubscription(false);
+          return;
+        }
+        
         // Add a small delay to allow navigation to settle
         await new Promise(resolve => setTimeout(resolve, 300));
         
