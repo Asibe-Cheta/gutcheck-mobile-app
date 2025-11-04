@@ -10,7 +10,7 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
-import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -250,13 +250,42 @@ export default function SubscriptionScreen() {
     initialize();
   }, []);
 
+  // Track if we're navigating to prevent loop
+  const isNavigatingRef = React.useRef(false);
+  const lastCheckTimeRef = React.useRef(0);
+
   // Check subscription status when screen comes into focus (e.g., returning from purchase flow)
+  // Only check if we're not already navigating and haven't checked recently
   useFocusEffect(
     React.useCallback(() => {
+      // Prevent rapid repeated checks (debounce)
+      const now = Date.now();
+      const timeSinceLastCheck = now - lastCheckTimeRef.current;
+      if (timeSinceLastCheck < 2000) {
+        console.log('[SUB] Skipping focus check - checked too recently');
+        return;
+      }
+
+      // Don't check if we're already navigating
+      if (isNavigatingRef.current) {
+        console.log('[SUB] Skipping focus check - navigation in progress');
+        return;
+      }
+
       const checkAndNavigate = async () => {
         try {
+          lastCheckTimeRef.current = Date.now();
+          
           const userId = await AsyncStorage.getItem('user_id');
           if (!userId) return;
+
+          // Check if we just navigated from home screen (avoid immediate re-check)
+          const justNavigatedFromHome = await AsyncStorage.getItem('_sub_nav_from_home');
+          if (justNavigatedFromHome) {
+            await AsyncStorage.removeItem('_sub_nav_from_home');
+            console.log('[SUB] Skipping auto-navigation - just navigated from home');
+            return;
+          }
 
           // Refresh subscription status
           await loadSubscription();
@@ -266,15 +295,22 @@ export default function SubscriptionScreen() {
           const currentState = useSubscriptionStore.getState();
           const hasActive = currentState.subscription || currentState.isLifetimePro;
           
-          if (hasActive) {
+          if (hasActive && !isNavigatingRef.current) {
             console.log('[SUB] ✅ Active subscription detected on focus, navigating to app...');
+            isNavigatingRef.current = true;
+            
             // Small delay to ensure UI updates
             setTimeout(() => {
               router.replace('/(tabs)');
+              // Reset navigation flag after navigation completes
+              setTimeout(() => {
+                isNavigatingRef.current = false;
+              }, 1000);
             }, 500);
           }
         } catch (error) {
           console.error('[SUB] Error checking subscription on focus:', error);
+          isNavigatingRef.current = false;
         }
       };
 
@@ -313,6 +349,8 @@ export default function SubscriptionScreen() {
         
         if (isActiveNow) {
           console.log('[SUB] ✅ Subscription confirmed active, navigating to app...');
+          isNavigatingRef.current = true;
+          
           Alert.alert(
             '🎉 Subscription Active!',
             'Welcome to Premium! You now have access to all premium features.',
@@ -320,8 +358,14 @@ export default function SubscriptionScreen() {
               {
                 text: 'Continue to App',
                 onPress: () => {
+                  // Clear the navigation flag
+                  AsyncStorage.removeItem('_sub_nav_from_home');
                   // Use replace to prevent going back to subscription screen
                   router.replace('/(tabs)');
+                  // Reset navigation flag after delay
+                  setTimeout(() => {
+                    isNavigatingRef.current = false;
+                  }, 1000);
                 }
               }
             ]
@@ -337,7 +381,12 @@ export default function SubscriptionScreen() {
           const finalCheck = stateAfterWait.subscription || stateAfterWait.isLifetimePro;
           if (finalCheck) {
             console.log('[SUB] ✅ Subscription synced, navigating...');
+            isNavigatingRef.current = true;
+            AsyncStorage.removeItem('_sub_nav_from_home');
             router.replace('/(tabs)');
+            setTimeout(() => {
+              isNavigatingRef.current = false;
+            }, 1000);
           } else {
             Alert.alert(
               'Subscription Processing',
@@ -827,15 +876,20 @@ export default function SubscriptionScreen() {
               await loadSubscription();
               await checkLifetimePro(userId);
               
-              // If user has active subscription, navigate to app
-              // After refresh, read fresh values from store
-              const currentState = useSubscriptionStore.getState();
-              const hasActive = currentState.subscription || currentState.isLifetimePro;
-              if (hasActive) {
-                console.log('[SUB] User has active subscription, navigating to app...');
-                router.replace('/(tabs)');
-                return;
-              }
+                             // If user has active subscription, navigate to app
+               // After refresh, read fresh values from store
+               const currentState = useSubscriptionStore.getState();
+               const hasActive = currentState.subscription || currentState.isLifetimePro;
+               if (hasActive && !isNavigatingRef.current) {
+                 console.log('[SUB] User has active subscription, navigating to app...');
+                 isNavigatingRef.current = true;
+                 AsyncStorage.removeItem('_sub_nav_from_home');
+                 router.replace('/(tabs)');
+                 setTimeout(() => {
+                   isNavigatingRef.current = false;
+                 }, 1000);
+                 return;
+               }
             }
             // Otherwise just go back
             router.back();

@@ -51,9 +51,13 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkSubscription = async () => {
       try {
+        // Add a small delay to allow navigation to settle
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         const userId = await AsyncStorage.getItem('user_id');
         if (!userId) {
           console.log('[HOME] No user ID, redirecting to subscription');
+          await AsyncStorage.setItem('_sub_nav_from_home', 'true');
           router.replace('/subscription-wrapper');
           return;
         }
@@ -66,21 +70,38 @@ export default function HomeScreen() {
           return;
         }
         
-        // Check RevenueCat subscription
+        // Check RevenueCat subscription with retry logic
         await revenueCatService.initialize(userId);
-        const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
         
-        if (hasActiveSubscription) {
-          console.log('[HOME] User has active subscription, allowing access');
-          setIsCheckingSubscription(false);
-        } else {
-          console.log('[HOME] User does not have active subscription, redirecting to subscription screen');
-          router.replace('/subscription-wrapper');
+        // Try checking subscription up to 3 times with delays (handles sync delays)
+        let hasActiveSubscription = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          
+          hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+          
+          if (hasActiveSubscription) {
+            console.log('[HOME] User has active subscription, allowing access');
+            setIsCheckingSubscription(false);
+            return;
+          }
+          
+          console.log(`[HOME] Subscription check attempt ${attempt + 1} - not active yet`);
         }
+        
+        // After all retries, if still no subscription, redirect
+        console.log('[HOME] User does not have active subscription after retries, redirecting to subscription screen');
+        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
+        router.replace('/subscription-wrapper');
+        setIsCheckingSubscription(false);
       } catch (error) {
         console.error('[HOME] Error checking subscription:', error);
         // On error, redirect to subscription to be safe
+        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
         router.replace('/subscription-wrapper');
+        setIsCheckingSubscription(false);
       }
     };
     
