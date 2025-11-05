@@ -80,3 +80,4 @@ Create a new page at: `https://mygutcheck.org/delete-account`
 **Priority:** High - Required for Google Play Store submission  
 **Deadline:** ASAP  
 **Contact:** Landing page team
+image.png

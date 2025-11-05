@@ -1113,8 +1113,22 @@ export default function SubscriptionScreen() {
           </View>
         </View>
 
-        {/* Terms of Use Link - REQUIRED BY APPLE REVIEW */}
+        {/* Legal Links - REQUIRED BY APPLE REVIEW */}
         <View style={styles.legalSection}>
+          <TouchableOpacity
+            onPress={() => {
+              const privacyUrl = 'https://mygutcheck.org/privacy';
+              Linking.openURL(privacyUrl).catch(err => {
+                console.error('Failed to open Privacy Policy:', err);
+                Alert.alert('Error', 'Could not open Privacy Policy. Please visit mygutcheck.org/privacy');
+              });
+            }}
+            style={styles.legalLink}
+          >
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
+            <Ionicons name="open-outline" size={16} color={colors.primary} />
+          </TouchableOpacity>
+          
           <TouchableOpacity
             onPress={() => {
               const termsUrl = 'https://mygutcheck.org/terms';
