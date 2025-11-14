@@ -16,7 +16,7 @@ module.exports = {
     name: 'GutCheck',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '1.0.0',
+    version: '1.0.1',
     orientation: 'portrait',
     icon: './assets/gc-main.png',
     userInterfaceStyle: 'dark',
@@ -38,7 +38,7 @@ module.exports = {
         NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutCheck',
-        CFBundleShortVersionString: '1.0.0',
+        CFBundleShortVersionString: '1.0.1',
       },
     },
     android: {
