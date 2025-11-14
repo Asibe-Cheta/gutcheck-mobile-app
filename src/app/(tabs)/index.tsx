@@ -21,14 +21,11 @@ import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
 // import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
-import Onboarding from '../onboarding';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -125,32 +122,6 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Check if onboarding is completed and check for lifetime pro
-  useEffect(() => {
-    const checkOnboardingAndLifetimePro = async () => {
-      try {
-        // Only check onboarding after subscription check is done
-        if (isCheckingSubscription) return;
-        
-        const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
-        if (!onboardingCompleted) {
-          setShowOnboarding(true);
-        } else {
-          // Check for lifetime pro status if onboarding is completed
-          // const userId = await AsyncStorage.getItem('user_id');
-          // if (userId) {
-          //   await checkLifetimePro(userId);
-          // }
-        }
-      } catch (error) {
-        console.error('Error checking onboarding and lifetime pro:', error);
-      } finally {
-        setIsCheckingOnboarding(false);
-      }
-    };
-
-    checkOnboardingAndLifetimePro();
-  }, [isCheckingSubscription]);
 
   // Reset form when conversation is cleared
   useEffect(() => {
@@ -162,9 +133,6 @@ export default function HomeScreen() {
     }
   }, [conversationHistory.length]);
 
-  const handleOnboardingComplete = () => {
-    setShowOnboarding(false);
-  };
 
   const handlePromptSelect = (prompt: string) => {
     setSelectedPrompt(prompt);
@@ -298,11 +266,6 @@ export default function HomeScreen() {
     );
   }
   
-  // Show onboarding for new users
-  if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

@@ -81,8 +81,8 @@ export default function AnonymousPinSetupScreen() {
         // Clear onboarding flag to show onboarding
         await AsyncStorage.removeItem('onboarding_completed');
         
-        // Navigate to main app (will show onboarding)
-        router.replace('/(tabs)');
+        // Navigate directly to onboarding screen
+        router.replace('/onboarding');
       } else {
         console.error('Anonymous account creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create account');

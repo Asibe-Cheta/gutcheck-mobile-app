@@ -14,10 +14,10 @@ import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete?: () => void;
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
+export default function Onboarding({ onComplete }: OnboardingProps = {}) {
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
@@ -112,7 +112,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   const handleSkip = () => {
-    onComplete();
+    if (onComplete) {
+      onComplete();
+    } else {
+      // If used as standalone route, navigate to subscription
+      router.push('/subscription');
+    }
   };
 
   const renderScreen1 = () => (

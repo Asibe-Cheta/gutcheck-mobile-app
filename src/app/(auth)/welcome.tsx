@@ -120,7 +120,7 @@ export default function WelcomeScreen() {
         
         {/* Description */}
         <Text style={[styles.description, { color: currentTheme.textSecondary }]}>
-          Your private space to decode relationships and trust your instincts
+          Your private space to decode everyday interactions, a second check to your instincts. Get evidence-based analysis of manipulation, bullying, blackmail, sextortion, grooming and predatory patterns with complete anonymity.
         </Text>
         
         {/* Action buttons */}
