@@ -158,7 +158,7 @@ export default function UpgradeScreen() {
             onPress={handleStartTrial}
             activeOpacity={0.8}
           >
-            <Text style={styles.trialButtonText}>Start 7-day free trial</Text>
+            <Text style={styles.trialButtonText}>Start 3-day free trial</Text>
           </TouchableOpacity>
         </View>
 

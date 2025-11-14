@@ -127,14 +127,14 @@ class RevenueCatService {
               productId: PRODUCT_IDS.PREMIUM_MONTHLY,
               title: 'Premium Monthly',
               description: 'Full access to all features',
-              price: 9.99,
+              price: 6.99,
               currency: 'GBP',
             },
             {
               productId: PRODUCT_IDS.PREMIUM_YEARLY,
               title: 'Premium Yearly',
-              description: 'Full access to all features - Save 17%',
-              price: 99.99,
+              description: 'Full access to all features - Save 28%',
+              price: 59.99,
               currency: 'GBP',
             }
           ]

@@ -664,7 +664,7 @@ STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
 2. RED FLAGS (bullet points) - Specific concerning behaviors
 3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
-4. ACTION STEPS (specific steps) - What to do next
+4. RECOMMENDED ACTION (specific steps) - What to do next
 5. REALITY CHECK (1 sentence) - The hard truth they need to hear
 
 Always respond naturally and conversationally.`;
@@ -729,7 +729,7 @@ STRUCTURE YOUR RESPONSE:
    Use 1-10 scale: "This is showing serious red flags - about an 8 out of 10"
    Explain what that means
 
-4. IMMEDIATE ACTION STEPS (2-3 sentences)
+4. RECOMMENDED ACTION (2-3 sentences)
    Give 1-2 specific protective actions
    Include timeline: "For the next week, [specific action], then get back to me and let me know how it goes"
 

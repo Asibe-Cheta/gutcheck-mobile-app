@@ -482,8 +482,8 @@ export default function SubscriptionScreen() {
     
     // Calculate daily cost
     const dailyCost = plan.interval === 'month' 
-      ? (plan.price / 30).toFixed(2)  // £9.99 / 30 = £0.33 per day
-      : (plan.price / 365).toFixed(2); // £99.99 / 365 = £0.27 per day
+      ? (plan.price / 30).toFixed(2)  // £6.99 / 30 = £0.23 per day
+      : (plan.price / 365).toFixed(2); // £59.99 / 365 = £0.16 per day
 
     return (
       <View key={plan.id} style={[
@@ -524,7 +524,9 @@ export default function SubscriptionScreen() {
           
           {/* Subordinate: Daily Cost */}
           <View style={styles.dailyCostContainer}>
-            <Text style={styles.dailyCostLabel}>Just {dailyCost}p per day</Text>
+            <Text style={styles.dailyCostLabel}>
+              {plan.interval === 'month' ? '23p/day billed monthly' : '16p/day billed annually'}
+            </Text>
           </View>
           
           <Text style={styles.planDescription}>{plan.description}</Text>

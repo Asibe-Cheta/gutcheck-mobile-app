@@ -194,7 +194,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         {
           id: 'monthly',
           name: 'Premium Monthly', // Force correct name (not from App Store Connect which might be wrong)
-          price: monthlyProduct?.price || 9.99,
+          price: monthlyProduct?.price || 6.99,
           currency: monthlyProduct?.currency || 'GBP',
           interval: 'month',
           productId: productIds.PREMIUM_MONTHLY,
@@ -213,11 +213,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         {
           id: 'yearly',
           name: 'Premium Yearly', // Force correct name - FIXES APPLE REVIEW ISSUE
-          price: yearlyProduct?.price || 99.99,
+          price: yearlyProduct?.price || 59.99,
           currency: yearlyProduct?.currency || 'GBP',
           interval: 'year',
           productId: productIds.PREMIUM_YEARLY,
-          description: yearlyProduct?.description || 'Full access to all features - Save 17%',
+          description: yearlyProduct?.description || 'Full access to all features - Save 28%',
           hasFreeTrial: yearlyProduct?.hasFreeTrial || false,
           freeTrialDays: yearlyProduct?.freeTrialDays || null,
           features: [

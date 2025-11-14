@@ -314,54 +314,22 @@ export default function ChatScreen() {
         imageToSend || undefined
       );
 
-      // Handle long responses with chunking and typing animation
-      if (response.response.length > 200) {
-        // Break the response into multiple chunks for separate message bubbles
-        const chunks = chunkMessage(response.response, 150); // Smaller chunks for better UX
-        
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          
-          // Show typing animation for this chunk FIRST
-          setIsStreaming(true);
-          setStreamingMessage('');
-          
-          console.log('Starting typing animation for chunk:', i + 1, 'of', chunks.length);
-          
-          await simulateTyping(chunk, (text) => {
-            setStreamingMessage(text);
-          });
-          
-          // Clear streaming state and THEN add to conversation history
-          setIsStreaming(false);
-          setStreamingMessage('');
-          addAssistantResponse(chunk);
-          
-          console.log('Added chunk to conversation history:', i + 1);
-          
-          // Shorter delay between chunks for faster response
-          if (i < chunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        }
-      } else {
-        // For short responses, show typing animation FIRST
-        setIsStreaming(true);
-        setStreamingMessage('');
-        
-        console.log('Starting typing animation for short response');
-        
-        await simulateTyping(response.response, (text) => {
-          setStreamingMessage(text);
-        });
-        
-        // Clear streaming state and THEN add to conversation history
-        setIsStreaming(false);
-        setStreamingMessage('');
-        addAssistantResponse(response.response);
-        
-        console.log('Added short response to conversation history');
-      }
+      // Show typing animation FIRST, then add complete response in one box
+      setIsStreaming(true);
+      setStreamingMessage('');
+      
+      console.log('Starting typing animation for response');
+      
+      await simulateTyping(response.response, (text) => {
+        setStreamingMessage(text);
+      });
+      
+      // Clear streaming state and THEN add complete response to conversation history
+      setIsStreaming(false);
+      setStreamingMessage('');
+      addAssistantResponse(response.response);
+      
+      console.log('Added complete response to conversation history');
 
       // Update conversation state
       updateConversationState({ stage: response.nextStage });
@@ -424,39 +392,6 @@ export default function ChatScreen() {
     startNewConversation();
     setUploadedImage(null);
     router.push('/(tabs)/');
-  };
-
-  // Function to chunk long messages into smaller parts
-  const chunkMessage = (message: string, maxLength: number = 200): string[] => {
-    if (message.length <= maxLength) {
-      return [message];
-    }
-    
-    const chunks: string[] = [];
-    const sentences = message.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    let currentChunk = '';
-    
-    for (const sentence of sentences) {
-      const trimmedSentence = sentence.trim();
-      if (!trimmedSentence) continue;
-      
-      if (currentChunk.length + trimmedSentence.length + 1 <= maxLength) {
-        currentChunk += (currentChunk ? '. ' : '') + trimmedSentence;
-      } else {
-        if (currentChunk) {
-          chunks.push(currentChunk + '.');
-          currentChunk = trimmedSentence;
-        } else {
-          chunks.push(trimmedSentence + '.');
-        }
-      }
-    }
-    
-    if (currentChunk) {
-      chunks.push(currentChunk + '.');
-    }
-    
-    return chunks;
   };
 
   // Function to simulate character-by-character typing animation
@@ -1160,7 +1095,7 @@ export default function ChatScreen() {
               <Text style={styles.welcomeTitle}>Hey there! 👋</Text>
               <Text style={styles.welcomeText}>
                 I'm here to help you understand what's happening in your relationships. 
-                Share what's on your mind - I'll listen and help you figure things out.
+                Ask follow up questions - I'll listen and help you figure things out.
               </Text>
             </View>
           )}
@@ -1207,7 +1142,7 @@ export default function ChatScreen() {
         {/* Disclaimer */}
         <View style={styles.disclaimerContainer}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
-          <Text style={styles.disclaimerText}>This is guidance, not authority.</Text>
+          <Text style={styles.disclaimerText}>Disclaimer: This app is for guidance, not an authority. The final judgment will always lie with the user and or real world experts.</Text>
         </View>
 
         {/* Input Area */}
@@ -1227,7 +1162,7 @@ export default function ChatScreen() {
             
             <TextInput
               style={styles.textInput}
-              placeholder="What's on your mind?"
+              placeholder="Ask follow up"
               placeholderTextColor={colors.textSecondary}
               value={message}
               onChangeText={setMessage}

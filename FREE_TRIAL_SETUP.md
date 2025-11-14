@@ -41,7 +41,7 @@ Your subscription products are configured in **App Store Connect**, and RevenueC
    - End Date: Select **"No End Date"** (or pick an end date)
    - Click **"Next"**
 7. **Choose Offer Type**: Select **"Free Trial"**
-8. **Set Duration**: Select **"1 Week"** for your 7-day free trial
+8. **Set Duration**: Select **"3 Days"** for your 3-day free trial
 9. Click **"Next"** to review
 10. **Review your settings** and click **"Confirm"** or **"Save"**
 
@@ -51,7 +51,7 @@ Repeat **Step 3** for your **"Premium Yearly"** subscription:
 - Territories: **All Territories**
 - End Date: **No End Date**
 - Offer Type: **Free Trial**
-- Duration: **1 Week**
+- Duration: **3 Days**
 
 ### Step 5: Sync Changes to RevenueCat
 
@@ -96,8 +96,8 @@ Repeat **Step 3** for your **"Premium Yearly"** subscription:
 
 1. Create a new account in your app
 2. Complete onboarding
-3. Click **"Start My 7-Day Free Trial"**
-4. You should see the subscription offer with a **"Try 7 Days Free"** button or similar text
+3. Click **"Start My 3-Day Free Trial"**
+4. You should see the subscription offer with a **"Try 3 Days Free"** button or similar text
 5. Complete the purchase flow (you won't be charged in sandbox)
 6. Verify the subscription shows the trial period in your app
 7. Check RevenueCat dashboard to confirm the purchase is recorded
