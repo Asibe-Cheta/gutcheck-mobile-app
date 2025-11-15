@@ -50,26 +50,26 @@ export default function HomeScreen() {
   // Check subscription status on mount
   useEffect(() => {
     const checkSubscription = async () => {
-      // CRITICAL: Check skip flag FIRST (before any other checks)
-      // If coming from subscription screen with confirmed subscription, skip ALL checks
+      // CRITICAL FIX: Check store state FIRST (synchronous - no race condition)
+      // If subscription is already in store, skip ALL checks immediately
+      const storeState = useSubscriptionStore.getState();
+      if (storeState.subscription || storeState.isLifetimePro) {
+        console.log('[HOME] ✅ Subscription active in store - allowing access immediately');
+        setIsCheckingSubscription(false);
+        return; // EXIT - no async operations, no RevenueCat calls
+      }
+      
+      // If not in store, check skip flag (async but only if needed)
       try {
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
           console.log('[HOME] ✅ Skip flag detected - subscription confirmed, allowing access');
           await AsyncStorage.removeItem('_skip_sub_check');
           setIsCheckingSubscription(false);
-          return; // EXIT IMMEDIATELY - no RevenueCat calls
+          return; // EXIT - no RevenueCat calls
         }
       } catch (skipError) {
         console.error('[HOME] Error checking skip flag:', skipError);
-      }
-      
-      // If skip flag not set, check subscription store state (synchronous)
-      const storeState = useSubscriptionStore.getState();
-      if (storeState.subscription || storeState.isLifetimePro) {
-        console.log('[HOME] ✅ Subscription active in store - allowing access');
-        setIsCheckingSubscription(false);
-        return;
       }
       
       // Only check RevenueCat if subscription not confirmed in store or skip flag
