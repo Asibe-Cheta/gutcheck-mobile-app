@@ -480,10 +480,13 @@ export default function SubscriptionScreen() {
     const isCurrentPlan = currentPlan?.id === plan.id;
     const isPopular = plan.popular;
     
+    // Force correct prices (override RevenueCat prices if they're wrong)
+    const displayPrice = plan.interval === 'month' ? 6.99 : 59.99;
+    
     // Calculate daily cost
     const dailyCost = plan.interval === 'month' 
-      ? (plan.price / 30).toFixed(2)  // £6.99 / 30 = £0.23 per day
-      : (plan.price / 365).toFixed(2); // £59.99 / 365 = £0.16 per day
+      ? (displayPrice / 30).toFixed(2)  // £6.99 / 30 = £0.23 per day
+      : (displayPrice / 365).toFixed(2); // £59.99 / 365 = £0.16 per day
 
     return (
       <View key={plan.id} style={[
@@ -508,7 +511,7 @@ export default function SubscriptionScreen() {
           
           {/* Most Prominent: Billed Amount */}
           <View style={styles.priceContainer}>
-            <Text style={styles.price}>£{plan.price.toFixed(2)}</Text>
+            <Text style={styles.price}>£{displayPrice.toFixed(2)}</Text>
             <Text style={styles.period}>/{plan.interval}</Text>
           </View>
           
