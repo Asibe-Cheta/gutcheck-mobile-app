@@ -362,34 +362,22 @@ export default function SubscriptionScreen() {
            // Clear the purchase flag since we're handling navigation directly here
            await AsyncStorage.removeItem('_returning_from_purchase');
            
-          // Set flags immediately
+          // Set bypass flags IMMEDIATELY - CRITICAL for preventing RevenueCat calls
           await AsyncStorage.setItem('_has_active_subscription', 'true');
           await AsyncStorage.setItem('_skip_sub_check', 'true');
           await AsyncStorage.removeItem('_sub_nav_from_home');
           await AsyncStorage.removeItem('_returning_from_purchase');
           
-          // Show alert and navigate automatically without waiting for user interaction
-          Alert.alert(
-            '🎉 Subscription Active!',
-            'Welcome to Premium! You now have access to all premium features.',
-            [],
-            { cancelable: false }
-          );
+          console.log('[SUB] ✅ Bypass flags set, navigating to home...');
           
-          // Wait for alert to render, then dismiss it and navigate
+          // Navigate IMMEDIATELY without any alerts or delays
+          // The home screen will show a success message or indicator
+          router.replace('/(tabs)');
+          
+          // Reset navigation flag after navigation completes
           setTimeout(() => {
-            // Dismiss any alerts
-            Alert.alert('');
-            
-            // Navigate after brief delay to ensure alert is dismissed
-            setTimeout(() => {
-              router.replace('/(tabs)');
-              
-              setTimeout(() => {
-                isNavigatingRef.current = false;
-              }, 1000);
-            }, 300);
-          }, 1500);
+            isNavigatingRef.current = false;
+          }, 1000);
         } else {
           // Subscription might still be syncing, show alert
           console.log('[SUB] ⚠️ Subscription not immediately available');
