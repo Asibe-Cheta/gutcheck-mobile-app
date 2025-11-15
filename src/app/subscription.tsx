@@ -387,15 +387,34 @@ export default function SubscriptionScreen() {
              ]
            );
         } else {
-          // Subscription might still be syncing, give it another try
-          console.log('[SUB] ⚠️ Subscription not immediately available, waiting for sync...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          await loadSubscription();
-          
-          // After wait, read fresh values from store
-          const stateAfterWait = useSubscriptionStore.getState();
-          const finalCheck = stateAfterWait.subscription || stateAfterWait.isLifetimePro;
-          if (finalCheck) {
+          // Subscription might still be syncing, show alert
+          console.log('[SUB] ⚠️ Subscription not immediately available');
+          Alert.alert(
+            'Processing Subscription',
+            'Your subscription is being processed. Please wait a moment and the app will refresh automatically.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Just close the alert - subscription check will happen on next screen mount
+                }
+              }
+            ]
+          );
+        }
+      } else {
+        // Handle purchase failure
+        console.log('[SUB] Purchase was not successful');
+      }
+    } catch (error) {
+      console.error('[SUB] Error during subscription:', error);
+      Alert.alert('Error', 'An error occurred during subscription. Please try again.');
+    }
+  };
+
+  // OLD CODE REMOVED - this is dead code now, keeping structure
+  const __REMOVED__ = () => {
+    if (false) {
             console.log('[SUB] ✅ Subscription synced, navigating...');
             isNavigatingRef.current = true;
             // Clear the purchase flag since we're handling navigation directly here
