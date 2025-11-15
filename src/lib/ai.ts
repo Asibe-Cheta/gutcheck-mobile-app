@@ -676,15 +676,19 @@ Always respond naturally and conversationally.`;
     try {
       const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
       
+      // Get user's region for region-specific helplines
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const userRegion = await AsyncStorage.getItem('user_region');
+      
       // Check if helplines should be recommended for initial message
       const isCrisis = isCrisisSituation(userMessage);
       const isDanger = isImmediateDanger(userMessage);
-      const relevantHelplines = getRelevantHelplines(userMessage);
+      const relevantHelplines = getRelevantHelplines(userMessage, userRegion);
       
       // Add helpline recommendations if appropriate
       let enhancedResponse = response;
       if (isCrisis || isDanger || relevantHelplines.length > 0) {
-        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines);
+        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines, userRegion);
         enhancedResponse = response + helplineMessage;
       }
       
@@ -1103,6 +1107,10 @@ Always respond naturally and conversationally. Build on previous messages to mai
         responsePreview: response.substring(0, 100) + '...'
       });
       
+      // Get user's region for region-specific helplines
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const userRegion = await AsyncStorage.getItem('user_region');
+      
       // Check if helplines should be recommended based on conversation content
       const fullConversationText = [
         ...conversationHistory.map((msg: any) => msg.content),
@@ -1111,12 +1119,12 @@ Always respond naturally and conversationally. Build on previous messages to mai
       
       const isCrisis = isCrisisSituation(fullConversationText);
       const isDanger = isImmediateDanger(fullConversationText);
-      const relevantHelplines = getRelevantHelplines(fullConversationText);
+      const relevantHelplines = getRelevantHelplines(fullConversationText, userRegion);
       
       // Add helpline recommendations if appropriate
       let enhancedResponse = response;
       if (isCrisis || isDanger || relevantHelplines.length > 0) {
-        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines);
+        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines, userRegion);
         enhancedResponse = response + helplineMessage;
       }
       

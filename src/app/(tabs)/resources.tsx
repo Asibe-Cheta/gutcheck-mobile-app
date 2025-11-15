@@ -4,14 +4,15 @@
  * Educational content and crisis support
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { useRouter } from 'expo-router';
-import { HELPLINES } from '@/lib/helplineService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { detectRegion, getHelplinesForRegion, type Region } from '@/lib/helplineService';
 
 // Crisis Resource Component
 const CrisisResource = ({ 
@@ -98,6 +99,49 @@ export default function ResourcesScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+  const [region, setRegion] = useState<Region>('UK');
+  const [helplines, setHelplines] = useState<any[]>([]);
+  
+  // Load user's region
+  useEffect(() => {
+    loadUserRegion();
+  }, []);
+  
+  const loadUserRegion = async () => {
+    try {
+      const userRegion = await AsyncStorage.getItem('user_region');
+      const detectedRegion = detectRegion(userRegion);
+      setRegion(detectedRegion);
+      
+      // Get helplines for this region
+      const regionHelplines = getHelplinesForRegion(detectedRegion);
+      
+      // Format helplines for display
+      const formattedHelplines = regionHelplines.map((helpline, index) => ({
+        name: helpline.name,
+        number: formatPhoneNumber(helpline.number),
+        rawNumber: helpline.number,
+        description: helpline.description,
+        icon: helpline.icon,
+        color: [currentTheme.warning, currentTheme.success, currentTheme.primary, currentTheme.error][index % 4]
+      }));
+      
+      setHelplines(formattedHelplines);
+    } catch (error) {
+      console.error('Error loading user region:', error);
+      // Default to UK if error
+      const ukHelplines = getHelplinesForRegion('UK');
+      const formattedHelplines = ukHelplines.map((helpline, index) => ({
+        name: helpline.name,
+        number: formatPhoneNumber(helpline.number),
+        rawNumber: helpline.number,
+        description: helpline.description,
+        icon: helpline.icon,
+        color: [currentTheme.warning, currentTheme.success, currentTheme.primary, currentTheme.error][index % 4]
+      }));
+      setHelplines(formattedHelplines);
+    }
+  };
   
   // Format phone number with spaces for display
   const formatPhoneNumber = (number: string): string => {
@@ -115,14 +159,7 @@ export default function ResourcesScreen() {
   };
   
   // Map helplines with colors for display
-  const crisisResources = HELPLINES.map((helpline, index) => ({
-    name: helpline.name,
-    number: formatPhoneNumber(helpline.number),
-    rawNumber: helpline.number, // Keep raw number for calling
-    description: helpline.description,
-    icon: helpline.icon,
-    color: [currentTheme.warning, currentTheme.success, currentTheme.primary, currentTheme.error][index % 4]
-  }));
+  const crisisResources = helplines;
 
   const safetyGuides = [
     { 
@@ -325,22 +362,28 @@ export default function ResourcesScreen() {
           </TouchableOpacity>
         </View>
         
-        {/* UK Helplines */}
+        {/* Region-specific Helplines */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>UK Helplines</Text>
-          {crisisResources.map((resource, index) => (
-            <CrisisResource
-              key={index}
-              name={resource.name}
-              number={resource.number}
-              rawNumber={resource.rawNumber}
-              description={resource.description}
-              icon={resource.icon}
-              color={resource.color}
-              styles={styles}
-              colors={currentTheme}
-            />
-          ))}
+          <Text style={styles.sectionTitle}>{region} Helplines</Text>
+          {crisisResources.length > 0 ? (
+            crisisResources.map((resource, index) => (
+              <CrisisResource
+                key={index}
+                name={resource.name}
+                number={resource.number}
+                rawNumber={resource.rawNumber}
+                description={resource.description}
+                icon={resource.icon}
+                color={resource.color}
+                styles={styles}
+                colors={currentTheme}
+              />
+            ))
+          ) : (
+            <Text style={[styles.resourceDescription, { color: currentTheme.textSecondary }]}>
+              Loading helplines...
+            </Text>
+          )}
         </View>
         
         {/* Safety Guides */}
