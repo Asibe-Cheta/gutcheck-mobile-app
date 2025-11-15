@@ -525,7 +525,9 @@ export default function SubscriptionScreen() {
           {/* Subordinate: Daily Cost */}
           <View style={styles.dailyCostContainer}>
             <Text style={styles.dailyCostLabel}>
-              {plan.interval === 'month' ? '23p/day billed monthly' : '16p/day billed annually'}
+              {plan.interval === 'month' 
+                ? '23p/day billed monthly, £6.99/month' 
+                : '16p/day billed annually, Save 28% vs monthly. £59.99/year'}
             </Text>
           </View>
           
