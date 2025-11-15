@@ -362,16 +362,24 @@ export default function SubscriptionScreen() {
            // Clear the purchase flag since we're handling navigation directly here
            await AsyncStorage.removeItem('_returning_from_purchase');
            
-          // Set bypass flags IMMEDIATELY - CRITICAL for preventing RevenueCat calls
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          await AsyncStorage.setItem('_skip_sub_check', 'true');
-          await AsyncStorage.removeItem('_sub_nav_from_home');
-          await AsyncStorage.removeItem('_returning_from_purchase');
+          // Set bypass flags using multiSet for atomic operation
+          await AsyncStorage.multiSet([
+            ['_has_active_subscription', 'true'],
+            ['_skip_sub_check', 'true'],
+          ]);
           
-          console.log('[SUB] ✅ Bypass flags set, navigating to home...');
+          // Remove old flags
+          await AsyncStorage.multiRemove(['_sub_nav_from_home', '_returning_from_purchase']);
           
-          // Navigate IMMEDIATELY without any alerts or delays
-          // The home screen will show a success message or indicator
+          console.log('[SUB] ✅ Bypass flags set, waiting for AsyncStorage to flush...');
+          
+          // CRITICAL: Wait for AsyncStorage to flush to disk before navigating
+          // This ensures the home screen will see the bypass flags
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          console.log('[SUB] ✅ Navigating to home screen...');
+          
+          // Navigate - home screen will check bypass flags first
           router.replace('/(tabs)');
           
           // Reset navigation flag after navigation completes

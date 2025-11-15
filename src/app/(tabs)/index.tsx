@@ -277,13 +277,13 @@ export default function HomeScreen() {
 
   const styles = createStyles(currentTheme);
   
-  // Show loading while checking subscription or onboarding
-  if (isCheckingSubscription || isCheckingOnboarding) {
+  // Show loading while checking subscription
+  if (isCheckingSubscription) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={currentTheme.primary} />
         <Text style={[styles.loadingText, { color: currentTheme.textSecondary, marginTop: 16 }]}>
-          {isCheckingSubscription ? 'Checking subscription...' : 'Loading...'}
+          Checking subscription...
         </Text>
       </SafeAreaView>
     );
