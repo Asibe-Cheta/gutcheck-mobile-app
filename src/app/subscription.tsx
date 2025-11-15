@@ -362,34 +362,34 @@ export default function SubscriptionScreen() {
            // Clear the purchase flag since we're handling navigation directly here
            await AsyncStorage.removeItem('_returning_from_purchase');
            
-           Alert.alert(
-             '🎉 Subscription Active!',
-             'Welcome to Premium! You now have access to all premium features.',
-             [
-               {
-                 text: 'Continue to App',
-                onPress: async () => {
-                  // Set PERMANENT subscription bypass flag
-                  await AsyncStorage.setItem('_has_active_subscription', 'true');
-                  await AsyncStorage.setItem('_skip_sub_check', 'true');
-                  
-                  // Clear other navigation flags
-                  await AsyncStorage.removeItem('_sub_nav_from_home');
-                  await AsyncStorage.removeItem('_returning_from_purchase');
-                  
-                  // Wait longer before navigation to ensure everything is persisted
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                  
-                  // Navigate to home screen - subscription is already confirmed in store
-                  router.replace('/(tabs)');
-                  
-                  setTimeout(() => {
-                    isNavigatingRef.current = false;
-                  }, 2000);
-                }
-               }
-             ]
-           );
+          // Set flags immediately
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
+          await AsyncStorage.setItem('_skip_sub_check', 'true');
+          await AsyncStorage.removeItem('_sub_nav_from_home');
+          await AsyncStorage.removeItem('_returning_from_purchase');
+          
+          // Show alert and navigate automatically without waiting for user interaction
+          Alert.alert(
+            '🎉 Subscription Active!',
+            'Welcome to Premium! You now have access to all premium features.',
+            [],
+            { cancelable: false }
+          );
+          
+          // Wait for alert to render, then dismiss it and navigate
+          setTimeout(() => {
+            // Dismiss any alerts
+            Alert.alert('');
+            
+            // Navigate after brief delay to ensure alert is dismissed
+            setTimeout(() => {
+              router.replace('/(tabs)');
+              
+              setTimeout(() => {
+                isNavigatingRef.current = false;
+              }, 1000);
+            }, 300);
+          }, 1500);
         } else {
           // Subscription might still be syncing, show alert
           console.log('[SUB] ⚠️ Subscription not immediately available');
