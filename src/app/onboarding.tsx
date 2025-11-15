@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -12,7 +12,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
-import { Picker } from '@react-native-picker/picker';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -26,6 +25,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [selectedAge, setSelectedAge] = useState<string>('');
   const [selectedGoal, setSelectedGoal] = useState<string>('');
   const [region, setRegion] = useState<string>('');
+  const [showAgePicker, setShowAgePicker] = useState(false);
 
   const ageOptions = [
     { value: '', label: 'Select your age range' },
@@ -154,23 +154,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             Age
           </Text>
           
-          <View style={[styles.pickerContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Picker
-              selectedValue={selectedAge}
-              onValueChange={(itemValue) => setSelectedAge(itemValue)}
-              style={styles.picker}
-              dropdownIconColor={colors.textPrimary}
-            >
-              {ageOptions.map((option) => (
-                <Picker.Item 
-                  key={option.value} 
-                  label={option.label} 
-                  value={option.value}
-                  color={colors.textPrimary}
-                />
-              ))}
-            </Picker>
-          </View>
+          <TouchableOpacity
+            style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => setShowAgePicker(true)}
+          >
+            <Text style={[
+              styles.pickerButtonText,
+              { color: selectedAge ? colors.textPrimary : colors.textSecondary }
+            ]}>
+              {selectedAge ? ageOptions.find(o => o.value === selectedAge)?.label : 'Select your age range'}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
 
           <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 24 }]}>
             Region
@@ -354,13 +349,60 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       marginTop: 8,
       fontStyle: 'italic',
     },
-    pickerContainer: {
+    pickerButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       borderWidth: 2,
       borderRadius: 12,
-      overflow: 'hidden',
+      paddingHorizontal: 16,
+      paddingVertical: 16,
     },
-    picker: {
-      height: 50,
+    pickerButtonText: {
+      fontSize: 16,
+      flex: 1,
+    },
+    agePickerModal: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    agePickerContainer: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 34,
+    },
+    agePickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    agePickerTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.textPrimary,
+    },
+    agePickerDone: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    ageOptionButton: {
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    ageOptionText: {
+      fontSize: 16,
+      color: colors.textPrimary,
+    },
+    ageOptionSelected: {
+      backgroundColor: colors.primary + '10',
     },
     regionInput: {
       borderWidth: 2,
@@ -552,6 +594,53 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Age Picker Modal */}
+      <Modal
+        visible={showAgePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAgePicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.agePickerModal}
+          activeOpacity={1}
+          onPress={() => setShowAgePicker(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.agePickerContainer}>
+              <View style={styles.agePickerHeader}>
+                <Text style={styles.agePickerTitle}>Select Age</Text>
+                <TouchableOpacity onPress={() => setShowAgePicker(false)}>
+                  <Text style={styles.agePickerDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ maxHeight: 400 }}>
+                {ageOptions.filter(o => o.value !== '').map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.ageOptionButton,
+                      selectedAge === option.value && styles.ageOptionSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedAge(option.value);
+                      setShowAgePicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.ageOptionText,
+                      selectedAge === option.value && { fontWeight: '600', color: colors.primary }
+                    ]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }

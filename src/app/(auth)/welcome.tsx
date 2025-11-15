@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320, // max-w-sm
     gap: 16, // gap-4
-    marginBottom: 32, // mt-8
+    marginBottom: 16, // Reduced from 32
   },
   primaryButton: {
     paddingVertical: 12, // py-3
