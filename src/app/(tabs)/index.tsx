@@ -51,19 +51,31 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkSubscription = async () => {
       try {
-        // FIRST: Check store state synchronously - if subscription exists, trust it completely
-        const storeState = useSubscriptionStore.getState();
-        if (storeState.subscription || storeState.isLifetimePro) {
-          console.log('[HOME] ✅ Subscription found in store - no RevenueCat check needed');
+        // FIRST: Check permanent bypass flag - if set, user has active subscription
+        const hasActiveFlag = await AsyncStorage.getItem('_has_active_subscription');
+        if (hasActiveFlag === 'true') {
+          console.log('[HOME] ✅ Permanent subscription flag found - user has active subscription');
           setIsCheckingSubscription(false);
           return;
         }
         
-        // Check if we should skip subscription check (coming from subscription screen with active subscription)
+        // SECOND: Check store state synchronously - if subscription exists, trust it completely
+        const storeState = useSubscriptionStore.getState();
+        if (storeState.subscription || storeState.isLifetimePro) {
+          console.log('[HOME] ✅ Subscription found in store - no RevenueCat check needed');
+          // Set permanent flag for future visits
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
+          setIsCheckingSubscription(false);
+          return;
+        }
+        
+        // THIRD: Check temporary skip flag
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
-          console.log('[HOME] Skipping subscription check - coming from subscription screen with active subscription');
+          console.log('[HOME] Skipping subscription check - coming from subscription screen');
           await AsyncStorage.removeItem('_skip_sub_check');
+          // Set permanent flag
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
           setIsCheckingSubscription(false);
           return;
         }

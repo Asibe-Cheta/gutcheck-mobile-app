@@ -369,19 +369,23 @@ export default function SubscriptionScreen() {
                {
                  text: 'Continue to App',
                 onPress: async () => {
-                  // Clear navigation flags
+                  // Set PERMANENT subscription bypass flag
+                  await AsyncStorage.setItem('_has_active_subscription', 'true');
+                  await AsyncStorage.setItem('_skip_sub_check', 'true');
+                  
+                  // Clear other navigation flags
                   await AsyncStorage.removeItem('_sub_nav_from_home');
                   await AsyncStorage.removeItem('_returning_from_purchase');
                   
-                  // Set skip flag as backup (store state is primary check)
-                  await AsyncStorage.setItem('_skip_sub_check', 'true');
+                  // Wait longer before navigation to ensure everything is persisted
+                  await new Promise(resolve => setTimeout(resolve, 500));
                   
                   // Navigate to home screen - subscription is already confirmed in store
                   router.replace('/(tabs)');
                   
                   setTimeout(() => {
                     isNavigatingRef.current = false;
-                  }, 1000);
+                  }, 2000);
                 }
                }
              ]
