@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
+import { Picker } from '@react-native-picker/picker';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -24,17 +25,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [currentScreen, setCurrentScreen] = useState(0);
   const [selectedAge, setSelectedAge] = useState<string>('');
   const [selectedGoal, setSelectedGoal] = useState<string>('');
-  const [customAge, setCustomAge] = useState<string>('');
-  const [showCustomAgeInput, setShowCustomAgeInput] = useState(false);
+  const [region, setRegion] = useState<string>('');
 
   const ageOptions = [
+    { value: '', label: 'Select your age range' },
     { value: '10-14', label: '10-14 years old' },
     { value: '15-24', label: '15-24 years old' },
     { value: '25-34', label: '25-34 years old' },
     { value: '35-44', label: '35-44 years old' },
     { value: '45+', label: '45+ years old' },
     { value: 'guardian', label: 'I\'m a guardian/parent' },
-    { value: 'custom', label: 'Enter my exact age' },
   ];
 
   const goalOptions = [
@@ -45,26 +45,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   ];
 
   const handleNext = async () => {
-    if (currentScreen === 0) {
-      // Check if user has entered an age (either custom or selected a range)
-      if (!customAge.trim() && !selectedAge) {
-        Alert.alert('Please enter your age', 'This helps us personalize your experience.');
+    if (currentScreen === 1) {
+      // Check if user has selected an age
+      if (!selectedAge) {
+        Alert.alert('Please select your age', 'This helps us personalize your experience.');
         return;
       }
-      
-      // If custom age is entered, validate it
-      if (customAge.trim()) {
-        const age = parseInt(customAge.trim());
-        if (isNaN(age) || age < 10 || age > 100) {
-          Alert.alert('Invalid age', 'Please enter a valid age between 10 and 100.');
-          return;
-        }
-      }
-    }
-    
-    if (currentScreen === 1 && !selectedGoal) {
-      Alert.alert('Please select a goal', 'This helps us understand how to support you.');
-      return;
     }
 
     if (currentScreen === 2) {
@@ -73,22 +59,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         // Save onboarding completion
         await AsyncStorage.setItem('onboarding_completed', 'true');
         
-        // Save user preferences - prioritize custom age input
-        const finalAge = customAge.trim() || selectedAge;
-        if (finalAge) {
-          await AsyncStorage.setItem('user_age_range', finalAge);
+        // Save user preferences
+        if (selectedAge) {
+          await AsyncStorage.setItem('user_age_range', selectedAge);
         }
-        if (selectedGoal) {
-          await AsyncStorage.setItem('user_goal', selectedGoal);
+        if (region.trim()) {
+          await AsyncStorage.setItem('user_region', region.trim());
         }
 
         // Update profile if user is logged in
         const user = await AsyncStorage.getItem('user_id');
-        if (user && finalAge) {
+        if (user) {
           try {
             await profileService.updateProfile({
-              age_range: finalAge,
-              goal: selectedGoal,
+              age_range: selectedAge,
+              region: region.trim() || undefined,
             });
           } catch (error) {
             console.log('Profile update failed, will sync later:', error);
@@ -119,76 +104,36 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     <View style={styles.screenContainer}>
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Ionicons name="flash" size={60} color={colors.primary} />
+          <Ionicons name="alert-circle" size={60} color={colors.primary} />
         </View>
         
         <Text style={[styles.headline, { color: colors.textPrimary }]}>
-          Welcome to GutCheck! Your intuition just got a powerful ally.
-        </Text>
-        
-        <Text style={[styles.subtext, { color: colors.textSecondary }]}>
-          Trusting your gut was the smartest move. You're about to learn how to spot red flags before they hit, from manipulation to bullying.
+          Let's recap why we are here
         </Text>
 
-        <View style={styles.ageSelection}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            How old are you?
-          </Text>
-          
-          {/* Direct Age Input */}
-          <View style={styles.ageInputContainer}>
-            <TextInput
-              style={[
-                styles.ageInput,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: colors.border,
-                  color: colors.textPrimary,
-                }
-              ]}
-              placeholder="Enter your age (e.g., 28)"
-              placeholderTextColor={colors.textSecondary}
-              value={customAge}
-              onChangeText={(text) => {
-                setCustomAge(text);
-                setSelectedAge('custom');
-              }}
-              keyboardType="numeric"
-              maxLength={3}
-            />
+        <View style={styles.statsCardsContainer}>
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
+              An avalanche of child abuse and sexual exploitation is taking place behind closed doors and new study has found
+            </Text>
           </View>
-          
-          {/* Quick Select Options */}
-          <Text style={[styles.quickSelectLabel, { color: colors.textSecondary }]}>
-            Or select a range:
-          </Text>
-          <View style={styles.quickSelectContainer}>
-            {ageOptions.slice(0, -1).map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.quickSelectButton,
-                  { 
-                    backgroundColor: selectedAge === option.value ? colors.primary : colors.surface,
-                    borderColor: colors.border,
-                  },
-                  selectedAge === option.value && styles.selectedOption
-                ]}
-                onPress={() => {
-                  setSelectedAge(option.value);
-                  setCustomAge('');
-                }}
-              >
-                <Text style={[
-                  styles.quickSelectText,
-                  { color: selectedAge === option.value ? '#FFFFFF' : colors.textPrimary }
-                ]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
+              Approximately 50% of minors are being approached in a grooming context
+            </Text>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
+              Approximately one-third of the world's youth are bullied.
+            </Text>
           </View>
         </View>
+
+        <Text style={[styles.purposeText, { color: colors.textSecondary }]}>
+          Stories like this and more is why GC was created; to give users eyes to see the warning signs before they're trapped, and a voice to reach out before silence wins.
+        </Text>
       </View>
     </View>
   );
@@ -197,44 +142,55 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     <View style={styles.screenContainer}>
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Ionicons name="heart" size={60} color={colors.primary} />
+          <Ionicons name="flash" size={60} color={colors.primary} />
         </View>
         
         <Text style={[styles.headline, { color: colors.textPrimary }]}>
-          Great start, your intuition is speaking!
-        </Text>
-        
-        <Text style={[styles.subtext, { color: colors.textSecondary }]}>
-          What do you want to improve most? Pick what resonates with you.
+          Congratulations, great start. You just made a great decision. Your intuition just got a new ally.
         </Text>
 
-        <View style={styles.goalSelection}>
-          {goalOptions.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.optionButton,
-                { 
-                  backgroundColor: selectedGoal === option.value ? colors.primary : colors.surface,
-                  borderColor: colors.border,
-                },
-                selectedGoal === option.value && styles.selectedOption
-              ]}
-              onPress={() => setSelectedGoal(option.value)}
+        <View style={styles.ageSelection}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            Age
+          </Text>
+          
+          <View style={[styles.pickerContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Picker
+              selectedValue={selectedAge}
+              onValueChange={(itemValue) => setSelectedAge(itemValue)}
+              style={styles.picker}
+              dropdownIconColor={colors.textPrimary}
             >
-              <Text style={[
-                styles.optionText,
-                { color: selectedGoal === option.value ? '#FFFFFF' : colors.textPrimary }
-              ]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+              {ageOptions.map((option) => (
+                <Picker.Item 
+                  key={option.value} 
+                  label={option.label} 
+                  value={option.value}
+                  color={colors.textPrimary}
+                />
+              ))}
+            </Picker>
+          </View>
 
-        <Text style={[styles.insightText, { color: colors.textSecondary }]}>
-          Visualizing these goals makes your path crystal clear. You're not alone, this is normal and achievable.
-        </Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 24 }]}>
+            Region
+          </Text>
+          
+          <TextInput
+            style={[
+              styles.regionInput,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              }
+            ]}
+            placeholder="Enter your region (e.g., London, UK)"
+            placeholderTextColor={colors.textSecondary}
+            value={region}
+            onChangeText={setRegion}
+          />
+        </View>
       </View>
     </View>
   );
@@ -375,6 +331,43 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       textAlign: 'center',
       fontStyle: 'italic',
       lineHeight: 20,
+    },
+    statsCardsContainer: {
+      width: '100%',
+      marginBottom: 24,
+      gap: 12,
+    },
+    statCard: {
+      padding: 20,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    statCardText: {
+      fontSize: 15,
+      lineHeight: 22,
+      textAlign: 'center',
+    },
+    purposeText: {
+      fontSize: 15,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginTop: 8,
+      fontStyle: 'italic',
+    },
+    pickerContainer: {
+      borderWidth: 2,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    picker: {
+      height: 50,
+    },
+    regionInput: {
+      borderWidth: 2,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      fontSize: 16,
     },
     statsContainer: {
       backgroundColor: colors.surface,

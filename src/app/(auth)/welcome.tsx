@@ -156,8 +156,8 @@ export default function WelcomeScreen() {
         </View>
         
         {/* Footer text */}
-        <Text style={[styles.footerText, { color: currentTheme.textSecondary }]}>
-          100% private • No judgment • Just clarity
+        <Text style={[styles.footerText, { color: '#43B897' }]}>
+          100% private • We don't collect, sell or share personal data, reflections. Nothing leaves your phone unless you choose to share it.
         </Text>
       </View>
     </View>
