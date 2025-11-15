@@ -412,52 +412,6 @@ export default function SubscriptionScreen() {
     }
   };
 
-  // OLD CODE REMOVED - this is dead code now, keeping structure
-  const __REMOVED__ = () => {
-    if (false) {
-            console.log('[SUB] ✅ Subscription synced, navigating...');
-            isNavigatingRef.current = true;
-            // Clear the purchase flag since we're handling navigation directly here
-            await AsyncStorage.removeItem('_returning_from_purchase');
-            // Set skip flag (store state is primary check)
-            await AsyncStorage.setItem('_skip_sub_check', 'true');
-            await AsyncStorage.removeItem('_sub_nav_from_home');
-            
-            // Navigate - subscription already confirmed in store
-            router.replace('/(tabs)');
-            
-            setTimeout(() => {
-              isNavigatingRef.current = false;
-            }, 1000);
-          } else {
-            Alert.alert(
-              'Subscription Processing',
-              'Your subscription is being processed. Please restart the app or wait a moment and try again.',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    // Refresh the screen to show updated status
-                    loadSubscription();
-                  }
-                }
-              ]
-            );
-          }
-        }
-      } else {
-        // Clear the purchase flag if purchase failed
-        await AsyncStorage.removeItem('_returning_from_purchase');
-        Alert.alert('Subscription Failed', result.error || 'Failed to subscribe. Please try again.');
-      }
-    } catch (error) {
-      console.error('Subscription error:', error);
-      // Clear the purchase flag on error
-      await AsyncStorage.removeItem('_returning_from_purchase').catch(() => {});
-      Alert.alert('Error', 'Failed to process subscription. Please try again.');
-    }
-  };
-
   const handleRestorePurchases = async () => {
     try {
       const result = await restorePurchases();
