@@ -51,6 +51,14 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkSubscription = async () => {
       try {
+        // FIRST: Check store state synchronously - if subscription exists, trust it completely
+        const storeState = useSubscriptionStore.getState();
+        if (storeState.subscription || storeState.isLifetimePro) {
+          console.log('[HOME] ✅ Subscription found in store - no RevenueCat check needed');
+          setIsCheckingSubscription(false);
+          return;
+        }
+        
         // Check if we should skip subscription check (coming from subscription screen with active subscription)
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
@@ -60,8 +68,8 @@ export default function HomeScreen() {
           return;
         }
         
-        // Add a small delay to allow navigation to settle
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Add a LONGER delay to ensure navigation and native bridge are fully ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         const userId = await AsyncStorage.getItem('user_id');
         if (!userId) {
