@@ -315,9 +315,11 @@ export default function SubscriptionScreen() {
             // Set flag to tell home screen to skip subscription check
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             
-            // Small delay to ensure UI updates
+            // Small delay to ensure UI updates and AsyncStorage persistence
             setTimeout(async () => {
               await AsyncStorage.removeItem('_sub_nav_from_home');
+              // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
+              await new Promise(resolve => setTimeout(resolve, 100));
               router.replace('/(tabs)');
               // Reset navigation flag after navigation completes
               setTimeout(() => {
@@ -416,6 +418,8 @@ export default function SubscriptionScreen() {
             // Set flag to tell home screen to skip subscription check
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             await AsyncStorage.removeItem('_sub_nav_from_home');
+            // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
+            await new Promise(resolve => setTimeout(resolve, 100));
             router.replace('/(tabs)');
             setTimeout(() => {
               isNavigatingRef.current = false;
