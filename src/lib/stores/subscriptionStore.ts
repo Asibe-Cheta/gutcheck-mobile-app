@@ -468,38 +468,16 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const subscription = result.success ? result.subscription : null;
       
       if (subscription) {
+        // Set subscription in store immediately - purchase result is source of truth
         set({ subscription, currentPlan: plan, isLoading: false });
         
         // Save subscription status to AsyncStorage
         await AsyncStorage.setItem('subscription_status', 'active');
         await AsyncStorage.setItem('subscription_plan', planId);
         
-        // Refresh subscription status from RevenueCat to ensure it's up to date
-        // This helps with syncing issues where RevenueCat might take a moment
-        try {
-          console.log('[STORE] Refreshing subscription status after purchase...');
-          const hasActive = await iapService.hasActiveSubscription();
-          if (hasActive) {
-            const customerInfo = await iapService.getCustomerInfo();
-            if (customerInfo) {
-              const entitlement = customerInfo.entitlements.active['GutCheck Premium'];
-              if (entitlement) {
-                const updatedSubscription = {
-                  productId: entitlement.productIdentifier,
-                  transactionId: entitlement.transactionIdentifier || subscription.transactionId || '',
-                  purchaseDate: entitlement.latestPurchaseDate || subscription.purchaseDate || new Date().toISOString(),
-                  expirationDate: entitlement.expirationDate || subscription.expirationDate,
-                  isActive: true,
-                };
-                set({ subscription: updatedSubscription });
-                console.log('[STORE] ✅ Subscription status refreshed from RevenueCat');
-              }
-            }
-          }
-        } catch (refreshError) {
-          console.warn('[STORE] Could not refresh subscription status (non-critical):', refreshError);
-          // Non-critical - we already have subscription from purchase result
-        }
+        // DON'T refresh from RevenueCat - purchase result already has subscription
+        // Calling RevenueCat here can crash during navigation transitions
+        console.log('[STORE] ✅ Subscription set in store from purchase result');
         
         return { success: true };
       } else {

@@ -347,23 +347,11 @@ export default function SubscriptionScreen() {
       const result = await subscribeToPlan(planId);
       
       if (result.success) {
-        // Refresh subscription status from RevenueCat (may take a moment to sync)
-        console.log('[SUB] Purchase successful, refreshing subscription status...');
+        // Purchase successful - subscription is already set in store by subscribeToPlan()
+        // No need to call loadSubscription() which calls RevenueCat again
+        console.log('[SUB] Purchase successful - subscription already in store');
         
-        // Wait a moment for RevenueCat to sync
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Refresh subscription status from RevenueCat
-        await loadSubscription();
-        
-        // Double-check subscription is active before navigating
-        const userId = await AsyncStorage.getItem('user_id');
-        if (userId) {
-          await checkLifetimePro(userId);
-        }
-        
-        // Check again if we have active subscription or lifetime pro
-        // After async operations, read fresh values from store (destructured values are stale)
+        // Double-check subscription is active in store (synchronous check)
         const currentState = useSubscriptionStore.getState();
         const isActiveNow = currentState.subscription || currentState.isLifetimePro;
         
