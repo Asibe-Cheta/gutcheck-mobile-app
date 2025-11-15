@@ -882,30 +882,9 @@ export default function SubscriptionScreen() {
               return;
             }
 
-            // Check CURRENT state from store (no async refresh needed for back button)
-            const currentState = useSubscriptionStore.getState();
-            const hasActive = currentState.subscription || currentState.isLifetimePro;
-            
-            if (hasActive) {
-              // User has active subscription - navigate to home with flag to skip check
-              console.log('[SUB] User has active subscription, navigating to home...');
-              isNavigatingRef.current = true;
-              
-              // Set skip flag (store state is primary check)
-              await AsyncStorage.setItem('_skip_sub_check', 'true');
-              await AsyncStorage.removeItem('_sub_nav_from_home');
-              
-              // Navigate - subscription already confirmed in store
-              router.replace('/(tabs)');
-              
-              setTimeout(() => {
-                isNavigatingRef.current = false;
-              }, 1000);
-            } else {
-              // No active subscription - just go back normally
-              console.log('[SUB] No active subscription, going back...');
-              router.back();
-            }
+            // Always go back to previous screen (Settings, Home, etc.)
+            console.log('[SUB] Back button pressed, navigating back...');
+            router.back();
           }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />

@@ -1065,7 +1065,7 @@ STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
 2. RED FLAGS (bullet points) - Specific concerning behaviors
 3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
-4. ACTION STEPS (specific steps) - What to do next
+4. RECOMMENDED ACTION STEPS (specific steps) - What to do next
 5. REALITY CHECK (1 sentence) - The hard truth they need to hear
 
 Always respond naturally and conversationally. Build on previous messages to maintain context.`;

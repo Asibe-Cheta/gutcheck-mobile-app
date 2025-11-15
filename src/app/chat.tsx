@@ -1139,12 +1139,6 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* Disclaimer */}
-        <View style={styles.disclaimerContainer}>
-          <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
-          <Text style={styles.disclaimerText}>Disclaimer: This app is for guidance, not an authority. The final judgment will always lie with the user and or real world experts.</Text>
-        </View>
-
         {/* Input Area */}
         <View style={styles.inputContainer}>
           <View style={styles.inputWrapper}>
@@ -1186,6 +1180,12 @@ export default function ChatScreen() {
               />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Disclaimer */}
+        <View style={styles.disclaimerContainer}>
+          <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.disclaimerText}>Disclaimer: This app is for guidance, not an authority. The final judgment will always lie with the user and or real world experts.</Text>
         </View>
 
         {/* Upload Options Modal */}
