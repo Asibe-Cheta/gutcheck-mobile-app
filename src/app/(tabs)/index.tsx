@@ -70,6 +70,7 @@ export default function HomeScreen() {
       
       // CRITICAL: Use InteractionManager to wait for navigation animations to complete
       // This ensures native modules are ready before we call them
+      // Only create handle if we're actually going to check subscription
       const interactionHandle = InteractionManager.createInteractionHandle();
       
       try {

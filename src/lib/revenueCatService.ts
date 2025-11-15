@@ -536,6 +536,12 @@ class RevenueCatService {
    */
   async setAppUserID(userId: string): Promise<void> {
     try {
+      // CRITICAL: Don't call native methods during navigation
+      if (this.isNavigating) {
+        console.warn('[RevenueCat] setAppUserID: Skipping - navigation in progress');
+        return;
+      }
+      
       if (!this.isInitialized) {
         // If not initialized, initialize with the user ID
         await this.initialize(userId);
@@ -553,9 +559,15 @@ class RevenueCatService {
       }
 
       console.log('[RevenueCat] Setting app user ID:', userId);
-      await Purchases.logIn(userId);
-      this.currentAppUserID = userId;
-      console.log('[RevenueCat] ✅ App user ID set successfully');
+      try {
+        // CRITICAL: Wrap native call in try-catch to prevent crashes
+        await Purchases.logIn(userId);
+        this.currentAppUserID = userId;
+        console.log('[RevenueCat] ✅ App user ID set successfully');
+      } catch (loginError: any) {
+        console.error('[RevenueCat] Failed to log in during setAppUserID:', loginError);
+        // Don't throw - allow app to continue
+      }
     } catch (error: any) {
       console.error('[RevenueCat] Failed to set app user ID:', error);
       // Don't throw - allow app to continue
@@ -586,6 +598,12 @@ class RevenueCatService {
    */
   async hasActiveSubscription(): Promise<boolean> {
     try {
+      // CRITICAL: Don't call native methods during navigation
+      if (this.isNavigating) {
+        console.warn('[RevenueCat] hasActiveSubscription: Skipping - navigation in progress');
+        return false;
+      }
+      
       console.log('[RevenueCat] hasActiveSubscription: Checking for active subscription...');
       const customerInfo = await this.getCustomerInfo();
       if (!customerInfo) {
