@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Keyboard, TouchableWithoutFeedback, ActivityIndicator, Image, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Keyboard, TouchableWithoutFeedback, ActivityIndicator, Image, Modal, Dimensions, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -68,10 +68,20 @@ export default function HomeScreen() {
         return;
       }
       
+      // CRITICAL: Use InteractionManager to wait for navigation animations to complete
+      // This ensures native modules are ready before we call them
+      const interactionHandle = InteractionManager.createInteractionHandle();
+      
       try {
-        // CRITICAL: Add longer delay to allow navigation and native modules to fully settle
-        // This prevents crashes from calling native modules too early after navigation
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Wait for all interactions (navigation animations) to complete
+        await new Promise<void>((resolve) => {
+          InteractionManager.runAfterInteractions(() => {
+            resolve();
+          });
+        });
+        
+        // Additional delay to ensure native bridge is fully ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         const userId = await AsyncStorage.getItem('user_id');
         if (!userId) {
@@ -159,6 +169,9 @@ export default function HomeScreen() {
           console.error('[HOME] Error during error handling navigation:', navError);
         }
         setIsCheckingSubscription(false);
+      } finally {
+        // Always clear the interaction handle
+        InteractionManager.clearInteractionHandle(interactionHandle);
       }
     };
     

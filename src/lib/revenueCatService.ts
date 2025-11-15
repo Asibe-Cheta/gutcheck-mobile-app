@@ -32,6 +32,14 @@ class RevenueCatService {
   private isInitialized = false;
   private apiKey: string | null = null;
   private currentAppUserID: string | null = null;
+  private isNavigating = false; // Guard to prevent calls during navigation
+  
+  /**
+   * Set navigation state - prevents native calls during transitions
+   */
+  setNavigating(isNavigating: boolean) {
+    this.isNavigating = isNavigating;
+  }
 
   /**
    * Initialize RevenueCat SDK
@@ -39,13 +47,26 @@ class RevenueCatService {
    */
   async initialize(appUserID?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // CRITICAL: Don't initialize or call native methods during navigation
+      if (this.isNavigating) {
+        console.warn('[RevenueCat] Skipping initialization - navigation in progress');
+        return { success: false, error: 'Navigation in progress' };
+      }
+      
       if (this.isInitialized) {
         console.log('[RevenueCat] Already initialized.');
         // If already initialized but a new appUserID is provided, log in
         if (appUserID && appUserID !== this.currentAppUserID) {
           console.log(`[RevenueCat] App User ID changed from ${this.currentAppUserID} to ${appUserID}. Logging in...`);
-          await Purchases.logIn(appUserID);
-          this.currentAppUserID = appUserID;
+          try {
+            // CRITICAL: Wrap logIn in try-catch to prevent crashes
+            await Purchases.logIn(appUserID);
+            this.currentAppUserID = appUserID;
+          } catch (loginError: any) {
+            console.error('[RevenueCat] Failed to log in during initialization:', loginError);
+            // Don't throw - initialization succeeded, login can retry later
+            return { success: true, error: loginError?.message || 'Login failed' };
+          }
         }
         return { success: true };
       }
@@ -447,6 +468,12 @@ class RevenueCatService {
   async getCustomerInfo(): Promise<CustomerInfo | null> {
     try {
       console.log('[RevenueCat] getCustomerInfo: Starting...');
+      
+      // CRITICAL: Don't call native methods during navigation
+      if (this.isNavigating) {
+        console.warn('[RevenueCat] getCustomerInfo: Skipping - navigation in progress');
+        return null;
+      }
       
       // CRITICAL: Guard against calling native module before initialization
       if (!this.isInitialized) {

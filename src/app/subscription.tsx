@@ -315,6 +315,10 @@ export default function SubscriptionScreen() {
             // Set flag to tell home screen to skip subscription check
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             
+            // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
+            const { revenueCatService } = require('@/lib/revenueCatService');
+            revenueCatService.setNavigating(true);
+            
             // Small delay to ensure UI updates and AsyncStorage persistence
             setTimeout(async () => {
               await AsyncStorage.removeItem('_sub_nav_from_home');
@@ -324,7 +328,8 @@ export default function SubscriptionScreen() {
               // Reset navigation flag after navigation completes
               setTimeout(() => {
                 isNavigatingRef.current = false;
-              }, 2000);
+                revenueCatService.setNavigating(false);
+              }, 3000);
             }, 500);
           }
         } catch (error) {
@@ -389,14 +394,21 @@ export default function SubscriptionScreen() {
                   await AsyncStorage.setItem('_skip_sub_check', 'true');
                   // Clear the navigation flag
                   await AsyncStorage.removeItem('_sub_nav_from_home');
+                  
+                  // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
+                  const { revenueCatService } = require('@/lib/revenueCatService');
+                  revenueCatService.setNavigating(true);
+                  
                   // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
                   await new Promise(resolve => setTimeout(resolve, 100));
                   // Use replace to prevent going back to subscription screen
                   router.replace('/(tabs)');
+                  
                   // Reset navigation flag after delay
                   setTimeout(() => {
                     isNavigatingRef.current = false;
-                  }, 2000);
+                    revenueCatService.setNavigating(false);
+                  }, 3000);
                 }
                }
              ]
@@ -418,12 +430,18 @@ export default function SubscriptionScreen() {
             // Set flag to tell home screen to skip subscription check
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             await AsyncStorage.removeItem('_sub_nav_from_home');
+            
+            // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
+            const { revenueCatService } = require('@/lib/revenueCatService');
+            revenueCatService.setNavigating(true);
+            
             // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
             await new Promise(resolve => setTimeout(resolve, 100));
             router.replace('/(tabs)');
             setTimeout(() => {
               isNavigatingRef.current = false;
-            }, 2000);
+              revenueCatService.setNavigating(false);
+            }, 3000);
           } else {
             Alert.alert(
               'Subscription Processing',
@@ -935,6 +953,11 @@ export default function SubscriptionScreen() {
               // Set flag to tell home screen to skip subscription check
               await AsyncStorage.setItem('_skip_sub_check', 'true');
               await AsyncStorage.removeItem('_sub_nav_from_home');
+              
+              // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
+              const { revenueCatService } = require('@/lib/revenueCatService');
+              revenueCatService.setNavigating(true);
+              
               // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
               await new Promise(resolve => setTimeout(resolve, 100));
               
@@ -942,7 +965,8 @@ export default function SubscriptionScreen() {
               
               setTimeout(() => {
                 isNavigatingRef.current = false;
-              }, 2000);
+                revenueCatService.setNavigating(false);
+              }, 3000);
             } else {
               // No active subscription - just go back normally
               console.log('[SUB] No active subscription, going back...');
