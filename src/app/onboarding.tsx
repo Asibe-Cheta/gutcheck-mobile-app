@@ -14,10 +14,10 @@ import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
 
 interface OnboardingProps {
-  onComplete?: () => void;
+  onComplete: () => void;
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps = {}) {
+export default function Onboarding({ onComplete }: OnboardingProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
@@ -98,7 +98,7 @@ export default function Onboarding({ onComplete }: OnboardingProps = {}) {
         console.error('Error saving onboarding data:', error);
       }
 
-      // Navigate to subscription screen to start 7-day free trial
+      // Navigate to subscription screen to start 3-day free trial
       router.push('/subscription');
     } else {
       setCurrentScreen(currentScreen + 1);
@@ -112,12 +112,7 @@ export default function Onboarding({ onComplete }: OnboardingProps = {}) {
   };
 
   const handleSkip = () => {
-    if (onComplete) {
-      onComplete();
-    } else {
-      // If used as standalone route, navigate to subscription
-      router.push('/subscription');
-    }
+    onComplete();
   };
 
   const renderScreen1 = () => (

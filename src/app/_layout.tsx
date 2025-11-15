@@ -104,7 +104,7 @@ function AppContent() {
           <Stack.Screen name="subscription-wrapper" options={{ headerShown: false }} />
           <Stack.Screen name="subscription-test" options={{ headerShown: false }} />
           <Stack.Screen name="privacy" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding-route" options={{ headerShown: false }} />
         </Stack>
       </GestureHandlerRootView>
     </SafeAreaProvider>

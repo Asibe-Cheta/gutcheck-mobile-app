@@ -84,7 +84,7 @@ export default function PinSetupScreen() {
         await AsyncStorage.removeItem('onboarding_completed');
         
         // Navigate directly to onboarding screen
-        router.replace('/onboarding');
+        router.replace('/onboarding-route');
       } else {
         console.error('Account creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create account');
