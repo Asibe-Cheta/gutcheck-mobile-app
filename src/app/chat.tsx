@@ -852,7 +852,7 @@ export default function ChatScreen() {
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: 16,
-      paddingVertical: 6,
+      paddingVertical: 4,
       backgroundColor: colors.surface,
       borderTopWidth: 1,
       borderTopColor: colors.border,

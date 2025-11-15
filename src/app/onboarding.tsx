@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Modal, Platform, KeyboardAvoidingView, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -139,55 +139,67 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   );
 
   const renderScreen2 = () => (
-    <View style={styles.screenContainer}>
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Ionicons name="flash" size={60} color={colors.primary} />
-        </View>
-        
-        <Text style={[styles.headline, { color: colors.textPrimary }]}>
-          Congratulations, great start. You just made a great decision. Your intuition just got a new ally.
-        </Text>
-
-        <View style={styles.ageSelection}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            Age
-          </Text>
+    <KeyboardAvoidingView 
+      style={styles.screenContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={100}
+    >
+      <ScrollView 
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="flash" size={60} color={colors.primary} />
+          </View>
           
-          <TouchableOpacity
-            style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => setShowAgePicker(true)}
-          >
-            <Text style={[
-              styles.pickerButtonText,
-              { color: selectedAge ? colors.textPrimary : colors.textSecondary }
-            ]}>
-              {selectedAge ? ageOptions.find(o => o.value === selectedAge)?.label : 'Select your age range'}
+          <Text style={[styles.headline, { color: colors.textPrimary }]}>
+            Congratulations, great start. You just made a great decision. Your intuition just got a new ally.
+          </Text>
+
+          <View style={styles.ageSelection}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+              Age
             </Text>
-            <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => setShowAgePicker(true)}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                { color: selectedAge ? colors.textPrimary : colors.textSecondary }
+              ]}>
+                {selectedAge ? ageOptions.find(o => o.value === selectedAge)?.label : 'Select your age range'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
 
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 24 }]}>
-            Region
-          </Text>
-          
-          <TextInput
-            style={[
-              styles.regionInput,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                color: colors.textPrimary,
-              }
-            ]}
-            placeholder="Enter your region (e.g., London, UK)"
-            placeholderTextColor={colors.textSecondary}
-            value={region}
-            onChangeText={setRegion}
-          />
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 24 }]}>
+              Region
+            </Text>
+            
+            <TextInput
+              style={[
+                styles.regionInput,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  color: colors.textPrimary,
+                }
+              ]}
+              placeholder="Enter your region (e.g., London, UK)"
+              placeholderTextColor={colors.textSecondary}
+              value={region}
+              onChangeText={setRegion}
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+            />
+          </View>
         </View>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 
   const renderScreen3 = () => (

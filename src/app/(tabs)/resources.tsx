@@ -101,6 +101,7 @@ export default function ResourcesScreen() {
   const currentTheme = getThemeColors(isDark);
   const [region, setRegion] = useState<Region>('UK');
   const [helplines, setHelplines] = useState<any[]>([]);
+  const [showRegionPicker, setShowRegionPicker] = useState(false);
   
   // Load user's region on mount and when screen is focused
   useEffect(() => {
@@ -119,11 +120,21 @@ export default function ResourcesScreen() {
       console.log('[RESOURCES] User region from storage:', userRegion);
       const detectedRegion = detectRegion(userRegion);
       console.log('[RESOURCES] Detected region:', detectedRegion);
-      setRegion(detectedRegion);
+      loadHelplinesForRegion(detectedRegion);
+    } catch (error) {
+      console.error('Error loading user region:', error);
+      // Default to UK if error
+      loadHelplinesForRegion('UK');
+    }
+  };
+  
+  const loadHelplinesForRegion = (selectedRegion: Region) => {
+    try {
+      setRegion(selectedRegion);
       
       // Get helplines for this region
-      const regionHelplines = getHelplinesForRegion(detectedRegion);
-      console.log('[RESOURCES] Loaded', regionHelplines.length, 'helplines for', detectedRegion);
+      const regionHelplines = getHelplinesForRegion(selectedRegion);
+      console.log('[RESOURCES] Loaded', regionHelplines.length, 'helplines for', selectedRegion);
       
       // Format helplines for display
       const formattedHelplines = regionHelplines.map((helpline, index) => ({
@@ -137,18 +148,8 @@ export default function ResourcesScreen() {
       
       setHelplines(formattedHelplines);
     } catch (error) {
-      console.error('Error loading user region:', error);
-      // Default to UK if error
-      const ukHelplines = getHelplinesForRegion('UK');
-      const formattedHelplines = ukHelplines.map((helpline, index) => ({
-        name: helpline.name,
-        number: formatPhoneNumber(helpline.number),
-        rawNumber: helpline.number,
-        description: helpline.description,
-        icon: helpline.icon,
-        color: [currentTheme.warning, currentTheme.success, currentTheme.primary, currentTheme.error][index % 4]
-      }));
-      setHelplines(formattedHelplines);
+      console.error('Error formatting helplines:', error);
+      setHelplines([]);
     }
   };
   
@@ -373,7 +374,18 @@ export default function ResourcesScreen() {
         
         {/* Region-specific Helplines */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{region} Helplines</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{region} Helplines</Text>
+            <TouchableOpacity
+              style={styles.regionSwitcher}
+              onPress={() => setShowRegionPicker(true)}
+            >
+              <Text style={[styles.regionSwitcherText, { color: currentTheme.primary }]}>
+                Change Region
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={currentTheme.primary} />
+            </TouchableOpacity>
+          </View>
           {crisisResources.length > 0 ? (
             crisisResources.map((resource, index) => (
               <CrisisResource
@@ -411,6 +423,58 @@ export default function ResourcesScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Region Picker Modal */}
+      <Modal
+        visible={showRegionPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRegionPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.regionPickerModal}
+          activeOpacity={1}
+          onPress={() => setShowRegionPicker(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.regionPickerContainer}>
+              <View style={styles.regionPickerHeader}>
+                <Text style={styles.regionPickerTitle}>Select Region</Text>
+                <TouchableOpacity onPress={() => setShowRegionPicker(false)}>
+                  <Text style={[styles.regionPickerDone, { color: currentTheme.primary }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {(['UK', 'US', 'Canada', 'Australia'] as Region[]).map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    style={[
+                      styles.regionOptionButton,
+                      { borderBottomColor: currentTheme.border },
+                      region === r && { backgroundColor: currentTheme.primary + '10' }
+                    ]}
+                    onPress={() => {
+                      loadHelplinesForRegion(r);
+                      setShowRegionPicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.regionOptionText,
+                      { color: currentTheme.textPrimary },
+                      region === r && { fontWeight: '600', color: currentTheme.primary }
+                    ]}>
+                      {r}
+                    </Text>
+                    {region === r && (
+                      <Ionicons name="checkmark" size={20} color={currentTheme.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
