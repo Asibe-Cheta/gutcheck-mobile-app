@@ -519,12 +519,65 @@ const createStyles = (colors: any) => StyleSheet.create({
   section: {
     marginBottom: 32, // mb-8
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 20, // text-xl
     fontWeight: '700', // font-bold
     color: colors.textPrimary,
-    marginBottom: 16, // mb-4
     fontFamily: 'Inter',
+  },
+  regionSwitcher: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  regionSwitcherText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  regionPickerModal: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  regionPickerContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+  },
+  regionPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  regionPickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  regionPickerDone: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  regionOptionButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  regionOptionText: {
+    fontSize: 16,
   },
   // Crisis Support Styles
   crisisButton: {
