@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectRegion, getHelplinesForRegion, type Region } from '@/lib/helplineService';
 
@@ -102,19 +102,28 @@ export default function ResourcesScreen() {
   const [region, setRegion] = useState<Region>('UK');
   const [helplines, setHelplines] = useState<any[]>([]);
   
-  // Load user's region
+  // Load user's region on mount and when screen is focused
   useEffect(() => {
     loadUserRegion();
   }, []);
   
+  useFocusEffect(
+    React.useCallback(() => {
+      loadUserRegion();
+    }, [])
+  );
+  
   const loadUserRegion = async () => {
     try {
       const userRegion = await AsyncStorage.getItem('user_region');
+      console.log('[RESOURCES] User region from storage:', userRegion);
       const detectedRegion = detectRegion(userRegion);
+      console.log('[RESOURCES] Detected region:', detectedRegion);
       setRegion(detectedRegion);
       
       // Get helplines for this region
       const regionHelplines = getHelplinesForRegion(detectedRegion);
+      console.log('[RESOURCES] Loaded', regionHelplines.length, 'helplines for', detectedRegion);
       
       // Format helplines for display
       const formattedHelplines = regionHelplines.map((helpline, index) => ({

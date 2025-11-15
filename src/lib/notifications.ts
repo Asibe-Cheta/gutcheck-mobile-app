@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NotificationStorageService } from './notificationStorage';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -448,14 +449,23 @@ export class NotificationService {
   ): void {
     // Listener for when notification is received while app is foregrounded
     this.notificationListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
+      async (notification) => {
         console.log('Notification received:', notification);
+        
+        // Save notification to history
+        const data = notification.request.content.data;
+        await NotificationStorageService.saveNotification({
+          title: notification.request.content.title || '',
+          body: notification.request.content.body || '',
+          type: (data?.type as string) || '',
+          chatPrompt: (data?.chatPrompt as string) || '',
+        });
       }
     );
 
     // Listener for when user taps on notification
     this.responseListener = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
+      async (response) => {
         const data = response.notification.request.content.data;
         const notificationData = {
           title: response.notification.request.content.title || '',
@@ -463,6 +473,10 @@ export class NotificationService {
           type: (data?.type as string) || '',
           chatPrompt: (data?.chatPrompt as string) || '',
         };
+        
+        // Save notification to history if not already saved
+        await NotificationStorageService.saveNotification(notificationData);
+        
         if (onNotificationTap) {
           onNotificationTap(notificationData);
         }

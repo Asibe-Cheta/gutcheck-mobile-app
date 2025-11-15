@@ -21,6 +21,7 @@ import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { NotificationStorageService } from '@/lib/notificationStorage';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -28,6 +29,7 @@ export default function HomeScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   
   // Get subscription state from store (synchronous check)
   const { subscription, isLifetimePro } = useSubscriptionStore();
@@ -142,8 +144,16 @@ export default function HomeScreen() {
     React.useCallback(() => {
       // Only reset if there's an ongoing conversation and we want to start fresh
       // Don't automatically reset - let the user decide when to start new conversations
+      
+      // Update unread notifications count when screen is focused
+      loadUnreadCount();
     }, [])
   );
+  
+  const loadUnreadCount = async () => {
+    const count = await NotificationStorageService.getUnreadCount();
+    setUnreadNotifications(count);
+  };
 
 
   // Reset form when conversation is cleared
@@ -303,8 +313,14 @@ export default function HomeScreen() {
             />
             <Text style={styles.appTitle}>Home</Text>
           </View>
-          <TouchableOpacity style={styles.settingsButton}>
-            <Ionicons name="settings-outline" size={24} color={currentTheme.textSecondary} />
+          <TouchableOpacity 
+            style={styles.notificationButton}
+            onPress={() => router.push('/notifications')}
+          >
+            <Ionicons name="notifications-outline" size={24} color={currentTheme.textSecondary} />
+            {unreadNotifications > 0 && (
+              <View style={styles.notificationBadge} />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -502,8 +518,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: 'Inter',
   },
-  settingsButton: {
+  notificationButton: {
     padding: 4,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#43B897',
   },
   mainContent: {
     flex: 1,
