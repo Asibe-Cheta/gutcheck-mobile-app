@@ -47,19 +47,31 @@ export default function HomeScreen() {
   // Check subscription status on mount
   useEffect(() => {
     const checkSubscription = async () => {
+      // CRITICAL: Check skip flag IMMEDIATELY and synchronously before ANY async operations
+      // This prevents native module calls during navigation transitions
+      let shouldSkip = false;
       try {
-        // Check if we should skip subscription check (coming from subscription screen with active subscription)
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
-          console.log('[HOME] Skipping subscription check - coming from subscription screen with active subscription');
+          shouldSkip = true;
+          console.log('[HOME] ✅ Skip flag detected - clearing flag and skipping ALL subscription checks');
           await AsyncStorage.removeItem('_skip_sub_check');
-          setIsCheckingSubscription(false);
-          return;
         }
-        
+      } catch (skipError) {
+        console.error('[HOME] Error checking skip flag:', skipError);
+        // Continue with normal check if we can't read skip flag
+      }
+      
+      if (shouldSkip) {
+        console.log('[HOME] Skipping subscription check - coming from subscription screen with active subscription');
+        setIsCheckingSubscription(false);
+        return;
+      }
+      
+      try {
         // CRITICAL: Add longer delay to allow navigation and native modules to fully settle
         // This prevents crashes from calling native modules too early after navigation
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         const userId = await AsyncStorage.getItem('user_id');
         if (!userId) {

@@ -382,18 +382,20 @@ export default function SubscriptionScreen() {
              [
                {
                  text: 'Continue to App',
-                 onPress: async () => {
-                   // Set flag to tell home screen to skip subscription check
-                   await AsyncStorage.setItem('_skip_sub_check', 'true');
-                   // Clear the navigation flag
-                   await AsyncStorage.removeItem('_sub_nav_from_home');
-                   // Use replace to prevent going back to subscription screen
-                   router.replace('/(tabs)');
-                   // Reset navigation flag after delay
-                   setTimeout(() => {
-                     isNavigatingRef.current = false;
-                   }, 2000);
-                 }
+                onPress: async () => {
+                  // Set flag to tell home screen to skip subscription check
+                  await AsyncStorage.setItem('_skip_sub_check', 'true');
+                  // Clear the navigation flag
+                  await AsyncStorage.removeItem('_sub_nav_from_home');
+                  // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  // Use replace to prevent going back to subscription screen
+                  router.replace('/(tabs)');
+                  // Reset navigation flag after delay
+                  setTimeout(() => {
+                    isNavigatingRef.current = false;
+                  }, 2000);
+                }
                }
              ]
            );
@@ -929,6 +931,8 @@ export default function SubscriptionScreen() {
               // Set flag to tell home screen to skip subscription check
               await AsyncStorage.setItem('_skip_sub_check', 'true');
               await AsyncStorage.removeItem('_sub_nav_from_home');
+              // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
+              await new Promise(resolve => setTimeout(resolve, 100));
               
               router.replace('/(tabs)');
               

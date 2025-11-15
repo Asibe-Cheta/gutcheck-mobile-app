@@ -83,17 +83,33 @@ class RevenueCatService {
 
       this.apiKey = trimmedApiKey;
 
-      // Initialize RevenueCat
-      await Purchases.configure({ apiKey: trimmedApiKey });
+      // Initialize RevenueCat with error handling for native calls
+      try {
+        await Purchases.configure({ apiKey: trimmedApiKey });
+      } catch (configError: any) {
+        console.error('[RevenueCat] Failed to configure Purchases SDK:', configError);
+        // Don't mark as initialized if configuration failed
+        throw configError;
+      }
       
-      // Enable debug logging
-      Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+      // Enable debug logging (non-critical, wrap in try-catch)
+      try {
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+      } catch (logError) {
+        console.warn('[RevenueCat] Failed to set log level (non-critical):', logError);
+      }
       
       // Log in with appUserID if provided
       if (appUserID) {
-        console.log(`[RevenueCat] Logging in with provided appUserID: ${appUserID}`);
-        await Purchases.logIn(appUserID);
-        this.currentAppUserID = appUserID;
+        try {
+          console.log(`[RevenueCat] Logging in with provided appUserID: ${appUserID}`);
+          await Purchases.logIn(appUserID);
+          this.currentAppUserID = appUserID;
+        } catch (loginError: any) {
+          console.error('[RevenueCat] Failed to log in:', loginError);
+          // Don't throw - initialization succeeded even if login failed
+          // User can retry login later
+        }
       }
 
       this.isInitialized = true;
@@ -444,14 +460,18 @@ class RevenueCatService {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      if (!this.apiKey) {
-        console.log('[RevenueCat] getCustomerInfo: No API key, returning null');
+      // CRITICAL: Guard against calling native module if not properly initialized
+      if (!this.isInitialized || !this.apiKey) {
+        console.warn('[RevenueCat] getCustomerInfo: SDK not properly initialized, returning null');
         return null;
       }
-
-      // CRITICAL: Wrap native call in try-catch to prevent crashes
+      
       console.log('[RevenueCat] getCustomerInfo: Fetching customer info from RevenueCat...');
       try {
+        // CRITICAL: Add a small delay before native call to ensure bridge is ready
+        // This prevents crashes from calling native modules during navigation transitions
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const customerInfo = await Purchases.getCustomerInfo();
         console.log('[RevenueCat] getCustomerInfo: Received customer info');
         return customerInfo;
@@ -464,6 +484,11 @@ class RevenueCatService {
           name: nativeError?.name,
           stack: nativeError?.stack
         });
+        // Mark as not initialized if we get a critical error, so we retry initialization next time
+        if (nativeError?.message?.includes('not configured') || nativeError?.code === 'NOT_INITIALIZED') {
+          console.warn('[RevenueCat] SDK appears uninitialized, resetting state');
+          this.isInitialized = false;
+        }
         return null;
       }
     } catch (error: any) {
