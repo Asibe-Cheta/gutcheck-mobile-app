@@ -431,9 +431,17 @@ class RevenueCatService {
   async getCustomerInfo(): Promise<CustomerInfo | null> {
     try {
       console.log('[RevenueCat] getCustomerInfo: Starting...');
+      
+      // CRITICAL: Guard against calling native module before initialization
       if (!this.isInitialized) {
         console.log('[RevenueCat] getCustomerInfo: Not initialized, initializing now...');
-        await this.initialize();
+        const initResult = await this.initialize();
+        if (!initResult.success) {
+          console.error('[RevenueCat] getCustomerInfo: Initialization failed:', initResult.error);
+          return null;
+        }
+        // Add small delay after initialization to ensure native module is ready
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       if (!this.apiKey) {
@@ -441,12 +449,31 @@ class RevenueCatService {
         return null;
       }
 
+      // CRITICAL: Wrap native call in try-catch to prevent crashes
       console.log('[RevenueCat] getCustomerInfo: Fetching customer info from RevenueCat...');
-      const customerInfo = await Purchases.getCustomerInfo();
-      console.log('[RevenueCat] getCustomerInfo: Received customer info');
-      return customerInfo;
-    } catch (error) {
+      try {
+        const customerInfo = await Purchases.getCustomerInfo();
+        console.log('[RevenueCat] getCustomerInfo: Received customer info');
+        return customerInfo;
+      } catch (nativeError: any) {
+        // Catch native module errors specifically to prevent app crash
+        console.error('[RevenueCat] Native error in getCustomerInfo:', nativeError);
+        console.error('[RevenueCat] Error details:', {
+          message: nativeError?.message,
+          code: nativeError?.code,
+          name: nativeError?.name,
+          stack: nativeError?.stack
+        });
+        return null;
+      }
+    } catch (error: any) {
+      // Final catch-all for any unexpected errors
       console.error('[RevenueCat] Failed to get customer info:', error);
+      console.error('[RevenueCat] Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack
+      });
       return null;
     }
   }

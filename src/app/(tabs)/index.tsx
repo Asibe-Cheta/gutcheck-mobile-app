@@ -57,56 +57,95 @@ export default function HomeScreen() {
           return;
         }
         
-        // Add a small delay to allow navigation to settle
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // CRITICAL: Add longer delay to allow navigation and native modules to fully settle
+        // This prevents crashes from calling native modules too early after navigation
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         const userId = await AsyncStorage.getItem('user_id');
         if (!userId) {
           console.log('[HOME] No user ID, redirecting to subscription');
           await AsyncStorage.setItem('_sub_nav_from_home', 'true');
           router.replace('/subscription-wrapper');
-          return;
-        }
-        
-        // Check lifetime pro first
-        const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-        if (lifetimeProStatus) {
-          console.log('[HOME] User has lifetime pro, allowing access');
           setIsCheckingSubscription(false);
           return;
         }
         
-        // Check RevenueCat subscription with retry logic
-        await revenueCatService.initialize(userId);
-        
-        // Try checking subscription up to 3 times with delays (handles sync delays)
-        let hasActiveSubscription = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-          
-          hasActiveSubscription = await revenueCatService.hasActiveSubscription();
-          
-          if (hasActiveSubscription) {
-            console.log('[HOME] User has active subscription, allowing access');
+        // Check lifetime pro first (this is a safe database call, not native)
+        try {
+          const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+          if (lifetimeProStatus) {
+            console.log('[HOME] User has lifetime pro, allowing access');
             setIsCheckingSubscription(false);
             return;
           }
-          
-          console.log(`[HOME] Subscription check attempt ${attempt + 1} - not active yet`);
+        } catch (lifetimeError) {
+          console.error('[HOME] Error checking lifetime pro:', lifetimeError);
+          // Continue to RevenueCat check even if lifetime pro check fails
         }
         
-        // After all retries, if still no subscription, redirect
-        console.log('[HOME] User does not have active subscription after retries, redirecting to subscription screen');
-        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
-        router.replace('/subscription-wrapper');
-        setIsCheckingSubscription(false);
+        // Check RevenueCat subscription with proper error handling
+        // CRITICAL: Wrap all native module calls in try-catch to prevent crashes
+        try {
+          // Initialize RevenueCat (this may already be initialized, which is fine)
+          const initResult = await revenueCatService.initialize(userId);
+          if (!initResult.success) {
+            console.warn('[HOME] RevenueCat initialization returned error:', initResult.error);
+            // Don't crash - allow user to continue, they'll be redirected if needed
+          }
+          
+          // Add additional delay after initialization to ensure native module is ready
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Try checking subscription up to 3 times with delays (handles sync delays)
+          let hasActiveSubscription = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            try {
+              hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+              
+              if (hasActiveSubscription) {
+                console.log('[HOME] User has active subscription, allowing access');
+                setIsCheckingSubscription(false);
+                return;
+              }
+              
+              console.log(`[HOME] Subscription check attempt ${attempt + 1} - not active yet`);
+            } catch (subCheckError) {
+              console.error(`[HOME] Error checking subscription (attempt ${attempt + 1}):`, subCheckError);
+              // Continue to next attempt or fall through to redirect
+              if (attempt === 2) {
+                // Last attempt failed, redirect to subscription
+                throw subCheckError;
+              }
+            }
+          }
+          
+          // After all retries, if still no subscription, redirect
+          console.log('[HOME] User does not have active subscription after retries, redirecting to subscription screen');
+          await AsyncStorage.setItem('_sub_nav_from_home', 'true');
+          router.replace('/subscription-wrapper');
+          setIsCheckingSubscription(false);
+        } catch (revenueCatError) {
+          // CRITICAL: Catch any native module errors to prevent app crash
+          console.error('[HOME] RevenueCat error (non-fatal):', revenueCatError);
+          // Don't crash the app - redirect to subscription screen instead
+          await AsyncStorage.setItem('_sub_nav_from_home', 'true');
+          router.replace('/subscription-wrapper');
+          setIsCheckingSubscription(false);
+        }
       } catch (error) {
-        console.error('[HOME] Error checking subscription:', error);
+        // Final catch-all to prevent any unhandled errors from crashing the app
+        console.error('[HOME] Unexpected error in subscription check:', error);
         // On error, redirect to subscription to be safe
-        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
-        router.replace('/subscription-wrapper');
+        try {
+          await AsyncStorage.setItem('_sub_nav_from_home', 'true');
+          router.replace('/subscription-wrapper');
+        } catch (navError) {
+          console.error('[HOME] Error during error handling navigation:', navError);
+        }
         setIsCheckingSubscription(false);
       }
     };
