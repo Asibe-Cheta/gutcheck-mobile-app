@@ -20,7 +20,7 @@ import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
-// import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -28,6 +28,9 @@ export default function HomeScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  
+  // Get subscription state from store (synchronous check)
+  const { subscription, isLifetimePro } = useSubscriptionStore();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   
@@ -47,41 +50,38 @@ export default function HomeScreen() {
   // Check subscription status on mount
   useEffect(() => {
     const checkSubscription = async () => {
-      // CRITICAL: Check skip flag IMMEDIATELY and synchronously before ANY async operations
-      // This prevents native module calls during navigation transitions
-      let shouldSkip = false;
-      try {
-        const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
-        if (skipCheck === 'true') {
-          shouldSkip = true;
-          console.log('[HOME] ✅ Skip flag detected - clearing flag and skipping ALL subscription checks');
-          await AsyncStorage.removeItem('_skip_sub_check');
-        }
-      } catch (skipError) {
-        console.error('[HOME] Error checking skip flag:', skipError);
-        // Continue with normal check if we can't read skip flag
-      }
-      
-      if (shouldSkip) {
-        console.log('[HOME] Skipping subscription check - coming from subscription screen with active subscription');
+      // SIMPLE FIX: Check subscription store state FIRST (synchronous, no async delays)
+      // If subscription is already confirmed in store, skip all checks
+      const storeState = useSubscriptionStore.getState();
+      if (storeState.subscription || storeState.isLifetimePro) {
+        console.log('[HOME] ✅ Subscription active in store - allowing access');
         setIsCheckingSubscription(false);
         return;
       }
       
-      // CRITICAL: Use InteractionManager to wait for navigation animations to complete
-      // This ensures native modules are ready before we call them
-      // Only create handle if we're actually going to check subscription
+      // If not in store, check skip flag (for navigation from subscription screen)
+      try {
+        const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
+        if (skipCheck === 'true') {
+          console.log('[HOME] ✅ Skip flag detected - clearing flag and allowing access');
+          await AsyncStorage.removeItem('_skip_sub_check');
+          setIsCheckingSubscription(false);
+          return;
+        }
+      } catch (skipError) {
+        console.error('[HOME] Error checking skip flag:', skipError);
+      }
+      
+      // Only check RevenueCat if subscription not confirmed in store or skip flag
       const interactionHandle = InteractionManager.createInteractionHandle();
       
       try {
-        // Wait for all interactions (navigation animations) to complete
         await new Promise<void>((resolve) => {
           InteractionManager.runAfterInteractions(() => {
             resolve();
           });
         });
         
-        // Additional delay to ensure native bridge is fully ready
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         const userId = await AsyncStorage.getItem('user_id');
@@ -93,7 +93,7 @@ export default function HomeScreen() {
           return;
         }
         
-        // Check lifetime pro first (this is a safe database call, not native)
+        // Check lifetime pro first (database call, safe)
         try {
           const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
           if (lifetimeProStatus) {
@@ -103,23 +103,17 @@ export default function HomeScreen() {
           }
         } catch (lifetimeError) {
           console.error('[HOME] Error checking lifetime pro:', lifetimeError);
-          // Continue to RevenueCat check even if lifetime pro check fails
         }
         
-        // Check RevenueCat subscription with proper error handling
-        // CRITICAL: Wrap all native module calls in try-catch to prevent crashes
+        // Check RevenueCat subscription
         try {
-          // Initialize RevenueCat (this may already be initialized, which is fine)
           const initResult = await revenueCatService.initialize(userId);
           if (!initResult.success) {
             console.warn('[HOME] RevenueCat initialization returned error:', initResult.error);
-            // Don't crash - allow user to continue, they'll be redirected if needed
           }
           
-          // Add additional delay after initialization to ensure native module is ready
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          // Try checking subscription up to 3 times with delays (handles sync delays)
           let hasActiveSubscription = false;
           for (let attempt = 0; attempt < 3; attempt++) {
             if (attempt > 0) {
@@ -128,41 +122,31 @@ export default function HomeScreen() {
             
             try {
               hasActiveSubscription = await revenueCatService.hasActiveSubscription();
-              
               if (hasActiveSubscription) {
                 console.log('[HOME] User has active subscription, allowing access');
                 setIsCheckingSubscription(false);
                 return;
               }
-              
-              console.log(`[HOME] Subscription check attempt ${attempt + 1} - not active yet`);
             } catch (subCheckError) {
               console.error(`[HOME] Error checking subscription (attempt ${attempt + 1}):`, subCheckError);
-              // Continue to next attempt or fall through to redirect
               if (attempt === 2) {
-                // Last attempt failed, redirect to subscription
                 throw subCheckError;
               }
             }
           }
           
-          // After all retries, if still no subscription, redirect
-          console.log('[HOME] User does not have active subscription after retries, redirecting to subscription screen');
+          console.log('[HOME] User does not have active subscription, redirecting to subscription screen');
           await AsyncStorage.setItem('_sub_nav_from_home', 'true');
           router.replace('/subscription-wrapper');
           setIsCheckingSubscription(false);
         } catch (revenueCatError) {
-          // CRITICAL: Catch any native module errors to prevent app crash
           console.error('[HOME] RevenueCat error (non-fatal):', revenueCatError);
-          // Don't crash the app - redirect to subscription screen instead
           await AsyncStorage.setItem('_sub_nav_from_home', 'true');
           router.replace('/subscription-wrapper');
           setIsCheckingSubscription(false);
         }
       } catch (error) {
-        // Final catch-all to prevent any unhandled errors from crashing the app
         console.error('[HOME] Unexpected error in subscription check:', error);
-        // On error, redirect to subscription to be safe
         try {
           await AsyncStorage.setItem('_sub_nav_from_home', 'true');
           router.replace('/subscription-wrapper');
@@ -171,7 +155,6 @@ export default function HomeScreen() {
         }
         setIsCheckingSubscription(false);
       } finally {
-        // Always clear the interaction handle
         InteractionManager.clearInteractionHandle(interactionHandle);
       }
     };

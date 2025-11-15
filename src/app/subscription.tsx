@@ -312,25 +312,16 @@ export default function SubscriptionScreen() {
             console.log('[SUB] ✅ Active subscription detected after purchase, navigating to app...');
             isNavigatingRef.current = true;
             
-            // Set flag to tell home screen to skip subscription check
+            // Set skip flag (store state is primary check)
             await AsyncStorage.setItem('_skip_sub_check', 'true');
+            await AsyncStorage.removeItem('_sub_nav_from_home');
             
-            // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
-            const { revenueCatService } = require('@/lib/revenueCatService');
-            revenueCatService.setNavigating(true);
+            // Navigate - subscription already confirmed in store
+            router.replace('/(tabs)');
             
-            // Small delay to ensure UI updates and AsyncStorage persistence
-            setTimeout(async () => {
-              await AsyncStorage.removeItem('_sub_nav_from_home');
-              // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
-              await new Promise(resolve => setTimeout(resolve, 100));
-              router.replace('/(tabs)');
-              // Reset navigation flag after navigation completes
-              setTimeout(() => {
-                isNavigatingRef.current = false;
-                revenueCatService.setNavigating(false);
-              }, 3000);
-            }, 500);
+            setTimeout(() => {
+              isNavigatingRef.current = false;
+            }, 1000);
           }
         } catch (error) {
           console.error('[SUB] Error checking subscription on focus:', error);
@@ -390,25 +381,19 @@ export default function SubscriptionScreen() {
                {
                  text: 'Continue to App',
                 onPress: async () => {
-                  // Set flag to tell home screen to skip subscription check
-                  await AsyncStorage.setItem('_skip_sub_check', 'true');
-                  // Clear the navigation flag
+                  // Clear navigation flags
                   await AsyncStorage.removeItem('_sub_nav_from_home');
+                  await AsyncStorage.removeItem('_returning_from_purchase');
                   
-                  // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
-                  const { revenueCatService } = require('@/lib/revenueCatService');
-                  revenueCatService.setNavigating(true);
+                  // Set skip flag as backup (store state is primary check)
+                  await AsyncStorage.setItem('_skip_sub_check', 'true');
                   
-                  // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
-                  await new Promise(resolve => setTimeout(resolve, 100));
-                  // Use replace to prevent going back to subscription screen
+                  // Navigate to home screen - subscription is already confirmed in store
                   router.replace('/(tabs)');
                   
-                  // Reset navigation flag after delay
                   setTimeout(() => {
                     isNavigatingRef.current = false;
-                    revenueCatService.setNavigating(false);
-                  }, 3000);
+                  }, 1000);
                 }
                }
              ]
@@ -427,21 +412,16 @@ export default function SubscriptionScreen() {
             isNavigatingRef.current = true;
             // Clear the purchase flag since we're handling navigation directly here
             await AsyncStorage.removeItem('_returning_from_purchase');
-            // Set flag to tell home screen to skip subscription check
+            // Set skip flag (store state is primary check)
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             await AsyncStorage.removeItem('_sub_nav_from_home');
             
-            // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
-            const { revenueCatService } = require('@/lib/revenueCatService');
-            revenueCatService.setNavigating(true);
-            
-            // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Navigate - subscription already confirmed in store
             router.replace('/(tabs)');
+            
             setTimeout(() => {
               isNavigatingRef.current = false;
-              revenueCatService.setNavigating(false);
-            }, 3000);
+            }, 1000);
           } else {
             Alert.alert(
               'Subscription Processing',
@@ -950,23 +930,16 @@ export default function SubscriptionScreen() {
               console.log('[SUB] User has active subscription, navigating to home...');
               isNavigatingRef.current = true;
               
-              // Set flag to tell home screen to skip subscription check
+              // Set skip flag (store state is primary check)
               await AsyncStorage.setItem('_skip_sub_check', 'true');
               await AsyncStorage.removeItem('_sub_nav_from_home');
               
-              // CRITICAL: Set navigation flag in RevenueCat to prevent native calls
-              const { revenueCatService } = require('@/lib/revenueCatService');
-              revenueCatService.setNavigating(true);
-              
-              // CRITICAL: Small delay to ensure AsyncStorage is persisted before navigation
-              await new Promise(resolve => setTimeout(resolve, 100));
-              
+              // Navigate - subscription already confirmed in store
               router.replace('/(tabs)');
               
               setTimeout(() => {
                 isNavigatingRef.current = false;
-                revenueCatService.setNavigating(false);
-              }, 3000);
+              }, 1000);
             } else {
               // No active subscription - just go back normally
               console.log('[SUB] No active subscription, going back...');
