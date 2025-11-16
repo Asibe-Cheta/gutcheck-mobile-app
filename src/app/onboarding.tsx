@@ -362,6 +362,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       fontSize: 15,
       lineHeight: 22,
       textAlign: 'center',
+      marginBottom: 8,
+    },
+    statCardReference: {
+      fontSize: 11,
+      fontStyle: 'italic',
+      textAlign: 'center',
+      marginTop: 4,
     },
     purposeText: {
       fontSize: 15,
