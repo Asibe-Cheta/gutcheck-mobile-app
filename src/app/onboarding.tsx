@@ -114,19 +114,28 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         <View style={styles.statsCardsContainer}>
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
-              An avalanche of child abuse and sexual exploitation is taking place behind closed doors and new study has found
+              An avalanche of child abuse and sexual exploitation is taking place behind closed doors a new study has found
+            </Text>
+            <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
+              — The University of Edinburgh, 2025
             </Text>
           </View>
 
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
-              Approximately 50% of minors are being approached in a grooming context
+              Approximately 50% of minors are being approached in a grooming context. In the UK
+            </Text>
+            <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
+              — NSPCC, 2024
             </Text>
           </View>
 
           <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.statCardText, { color: colors.textPrimary }]}>
-              Approximately one-third of the world's youth are bullied.
+              Approximately one-third of the world's youth are being bullied.
+            </Text>
+            <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
+              — UNESCO Institute of Statistics, 2024
             </Text>
           </View>
         </View>
