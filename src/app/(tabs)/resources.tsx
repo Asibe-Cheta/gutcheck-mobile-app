@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
@@ -339,6 +339,94 @@ export default function ResourcesScreen() {
       marginTop: 4,
       fontFamily: 'Inter',
     },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    regionSwitcher: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    regionSwitcherText: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    regionPickerModal: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    regionPickerContainer: {
+      backgroundColor: currentTheme.background,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 34,
+    },
+    regionPickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: currentTheme.border,
+    },
+    regionPickerTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: currentTheme.textPrimary,
+    },
+    regionPickerDone: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    regionOptionButton: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderBottomWidth: 1,
+    },
+    regionOptionText: {
+      fontSize: 16,
+    },
+    crisisButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: currentTheme.warning,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 12,
+      gap: 8,
+    },
+    crisisButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+      fontFamily: 'Inter',
+    },
+    headerContent: {
+      flex: 1,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: currentTheme.textPrimary,
+      marginBottom: 4,
+      fontFamily: 'Inter',
+    },
+    subtitle: {
+      fontSize: 16,
+      color: currentTheme.textSecondary,
+      fontFamily: 'Inter',
+    },
+    headerSpacer: {
+      width: 40,
+    },
   });
   
   return (
@@ -478,209 +566,3 @@ export default function ResourcesScreen() {
     </SafeAreaView>
   );
 }
-
-const createStyles = (colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16, // p-4
-    backgroundColor: `${colors.background}CC`, // backdrop-blur effect
-  },
-  backButton: {
-    padding: 8, // p-2
-    marginRight: 8,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 24, // text-2xl
-    fontWeight: '700', // font-bold
-    color: colors.textPrimary,
-    marginBottom: 4, // mb-1
-    fontFamily: 'Inter',
-  },
-  subtitle: {
-    fontSize: 16, // text-base
-    color: colors.textSecondary,
-    fontFamily: 'Inter',
-  },
-  headerSpacer: {
-    width: 40, // w-10
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16, // px-4
-  },
-  section: {
-    marginBottom: 32, // mb-8
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20, // text-xl
-    fontWeight: '700', // font-bold
-    color: colors.textPrimary,
-    fontFamily: 'Inter',
-  },
-  regionSwitcher: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  regionSwitcherText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  regionPickerModal: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  regionPickerContainer: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 34,
-  },
-  regionPickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  regionPickerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  regionPickerDone: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  regionOptionButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-  },
-  regionOptionText: {
-    fontSize: 16,
-  },
-  // Crisis Support Styles
-  crisisButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.warning,
-    paddingVertical: 16, // py-4
-    paddingHorizontal: 24, // px-6
-    borderRadius: 12, // rounded-lg
-    gap: 8, // gap-2
-  },
-  crisisButtonText: {
-    color: 'white',
-    fontSize: 16, // text-base
-    fontWeight: '600', // font-semibold
-    fontFamily: 'Inter',
-  },
-  // Resource Card Styles
-  resourceCard: {
-    backgroundColor: colors.surface,
-    padding: 16, // p-4
-    borderRadius: 12, // rounded-lg
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    marginBottom: 12, // mb-3
-  },
-  resourceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8, // mb-2
-  },
-  resourceIconContainer: {
-    width: 40, // w-10
-    height: 40, // h-10
-    borderRadius: 20, // rounded-full
-    backgroundColor: 'rgba(79, 209, 199, 0.1)', // bg-primary/10
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12, // mr-3
-  },
-  resourceInfo: {
-    flex: 1,
-  },
-  resourceName: {
-    fontSize: 16, // text-base
-    fontWeight: '600', // font-semibold
-    color: colors.textPrimary,
-    marginBottom: 2, // mb-0.5
-    fontFamily: 'Inter',
-  },
-  resourceDescription: {
-    fontSize: 14, // text-sm
-    color: colors.textSecondary,
-    fontFamily: 'Inter',
-  },
-  callButton: {
-    padding: 8, // p-2
-    borderRadius: 8, // rounded
-    backgroundColor: 'rgba(79, 209, 199, 0.1)', // bg-primary/10
-  },
-  resourceNumber: {
-    fontSize: 18, // text-lg
-    fontWeight: '700', // font-bold
-    color: colors.primary,
-    fontFamily: 'Inter',
-  },
-  // Guide Card Styles
-  guideCard: {
-    backgroundColor: colors.surface,
-    padding: 16, // p-4
-    borderRadius: 12, // rounded-lg
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    marginBottom: 8, // mb-2
-  },
-  guideContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  guideIconContainer: {
-    width: 40, // w-10
-    height: 40, // h-10
-    borderRadius: 20, // rounded-full
-    backgroundColor: 'rgba(79, 209, 199, 0.1)', // bg-primary/10
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12, // mr-3
-  },
-  guideTextContainer: {
-    flex: 1,
-  },
-  guideTitle: {
-    fontSize: 16, // text-base
-    fontWeight: '600', // font-semibold
-    color: colors.textPrimary,
-    marginBottom: 2, // mb-0.5
-    fontFamily: 'Inter',
-  },
-  guideDescription: {
-    fontSize: 14, // text-sm
-    color: colors.textSecondary,
-    lineHeight: 20, // leading-5
-    fontFamily: 'Inter',
-  },
-});
