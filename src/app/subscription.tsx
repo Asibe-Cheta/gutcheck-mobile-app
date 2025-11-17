@@ -445,9 +445,13 @@ export default function SubscriptionScreen() {
   };
 
   const handleCancelSubscription = () => {
+    const message = Platform.OS === 'ios'
+      ? 'To cancel your subscription, please go to your Apple ID settings > Subscriptions. You\'ll keep access until the end of your billing period.'
+      : 'To cancel your subscription, please go to Google Play Store > Subscriptions. You\'ll keep access until the end of your billing period.';
+    
     Alert.alert(
       'Cancel Subscription',
-      'To cancel your subscription, please go to your Apple ID settings > Subscriptions. You\'ll keep access until the end of your billing period.',
+      message,
       [
         { text: 'OK', style: 'default' }
       ]
@@ -458,13 +462,16 @@ export default function SubscriptionScreen() {
     const isCurrentPlan = currentPlan?.id === plan.id;
     const isPopular = plan.popular;
     
-    // Force correct prices (override RevenueCat prices if they're wrong)
-    const displayPrice = plan.interval === 'month' ? 6.99 : 59.99;
+    // Use actual price from RevenueCat (from Google Play or App Store)
+    const displayPrice = plan.price;
     
     // Calculate daily cost
     const dailyCost = plan.interval === 'month' 
-      ? (displayPrice / 30).toFixed(2)  // £6.99 / 30 = £0.23 per day
-      : (displayPrice / 365).toFixed(2); // £59.99 / 365 = £0.16 per day
+      ? (displayPrice / 30).toFixed(2)
+      : (displayPrice / 365).toFixed(2);
+    
+    // Format currency symbol
+    const currencySymbol = plan.currency === 'GBP' ? '£' : plan.currency === 'USD' ? '$' : plan.currency;
 
     return (
       <View key={plan.id} style={[
@@ -489,7 +496,7 @@ export default function SubscriptionScreen() {
           
           {/* Most Prominent: Billed Amount */}
           <View style={styles.priceContainer}>
-            <Text style={styles.price}>£{displayPrice.toFixed(2)}</Text>
+            <Text style={styles.price}>{currencySymbol}{displayPrice.toFixed(2)}</Text>
             <Text style={styles.period}>/{plan.interval}</Text>
           </View>
           
@@ -507,8 +514,8 @@ export default function SubscriptionScreen() {
           <View style={styles.dailyCostContainer}>
             <Text style={styles.dailyCostLabel}>
               {plan.interval === 'month' 
-                ? '23p/day billed monthly, £6.99/month' 
-                : '16p/day billed annually, Save 28% vs monthly. £59.99/year'}
+                ? `${dailyCost}${plan.currency === 'GBP' ? 'p' : currencySymbol}/day billed monthly, ${currencySymbol}${displayPrice.toFixed(2)}/month`
+                : `${dailyCost}${plan.currency === 'GBP' ? 'p' : currencySymbol}/day billed annually, Save 28% vs monthly. ${currencySymbol}${displayPrice.toFixed(2)}/year`}
             </Text>
           </View>
           
@@ -1077,7 +1084,9 @@ export default function SubscriptionScreen() {
         <View style={styles.paymentInfo}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
           <Text style={styles.paymentInfoText}>
-            Secure payment processing by Apple. Your payment information is handled securely by Apple.
+            {Platform.OS === 'ios' 
+              ? 'Secure payment processing by Apple. Your payment information is handled securely by Apple.'
+              : 'Secure payment processing by Google. Your payment information is handled securely by Google Play.'}
           </Text>
         </View>
 
@@ -1085,26 +1094,53 @@ export default function SubscriptionScreen() {
         <View style={styles.faqSection}>
           <Text style={styles.faqTitle}>Frequently Asked Questions</Text>
           
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
-            <Text style={styles.faqAnswer}>
-              Go to your Apple ID settings &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
-            </Text>
-          </View>
+          {Platform.OS === 'ios' ? (
+            <>
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
+                <Text style={styles.faqAnswer}>
+                  Go to your Apple ID settings &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
+                </Text>
+              </View>
 
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
-            <Text style={styles.faqAnswer}>
-              Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
-            </Text>
-          </View>
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
+                <Text style={styles.faqAnswer}>
+                  Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
+                </Text>
+              </View>
 
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>How does Apple billing work?</Text>
-            <Text style={styles.faqAnswer}>
-              Your subscription is billed through your Apple ID. You can manage billing and payment methods in your Apple ID settings.
-            </Text>
-          </View>
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>How does Apple billing work?</Text>
+                <Text style={styles.faqAnswer}>
+                  Your subscription is billed through your Apple ID. You can manage billing and payment methods in your Apple ID settings.
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
+                <Text style={styles.faqAnswer}>
+                  Go to Google Play Store &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
+                <Text style={styles.faqAnswer}>
+                  Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={styles.faqQuestion}>How does Google Play billing work?</Text>
+                <Text style={styles.faqAnswer}>
+                  Your subscription is billed through your Google Play account. You can manage billing and payment methods in your Google Play settings.
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Legal Links - REQUIRED BY APPLE REVIEW */}
