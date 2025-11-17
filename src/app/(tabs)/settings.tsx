@@ -189,6 +189,10 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleContactPress = () => {
+    router.push('/contact');
+  };
+
   const handleAboutPress = () => {
     Alert.alert(
       'About GutCheck',
@@ -428,6 +432,14 @@ export default function SettingsScreen() {
             title="Help Center"
             description="Get help and support"
             onPress={handleHelpPress}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <SettingsItem
+            icon="mail"
+            title="Contact Us"
+            description="Get in touch with our team"
+            onPress={handleContactPress}
             styles={styles}
             colors={currentTheme}
           />
