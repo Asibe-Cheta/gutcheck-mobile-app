@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,13 +16,6 @@ export default function ContactScreen() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
-  const handleEmailPress = () => {
-    Linking.openURL('mailto:contact@mygutcheck.org');
-  };
-
-  const handleWebsitePress = () => {
-    Linking.openURL('https://mygutcheck.org');
-  };
 
   const styles = StyleSheet.create({
     container: {
@@ -112,23 +105,6 @@ export default function ContactScreen() {
       color: colors.textSecondary,
       lineHeight: 20,
       fontFamily: 'Inter',
-      marginBottom: 16,
-    },
-    actionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primary,
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      borderRadius: 10,
-      gap: 8,
-    },
-    actionButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#FFFFFF',
-      fontFamily: 'Inter',
     },
     footerNote: {
       fontSize: 14,
@@ -171,21 +147,13 @@ export default function ContactScreen() {
             <View style={styles.contactIconContainer}>
               <Ionicons name="mail" size={24} color={colors.primary} />
             </View>
-            <Text style={styles.contactTitle}>Email Us</Text>
+            <Text style={styles.contactTitle}>Email</Text>
           </View>
           
           <Text style={styles.contactValue}>contact@mygutcheck.org</Text>
           <Text style={styles.contactDescription}>
             Send us an email for inquiries about the app, technical support, or general questions. We aim to respond within 24-48 hours.
           </Text>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={handleEmailPress}
-          >
-            <Ionicons name="send" size={18} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Send Email</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Website Card */}
@@ -194,21 +162,13 @@ export default function ContactScreen() {
             <View style={styles.contactIconContainer}>
               <Ionicons name="globe" size={24} color={colors.primary} />
             </View>
-            <Text style={styles.contactTitle}>Visit Our Website</Text>
+            <Text style={styles.contactTitle}>Website</Text>
           </View>
           
-          <Text style={styles.contactValue}>mygutcheck.org</Text>
+          <Text style={styles.contactValue}>https://mygutcheck.org</Text>
           <Text style={styles.contactDescription}>
-            Explore extensive resources, FAQs, blog posts, and learn more about how GutCheck can help you navigate relationships safely.
+            Visit our website for extensive resources, FAQs, blog posts, and learn more about how GutCheck can help you navigate relationships safely.
           </Text>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={handleWebsitePress}
-          >
-            <Ionicons name="open-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Visit Website</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Footer note */}
