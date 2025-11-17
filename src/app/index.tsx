@@ -3,8 +3,8 @@
  * Shows logo briefly then routes to appropriate screen based on auth/subscription state
  */
 
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, StyleSheet, Image, ActivityIndicator, Animated } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
@@ -12,6 +12,30 @@ import { getThemeColors } from '@/lib/theme';
 export default function IndexPage() {
   const [isInitializing, setIsInitializing] = useState(true);
   const colors = getThemeColors(false); // Always use light theme for splash
+  
+  // Animation values for pulse glow effect
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  
+  // Start pulse animation
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.15,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    
+    return () => pulse.stop();
+  }, []);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -77,13 +101,35 @@ export default function IndexPage() {
     initializeApp();
   }, []);
 
-  // Show splash screen with logo
+  // Show splash screen with logo and pulse glow effect
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.logoContainer}>
-        {/* Large logo - replace with your actual logo */}
+        {/* Animated glow effect layers */}
+        <Animated.View style={[styles.glowContainer, {
+          transform: [{ scale: pulseAnim }],
+        }]}>
+          {/* Pulse glow effect */}
+          <View style={[styles.glowOuter, { 
+            shadowColor: colors.primary,
+            shadowOpacity: 0.6,
+            shadowRadius: 60,
+          }]} />
+          <View style={[styles.glowMiddle, { 
+            shadowColor: colors.primary,
+            shadowOpacity: 0.5,
+            shadowRadius: 40,
+          }]} />
+          <View style={[styles.glowInner, { 
+            shadowColor: colors.primary,
+            shadowOpacity: 0.4,
+            shadowRadius: 20,
+          }]} />
+        </Animated.View>
+        
+        {/* Large logo with gc-dark.png */}
         <Image 
-          source={require('../../assets/images/icon.png')} 
+          source={require('../../assets/gc-dark.png')} 
           style={styles.logo}
           resizeMode="contain"
         />
@@ -109,10 +155,38 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  glowContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glowOuter: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'transparent',
+  },
+  glowMiddle: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'transparent',
+  },
+  glowInner: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'transparent',
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: 280,
+    height: 280,
+    zIndex: 10,
   },
   loader: {
     marginTop: 40,
