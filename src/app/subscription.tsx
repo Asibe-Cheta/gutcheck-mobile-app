@@ -253,6 +253,19 @@ export default function SubscriptionScreen() {
   // Track if we're navigating to prevent loop
   const isNavigatingRef = React.useRef(false);
   const lastCheckTimeRef = React.useRef(0);
+  const [cameFromScreen, setCameFromScreen] = useState<string | null>(null);
+  
+  // Check where user came from on mount
+  useEffect(() => {
+    const checkOrigin = async () => {
+      const origin = await AsyncStorage.getItem('_sub_origin_screen');
+      console.log('[SUB] User came from screen:', origin);
+      setCameFromScreen(origin);
+      // Clear the flag after reading
+      await AsyncStorage.removeItem('_sub_origin_screen');
+    };
+    checkOrigin();
+  }, []);
 
   // Check subscription status when screen comes into focus (ONLY when returning from purchase flow)
   // This should NOT run on normal navigation to the subscription screen
@@ -882,9 +895,38 @@ export default function SubscriptionScreen() {
               return;
             }
 
-            // Always go back to previous screen (Settings, Home, etc.)
-            console.log('[SUB] Back button pressed, navigating back...');
-            router.back();
+            isNavigatingRef.current = true;
+            
+            // Check if user has active subscription
+            const storeState = useSubscriptionStore.getState();
+            const hasActive = storeState.subscription || storeState.isLifetimePro;
+            
+            // If they came from settings, go back to settings
+            if (cameFromScreen === 'settings') {
+              console.log('[SUB] Back button pressed, returning to Settings');
+              router.push('/(tabs)/settings');
+            } 
+            // If they have an active subscription, go to home
+            else if (hasActive) {
+              console.log('[SUB] Back button pressed, user has subscription, going to Home');
+              router.replace('/(tabs)/');
+            }
+            // Otherwise, try to go back in history
+            else {
+              console.log('[SUB] Back button pressed, using router.back()');
+              // Check if we can go back (navigation history exists)
+              if (router.canGoBack && router.canGoBack()) {
+                router.back();
+              } else {
+                // No history, go to home
+                console.log('[SUB] No navigation history, going to Home');
+                router.replace('/(tabs)/');
+              }
+            }
+            
+            setTimeout(() => {
+              isNavigatingRef.current = false;
+            }, 500);
           }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />

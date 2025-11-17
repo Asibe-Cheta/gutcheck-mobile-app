@@ -107,6 +107,9 @@ export default function SettingsScreen() {
     try {
       console.log('[SETTINGS] Navigating to subscription screen...');
       
+      // Set origin flag so subscription screen knows to return to settings
+      await AsyncStorage.setItem('_sub_origin_screen', 'settings');
+      
       // Use wrapper route to avoid native crash during module resolution
       // The wrapper dynamically imports the subscription screen
       const route = '/subscription-wrapper'; // Wrapper route that loads subscription dynamically

@@ -97,6 +97,8 @@ export default function HomeScreen() {
         const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
         if (lifetimeProStatus) {
           console.log('[HOME] User has lifetime pro, allowing access');
+          // Set permanent flag so we don't check again
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
           setIsCheckingSubscription(false);
           return;
         }
@@ -115,6 +117,8 @@ export default function HomeScreen() {
           
           if (hasActiveSubscription) {
             console.log('[HOME] User has active subscription, allowing access');
+            // Set permanent flag so we don't check again
+            await AsyncStorage.setItem('_has_active_subscription', 'true');
             setIsCheckingSubscription(false);
             return;
           }

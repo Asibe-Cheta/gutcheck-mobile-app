@@ -396,7 +396,11 @@ class AuthService {
         'subscription_plan',
         'user_profile',
         'user_age_range',
-        'user_goal'
+        'user_goal',
+        '_has_active_subscription',
+        '_skip_sub_check',
+        '_sub_nav_from_home',
+        '_sub_origin_screen'
       ]);
       
       // Note: We keep 'onboarding_completed' cleared so they don't see it again on login
