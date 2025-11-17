@@ -11,7 +11,7 @@ import { getThemeColors } from '@/lib/theme';
 
 export default function IndexPage() {
   const [isInitializing, setIsInitializing] = useState(true);
-  const colors = getThemeColors(false); // Always use light theme for splash
+  const colors = getThemeColors(true); // Use dark theme for splash to match app
   
   // Animation values for pulse glow effect
   const pulseAnim = useRef(new Animated.Value(1)).current;
