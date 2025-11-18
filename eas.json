@@ -29,10 +29,7 @@
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release",
-        "cocoapods": {
-          "deploymentTarget": "13.4"
-        }
+        "buildConfiguration": "Release"
       }
     }
   },
