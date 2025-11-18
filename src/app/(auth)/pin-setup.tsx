@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
+import { biometricAuthService } from '@/lib/biometricAuth';
 
 export default function PinSetupScreen() {
   const { isDark } = useTheme();
@@ -79,12 +80,48 @@ export default function PinSetupScreen() {
       setIsCreating(false);
 
       if (result.success) {
-        console.log('Account created successfully, navigating to onboarding');
+        console.log('Account created successfully');
         // Clear onboarding flag to show onboarding
         await AsyncStorage.removeItem('onboarding_completed');
         
-        // Navigate directly to onboarding screen
-        router.replace('/onboarding-route');
+        // Check if biometric auth is available and offer enrollment
+        const biometricAvailable = await biometricAuthService.isAvailable();
+        if (biometricAvailable) {
+          const biometricType = await biometricAuthService.getBiometricType();
+          Alert.alert(
+            `Enable ${biometricType}?`,
+            `Use ${biometricType} for quick and secure sign-in next time.`,
+            [
+              {
+                text: 'Not Now',
+                style: 'cancel',
+                onPress: () => {
+                  console.log('User declined biometric enrollment');
+                  router.replace('/onboarding-route');
+                },
+              },
+              {
+                text: 'Enable',
+                onPress: async () => {
+                  console.log('User wants to enable biometric auth');
+                  const userId = await AsyncStorage.getItem('user_id');
+                  if (userId) {
+                    const success = await biometricAuthService.enableBiometricAuth(userId);
+                    if (success) {
+                      console.log('Biometric auth enabled successfully');
+                    } else {
+                      console.log('Failed to enable biometric auth');
+                    }
+                  }
+                  router.replace('/onboarding-route');
+                },
+              },
+            ]
+          );
+        } else {
+          // No biometric available, proceed to onboarding
+          router.replace('/onboarding-route');
+        }
       } else {
         console.error('Account creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create account');

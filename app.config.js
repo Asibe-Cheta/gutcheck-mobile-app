@@ -36,6 +36,7 @@ module.exports = {
         NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
         NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
         NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
+        NSFaceIDUsageDescription: 'GutCheck uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutCheck',
         CFBundleShortVersionString: '2.0.1',
@@ -52,6 +53,7 @@ module.exports = {
     },
     plugins: [
       'expo-router',
+      'expo-secure-store',
       // expo-in-app-purchases auto-links in Expo SDK 54+ (no plugin needed)
       // Adding it explicitly causes errors because it doesn't have a config plugin
     ],

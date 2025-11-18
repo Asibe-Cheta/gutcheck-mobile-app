@@ -4,16 +4,20 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Image, ActivityIndicator, Animated, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, ActivityIndicator, Animated, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
+import { biometricAuthService } from '@/lib/biometricAuth';
 
 export default function IndexPage() {
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('Biometric');
   const colors = getThemeColors(true); // Use dark theme for splash to match app
   
   // Animation values for pulse glow effect
@@ -48,7 +52,20 @@ export default function IndexPage() {
         // Show logo for 1 second (Barclays-style splash)
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Check if user is authenticated
+        // Check if biometric authentication is enabled
+        const isBiometricEnabled = await biometricAuthService.isBiometricEnabled();
+        const biometricAvailable = await biometricAuthService.isAvailable();
+        
+        if (isBiometricEnabled && biometricAvailable) {
+          console.log('[SPLASH] Biometric auth enabled, showing prompt');
+          const bioType = await biometricAuthService.getBiometricType();
+          setBiometricType(bioType);
+          setShowBiometricPrompt(true);
+          setIsInitializing(false);
+          return;
+        }
+        
+        // Check if user is authenticated (traditional flow)
         const userId = await AsyncStorage.getItem('user_id');
         const hasCompletedOnboarding = await AsyncStorage.getItem('has_completed_onboarding');
         
@@ -135,6 +152,76 @@ export default function IndexPage() {
     initializeApp();
   }, []);
 
+  // Handle biometric authentication
+  const handleBiometricAuth = async () => {
+    try {
+      console.log('[SPLASH] User initiated biometric authentication');
+      const userId = await biometricAuthService.authenticateAndGetUserId();
+      
+      if (!userId) {
+        Alert.alert(
+          'Authentication Failed',
+          'Unable to authenticate with biometrics. Please sign in manually.',
+          [
+            {
+              text: 'Sign In',
+              onPress: () => {
+                setShowBiometricPrompt(false);
+                router.replace('/(auth)/signin');
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      console.log('[SPLASH] Biometric authentication successful, proceeding with subscription check');
+      
+      // User authenticated via biometrics - check subscription status
+      const hasActiveSubscription = await AsyncStorage.getItem('_has_active_subscription');
+      
+      if (hasActiveSubscription === 'true') {
+        console.log('[SPLASH] Active subscription found, routing to home');
+        router.replace('/(tabs)/');
+        return;
+      }
+      
+      // Check subscription status
+      try {
+        await revenueCatService.initialize(userId);
+        const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+        
+        if (hasActiveSubscription) {
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
+          router.replace('/(tabs)/');
+          return;
+        }
+        
+        const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+        if (lifetimeProStatus) {
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
+          router.replace('/(tabs)/');
+          return;
+        }
+        
+        // No active subscription
+        router.replace('/subscription-wrapper');
+      } catch (error) {
+        console.error('[SPLASH] Error checking subscription:', error);
+        router.replace('/subscription-wrapper');
+      }
+    } catch (error) {
+      console.error('[SPLASH] Biometric authentication error:', error);
+      Alert.alert('Error', 'An error occurred during authentication. Please try again.');
+    }
+  };
+
+  const handleSkipBiometric = () => {
+    console.log('[SPLASH] User skipped biometric, routing to sign in');
+    setShowBiometricPrompt(false);
+    router.replace('/(auth)/signin');
+  };
+
   // Show splash screen with logo, welcome text, and pulse glow effect
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -198,6 +285,31 @@ export default function IndexPage() {
             color={colors.primary} 
             style={styles.loader}
           />
+        )}
+        
+        {showBiometricPrompt && (
+          <View style={styles.biometricContainer}>
+            <TouchableOpacity
+              style={styles.biometricButton}
+              onPress={handleBiometricAuth}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="finger-print" size={48} color={colors.primary} />
+              <Text style={styles.biometricButtonText}>
+                Use {biometricType} to Sign In
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.skipBiometricButton}
+              onPress={handleSkipBiometric}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.skipBiometricText}>
+                Sign in with email instead
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -282,5 +394,42 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 32,
+  },
+  biometricContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 32,
+  },
+  biometricButton: {
+    width: '100%',
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(67, 184, 151, 0.15)',
+    borderWidth: 2,
+    borderColor: '#43B897',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  biometricButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#43B897',
+    textAlign: 'center',
+    fontFamily: 'Inter',
+  },
+  skipBiometricButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  skipBiometricText: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    fontFamily: 'Inter',
+    textDecorationLine: 'underline',
   },
 });

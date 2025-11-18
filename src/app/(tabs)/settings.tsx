@@ -11,10 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme, getThemeColors } from '@/lib/theme';
 import { notificationService } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
 import { authService } from '@/lib/authService';
+import { biometricAuthService } from '@/lib/biometricAuth';
 
 // Settings Item Component
 const SettingsItem = ({ 
@@ -61,6 +62,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { isDark, toggleTheme } = useTheme();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('Biometric');
   const [profileData, setProfileData] = useState<{username: string, avatarUri?: string} | null>(null);
   
   // Get current theme colors
@@ -69,7 +73,15 @@ export default function SettingsScreen() {
   useEffect(() => {
     checkNotificationStatus();
     loadProfileData();
+    checkBiometricStatus();
   }, []);
+
+  // Reload biometric status when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      checkBiometricStatus();
+    }, [])
+  );
 
   const loadProfileData = async () => {
     try {
@@ -97,6 +109,22 @@ export default function SettingsScreen() {
     const enabled = await notificationService.areNotificationsEnabled();
     const scheduled = await AsyncStorage.getItem('notifications_scheduled');
     setNotificationsEnabled(enabled && scheduled === 'true');
+  };
+
+  const checkBiometricStatus = async () => {
+    try {
+      const available = await biometricAuthService.isAvailable();
+      const enabled = await biometricAuthService.isBiometricEnabled();
+      const type = await biometricAuthService.getBiometricType();
+      
+      setBiometricAvailable(available);
+      setBiometricEnabled(enabled);
+      setBiometricType(type);
+      
+      console.log('[SETTINGS] Biometric status - available:', available, 'enabled:', enabled, 'type:', type);
+    } catch (error) {
+      console.error('[SETTINGS] Error checking biometric status:', error);
+    }
   };
 
   const handleProfilePress = () => {
@@ -168,6 +196,60 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleBiometricToggle = async (value: boolean) => {
+    try {
+      if (value) {
+        // Enable biometric authentication
+        const userId = await AsyncStorage.getItem('user_id');
+        if (!userId) {
+          Alert.alert('Error', 'User not logged in');
+          return;
+        }
+
+        const success = await biometricAuthService.enableBiometricAuth(userId);
+        if (success) {
+          setBiometricEnabled(true);
+          Alert.alert(
+            `${biometricType} Enabled`,
+            `You can now use ${biometricType} to quickly sign in to GutCheck.`,
+            [{ text: 'Great!', style: 'default' }]
+          );
+        } else {
+          Alert.alert(
+            'Failed to Enable',
+            `Could not enable ${biometricType}. Please try again.`,
+            [{ text: 'OK', style: 'default' }]
+          );
+        }
+      } else {
+        // Disable biometric authentication
+        Alert.alert(
+          `Disable ${biometricType}?`,
+          `You will need to use your username and PIN to sign in.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Disable',
+              style: 'destructive',
+              onPress: async () => {
+                await biometricAuthService.disableBiometricAuth();
+                setBiometricEnabled(false);
+                Alert.alert(
+                  `${biometricType} Disabled`,
+                  'You will now use your username and PIN to sign in.',
+                  [{ text: 'OK', style: 'default' }]
+                );
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling biometric:', error);
+      Alert.alert('Error', 'Failed to update biometric settings. Please try again.');
+    }
+  };
+
 
   const handlePrivacyPress = () => {
     router.push('/privacy');
@@ -208,6 +290,10 @@ export default function SettingsScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Log Out', style: 'destructive', onPress: async () => {
+          // Clear biometric authentication data
+          await biometricAuthService.disableBiometricAuth();
+          console.log('[SETTINGS] Biometric data cleared on logout');
+          
           const result = await authService.logout();
           if (result.success) {
             // Navigate to welcome screen
@@ -345,6 +431,28 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          {/* Biometric Authentication Toggle */}
+          {biometricAvailable && (
+            <View style={styles.settingsItem}>
+              <View style={styles.settingsItemContent}>
+                <View style={styles.settingsIcon}>
+                  <Ionicons name="finger-print" size={24} color={currentTheme.primary} />
+                </View>
+                <View style={styles.settingsTextContainer}>
+                  <Text style={styles.settingsTitle}>{biometricType}</Text>
+                  <Text style={styles.settingsDescription}>
+                    {biometricEnabled ? `Sign in with ${biometricType}` : `Enable ${biometricType} for quick sign-in`}
+                  </Text>
+                </View>
+                <Switch
+                  value={biometricEnabled}
+                  onValueChange={handleBiometricToggle}
+                  trackColor={{ false: '#767577', true: 'rgba(79, 209, 199, 0.5)' }}
+                  thumbColor={biometricEnabled ? currentTheme.primary : '#f4f3f4'}
+                />
+              </View>
+            </View>
+          )}
           
           {/* Dark Mode Toggle */}
           <View style={styles.settingsItem}>
