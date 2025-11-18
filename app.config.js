@@ -53,6 +53,7 @@ module.exports = {
     },
     plugins: [
       'expo-router',
+      'expo-local-authentication',
       'expo-secure-store',
       // expo-in-app-purchases auto-links in Expo SDK 54+ (no plugin needed)
       // Adding it explicitly causes errors because it doesn't have a config plugin
