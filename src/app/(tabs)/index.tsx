@@ -49,98 +49,43 @@ export default function HomeScreen() {
     "New person in my life"
   ];
 
-  // Check subscription status on mount
+  // Simplified subscription check on mount - trust the splash screen's routing
+  // Only verify the subscription flag exists
   useEffect(() => {
-    const checkSubscription = async () => {
+    const verifyAccess = async () => {
       try {
-        // FIRST: Check permanent bypass flag - if set, user has active subscription
+        console.log('[HOME] Verifying access...');
+        
+        // Check if user has the subscription flag (set by splash screen)
         const hasActiveFlag = await AsyncStorage.getItem('_has_active_subscription');
         if (hasActiveFlag === 'true') {
-          console.log('[HOME] ✅ Permanent subscription flag found - user has active subscription');
+          console.log('[HOME] ✅ Access verified - subscription flag present');
           setIsCheckingSubscription(false);
           return;
         }
         
-        // SECOND: Check store state synchronously - if subscription exists, trust it completely
-        const storeState = useSubscriptionStore.getState();
-        if (storeState.subscription || storeState.isLifetimePro) {
-          console.log('[HOME] ✅ Subscription found in store - no RevenueCat check needed');
-          // Set permanent flag for future visits
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          setIsCheckingSubscription(false);
-          return;
-        }
-        
-        // THIRD: Check temporary skip flag
+        // Check skip flag (coming from subscription purchase)
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
-          console.log('[HOME] Skipping subscription check - coming from subscription screen');
+          console.log('[HOME] ✅ Access verified - skip flag present');
+          await AsyncStorage.setItem('_has_active_subscription', 'true');
           await AsyncStorage.removeItem('_skip_sub_check');
-          // Set permanent flag
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
           setIsCheckingSubscription(false);
           return;
         }
         
-        // Add a LONGER delay to ensure navigation and native bridge are fully ready
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const userId = await AsyncStorage.getItem('user_id');
-        if (!userId) {
-          console.log('[HOME] No user ID, redirecting to subscription');
-          await AsyncStorage.setItem('_sub_nav_from_home', 'true');
-          router.replace('/subscription-wrapper');
-          return;
-        }
-        
-        // Check lifetime pro first
-        const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-        if (lifetimeProStatus) {
-          console.log('[HOME] User has lifetime pro, allowing access');
-          // Set permanent flag so we don't check again
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          setIsCheckingSubscription(false);
-          return;
-        }
-        
-        // Check RevenueCat subscription with retry logic
-        await revenueCatService.initialize(userId);
-        
-        // Try checking subscription up to 3 times with delays (handles sync delays)
-        let hasActiveSubscription = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (attempt > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-          
-          hasActiveSubscription = await revenueCatService.hasActiveSubscription();
-          
-          if (hasActiveSubscription) {
-            console.log('[HOME] User has active subscription, allowing access');
-            // Set permanent flag so we don't check again
-            await AsyncStorage.setItem('_has_active_subscription', 'true');
-            setIsCheckingSubscription(false);
-            return;
-          }
-          
-          console.log(`[HOME] Subscription check attempt ${attempt + 1} - not active yet`);
-        }
-        
-        // After all retries, if still no subscription, redirect
-        console.log('[HOME] User does not have active subscription after retries, redirecting to subscription screen');
-        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
-        router.replace('/subscription-wrapper');
-        setIsCheckingSubscription(false);
+        // If we reached here, user somehow bypassed the splash screen checks
+        // This should never happen in normal flow, so redirect to splash
+        console.log('[HOME] ⚠️ No subscription flag found - redirecting to splash for proper check');
+        router.replace('/');
       } catch (error) {
-        console.error('[HOME] Error checking subscription:', error);
-        // On error, redirect to subscription to be safe
-        await AsyncStorage.setItem('_sub_nav_from_home', 'true');
-        router.replace('/subscription-wrapper');
-        setIsCheckingSubscription(false);
+        console.error('[HOME] Error verifying access:', error);
+        // On error, redirect to splash for proper flow
+        router.replace('/');
       }
     };
     
-    checkSubscription();
+    verifyAccess();
   }, []);
 
   // Handle when user returns from chat screen

@@ -8,6 +8,8 @@ import { View, StyleSheet, Image, ActivityIndicator, Animated } from 'react-nati
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
+import { revenueCatService } from '@/lib/revenueCatService';
+import { getLifetimeProService } from '@/lib/lifetimeProService';
 
 export default function IndexPage() {
   const [isInitializing, setIsInitializing] = useState(true);
@@ -84,11 +86,42 @@ export default function IndexPage() {
           return;
         }
         
-        // No subscription found, but user is authenticated
-        // Route to home screen which will do a full subscription check
-        console.log('[SPLASH] No subscription flag found, routing to home for full check');
-        setIsInitializing(false);
-        router.replace('/(tabs)/');
+        // No subscription flag found - do a full check here instead of delegating to home
+        console.log('[SPLASH] No subscription flag found, performing full subscription check...');
+        
+        try {
+          // Check RevenueCat subscription status
+          await revenueCatService.initialize(userId);
+          const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+          
+          if (hasActiveSubscription) {
+            console.log('[SPLASH] Active subscription found via RevenueCat, setting permanent flag');
+            await AsyncStorage.setItem('_has_active_subscription', 'true');
+            setIsInitializing(false);
+            router.replace('/(tabs)/');
+            return;
+          }
+          
+          // Check lifetime pro status
+          const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+          if (lifetimeProStatus) {
+            console.log('[SPLASH] Lifetime pro found, setting permanent flag');
+            await AsyncStorage.setItem('_has_active_subscription', 'true');
+            setIsInitializing(false);
+            router.replace('/(tabs)/');
+            return;
+          }
+          
+          // No active subscription found - redirect to subscription screen
+          console.log('[SPLASH] No active subscription found, routing to subscription');
+          setIsInitializing(false);
+          router.replace('/subscription-wrapper');
+        } catch (error) {
+          console.error('[SPLASH] Error checking subscription:', error);
+          // On error, route to subscription screen to be safe
+          setIsInitializing(false);
+          router.replace('/subscription-wrapper');
+        }
         
       } catch (error) {
         console.error('[SPLASH] Error during initialization:', error);
