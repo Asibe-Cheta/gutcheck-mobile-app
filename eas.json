@@ -20,13 +20,19 @@
     },
     "production": {
       "autoIncrement": true,
+      "cache": {
+        "disabled": true
+      },
       "env": {
         "EAS_ENABLE_EXPO_DOCTOR": "0",
         "EXPO_PUBLIC_APP_ENV": "production"
       },
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "cocoapods": {
+          "deploymentTarget": "13.4"
+        }
       }
     }
   },
