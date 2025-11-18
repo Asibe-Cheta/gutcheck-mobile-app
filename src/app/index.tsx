@@ -4,7 +4,8 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Image, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, Image, ActivityIndicator, Animated, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
@@ -134,61 +135,91 @@ export default function IndexPage() {
     initializeApp();
   }, []);
 
-  // Show splash screen with logo and pulse glow effect
+  // Show splash screen with logo, welcome text, and pulse glow effect
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.logoContainer}>
-        {/* Animated glow effect layers */}
-        <Animated.View style={[styles.glowContainer, {
-          transform: [{ scale: pulseAnim }],
-        }]}>
-          {/* Pulse glow effect */}
-          <View style={[styles.glowOuter, { 
-            shadowColor: colors.primary,
-            shadowOpacity: 0.6,
-            shadowRadius: 60,
-          }]} />
-          <View style={[styles.glowMiddle, { 
-            shadowColor: colors.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 40,
-          }]} />
-          <View style={[styles.glowInner, { 
-            shadowColor: colors.primary,
-            shadowOpacity: 0.4,
-            shadowRadius: 20,
-          }]} />
-        </Animated.View>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.logoContainer}>
+          {/* Animated glow effect layers */}
+          <Animated.View style={[styles.glowContainer, {
+            transform: [{ scale: pulseAnim }],
+          }]}>
+            {/* Pulse glow effect */}
+            <View style={[styles.glowOuter, { 
+              shadowColor: colors.primary,
+              shadowOpacity: 0.6,
+              shadowRadius: 60,
+            }]} />
+            <View style={[styles.glowMiddle, { 
+              shadowColor: colors.primary,
+              shadowOpacity: 0.5,
+              shadowRadius: 40,
+            }]} />
+            <View style={[styles.glowInner, { 
+              shadowColor: colors.primary,
+              shadowOpacity: 0.4,
+              shadowRadius: 20,
+            }]} />
+          </Animated.View>
+          
+          {/* Large logo with gc-dark.png */}
+          <Image 
+            source={require('../../assets/gc-dark.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
         
-        {/* Large logo with gc-dark.png */}
-        <Image 
-          source={require('../../assets/gc-dark.png')} 
-          style={styles.logo}
-          resizeMode="contain"
-        />
-      </View>
-      
-      {isInitializing && (
-        <ActivityIndicator 
-          size="large" 
-          color={colors.primary} 
-          style={styles.loader}
-        />
-      )}
-    </View>
+        {/* Welcome Text */}
+        <View style={styles.welcomeTextContainer}>
+          <Text style={styles.welcomeTitle}>
+            <Text style={styles.boldText}>Welcome back to GutCheck!</Text>
+          </Text>
+          
+          <Text style={styles.welcomeBody}>
+            Your confidential ally for untangling complex and difficult situations. Whether it's{' '}
+            <Text style={styles.boldText}>bullying</Text>, <Text style={styles.boldText}>abuse</Text>,{' '}
+            <Text style={styles.boldText}>blackmail</Text>, or any form of{' '}
+            <Text style={styles.boldText}>exploitation</Text>, we are here to help you see the patterns clearly and guide you on what to do next.
+          </Text>
+          
+          <Text style={styles.welcomeBody}>
+            This is your safe space—with <Text style={styles.italicText}>zero judgment</Text> and{' '}
+            <Text style={styles.boldText}>complete anonymity</Text>. Your feelings are valid. Let's get started.
+          </Text>
+        </View>
+        
+        {isInitializing && (
+          <ActivityIndicator 
+            size="large" 
+            color={colors.primary} 
+            style={styles.loader}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 40,
   },
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    marginBottom: 32,
   },
   glowContainer: {
     position: 'absolute',
@@ -217,11 +248,39 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   logo: {
-    width: 280,
-    height: 280,
+    width: 220,
+    height: 220,
     zIndex: 10,
   },
+  welcomeTextContainer: {
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    lineHeight: 32,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontFamily: 'Inter',
+    marginBottom: 8,
+  },
+  welcomeBody: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#D1D5DB',
+    textAlign: 'center',
+    fontFamily: 'Inter',
+  },
+  boldText: {
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  italicText: {
+    fontStyle: 'italic',
+    color: '#FFFFFF',
+  },
   loader: {
-    marginTop: 40,
+    marginTop: 32,
   },
 });
