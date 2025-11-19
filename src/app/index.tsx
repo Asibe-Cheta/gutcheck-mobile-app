@@ -147,11 +147,11 @@ export default function IndexPage() {
           await revenueCatService.initialize(userId);
           console.log('[SPLASH] RevenueCat initialized successfully');
           
-          // Check RevenueCat subscription status with timeout
-          console.log('[SPLASH] Checking RevenueCat subscription...');
+          // Check RevenueCat subscription status with LONGER timeout for cold starts
+          console.log('[SPLASH] Checking RevenueCat subscription (15 second timeout)...');
           const checkWithTimeout = async () => {
             const timeoutPromise = new Promise<{ hasSubscription: boolean; source: string }>((_, reject) =>
-              setTimeout(() => reject(new Error('Subscription check timeout')), 5000)
+              setTimeout(() => reject(new Error('Subscription check timeout after 15 seconds')), 15000)
             );
             
             const checkPromise = (async () => {
@@ -274,11 +274,11 @@ export default function IndexPage() {
         return;
       }
       
-      // No cached flag - do full check with timeout
+      // No cached flag - do full check with longer timeout
       try {
         const checkWithTimeout = async () => {
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Subscription check timeout')), 5000)
+            setTimeout(() => reject(new Error('Subscription check timeout after 15 seconds')), 15000)
           );
           
           const checkPromise = (async () => {

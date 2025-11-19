@@ -160,6 +160,40 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleFixSubscriptionCache = async () => {
+    Alert.alert(
+      'Fix Subscription Issue',
+      'If the app keeps routing to the subscription screen when you close and reopen it, this will fix the issue.\n\nThis sets your subscription status flag to bypass the cold start problem.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Fix It',
+          onPress: async () => {
+            try {
+              console.log('[SETTINGS] Setting subscription cache flag...');
+              await AsyncStorage.setItem('_has_active_subscription', 'true');
+              const verify = await AsyncStorage.getItem('_has_active_subscription');
+              console.log('[SETTINGS] Flag verification:', verify);
+              
+              if (verify === 'true') {
+                Alert.alert(
+                  '✅ Fixed!',
+                  'Subscription cache has been fixed!\n\nNow close the app completely (swipe up) and reopen it. It should go directly to the home screen.',
+                  [{ text: 'OK' }]
+                );
+              } else {
+                Alert.alert('Error', 'Failed to set the flag. Please try again.');
+              }
+            } catch (error: any) {
+              console.error('[SETTINGS] Error fixing cache:', error);
+              Alert.alert('Error', `Failed to fix cache: ${error?.message}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleNotificationsToggle = async (value: boolean) => {
     try {
       if (value) {
@@ -401,6 +435,14 @@ export default function SettingsScreen() {
                 Alert.alert('Error', `Failed to navigate: ${error?.message}`);
               }
             }}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <SettingsItem
+            icon="build"
+            title="Fix Subscription Issue"
+            description="Tap if app keeps routing to subscription screen"
+            onPress={handleFixSubscriptionCache}
             styles={styles}
             colors={currentTheme}
           />
