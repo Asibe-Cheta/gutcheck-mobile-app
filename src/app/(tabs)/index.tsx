@@ -49,39 +49,83 @@ export default function HomeScreen() {
     "New person in my life"
   ];
 
-  // Simplified subscription check on mount - trust the splash screen's routing
-  // Only verify the subscription flag exists
+  // Subscription verification - check RevenueCat directly
   useEffect(() => {
     const verifyAccess = async () => {
       try {
-        console.log('[HOME] Verifying access...');
+        console.log('[HOME] ==== SUBSCRIPTION VERIFICATION START ====');
         
-        // Check if user has the subscription flag (set by splash screen)
-        const hasActiveFlag = await AsyncStorage.getItem('_has_active_subscription');
-        if (hasActiveFlag === 'true') {
-          console.log('[HOME] ✅ Access verified - subscription flag present');
-          setIsCheckingSubscription(false);
-          return;
-        }
-        
-        // Check skip flag (coming from subscription purchase)
+        // Check skip flag first (coming from subscription purchase)
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
-          console.log('[HOME] ✅ Access verified - skip flag present');
+          console.log('[HOME] ✅ Skip flag found - access granted');
           await AsyncStorage.setItem('_has_active_subscription', 'true');
           await AsyncStorage.removeItem('_skip_sub_check');
           setIsCheckingSubscription(false);
           return;
         }
         
-        // If we reached here, user somehow bypassed the splash screen checks
-        // This should never happen in normal flow, so redirect to splash
-        console.log('[HOME] ⚠️ No subscription flag found - redirecting to splash for proper check');
-        router.replace('/');
+        // Check if user has the subscription flag (fast path)
+        const hasActiveFlag = await AsyncStorage.getItem('_has_active_subscription');
+        if (hasActiveFlag === 'true') {
+          console.log('[HOME] ✅ Cached subscription flag found - access granted');
+          setIsCheckingSubscription(false);
+          return;
+        }
+        
+        // No cached flag - do a RevenueCat check
+        console.log('[HOME] No cached flag found, checking RevenueCat...');
+        const userId = await AsyncStorage.getItem('user_id');
+        
+        if (!userId) {
+          console.log('[HOME] ❌ No user ID found - redirecting to welcome');
+          router.replace('/(auth)/welcome');
+          return;
+        }
+        
+        try {
+          // Initialize and check RevenueCat
+          console.log('[HOME] Initializing RevenueCat...');
+          await revenueCatService.initialize(userId);
+          
+          console.log('[HOME] Checking subscription status...');
+          const hasSubscription = await revenueCatService.hasActiveSubscription();
+          console.log('[HOME] RevenueCat subscription result:', hasSubscription);
+          
+          if (hasSubscription) {
+            console.log('[HOME] ✅ Active subscription found! Setting flag and granting access');
+            await AsyncStorage.setItem('_has_active_subscription', 'true');
+            setIsCheckingSubscription(false);
+            return;
+          }
+          
+          // Check lifetime pro as backup
+          console.log('[HOME] Checking lifetime pro status...');
+          const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+          console.log('[HOME] Lifetime pro result:', lifetimeProStatus);
+          
+          if (lifetimeProStatus) {
+            console.log('[HOME] ✅ Lifetime pro found! Setting flag and granting access');
+            await AsyncStorage.setItem('_has_active_subscription', 'true');
+            setIsCheckingSubscription(false);
+            return;
+          }
+          
+          // No subscription found - redirect to subscription screen
+          console.log('[HOME] ❌ No active subscription found - redirecting to subscription screen');
+          setIsCheckingSubscription(false);
+          router.replace('/subscription-wrapper');
+        } catch (error) {
+          console.error('[HOME] ❌ Error checking subscription:', error);
+          // On error, redirect to subscription screen to be safe
+          console.log('[HOME] Routing to subscription screen due to error');
+          setIsCheckingSubscription(false);
+          router.replace('/subscription-wrapper');
+        }
       } catch (error) {
         console.error('[HOME] Error verifying access:', error);
-        // On error, redirect to splash for proper flow
-        router.replace('/');
+        setIsCheckingSubscription(false);
+        router.replace('/(auth)/welcome');
       }
     };
     

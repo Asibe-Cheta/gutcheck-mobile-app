@@ -79,137 +79,14 @@ export default function IndexPage() {
           return;
         }
         
-        // User is authenticated - check subscription status
-        // Check if user just completed a purchase
-        const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
-        if (skipCheck === 'true') {
-          console.log('[SPLASH] Skip check flag found, setting permanent flag and routing to home');
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          await AsyncStorage.removeItem('_skip_sub_check');
-          setIsInitializing(false);
-          router.replace('/(tabs)/');
-          return;
-        }
-        
-        // Check cached subscription flag FIRST (for fast app cold starts)
-        console.log('[SPLASH] ===== SUBSCRIPTION CHECK START =====');
+        // User is authenticated - ALWAYS route to home
+        // The home screen will handle subscription checks
+        console.log('[SPLASH] ===== USER AUTHENTICATED =====');
         console.log('[SPLASH] User ID:', userId);
+        console.log('[SPLASH] Routing to home screen (subscription check will happen there)');
         
-        // Debug: Check ALL stored keys related to subscription
-        const allKeys = await AsyncStorage.getAllKeys();
-        console.log('[SPLASH] All AsyncStorage keys:', allKeys);
-        
-        const cachedSubscription = await AsyncStorage.getItem('_has_active_subscription');
-        console.log('[SPLASH] Cached subscription flag value:', cachedSubscription);
-        console.log('[SPLASH] Cached subscription flag type:', typeof cachedSubscription);
-        console.log('[SPLASH] Is cached flag === "true"?', cachedSubscription === 'true');
-        console.log('[SPLASH] Is cached flag null?', cachedSubscription === null);
-        console.log('[SPLASH] Is cached flag undefined?', cachedSubscription === undefined);
-        
-        if (cachedSubscription === 'true') {
-          // User had a subscription last time - let them in immediately
-          console.log('[SPLASH] Cached subscription found, routing to home immediately');
-          setIsInitializing(false);
-          router.replace('/(tabs)/');
-          
-          // Verify subscription in background (don't block UI)
-          setTimeout(async () => {
-            try {
-              console.log('[SPLASH] Background: Verifying subscription with RevenueCat...');
-              await revenueCatService.initialize(userId);
-              const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
-              
-              if (!hasRevenueCatSub) {
-                // Check lifetime pro as backup
-                const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-                
-                if (!lifetimeProStatus) {
-                  // Subscription expired - clear cached flag
-                  console.log('[SPLASH] Background: Subscription expired, clearing cache');
-                  await AsyncStorage.removeItem('_has_active_subscription');
-                }
-              }
-            } catch (error) {
-              console.error('[SPLASH] Background verification error (non-blocking):', error);
-            }
-          }, 1000);
-          return;
-        }
-        
-        // No cached flag - perform full subscription check
-        console.log('[SPLASH] No cached subscription, performing full check...');
-        console.log('[SPLASH] ⚠️ WARNING: No cached flag found. This may cause slow cold starts.');
-        console.log('[SPLASH] If you have an active subscription, the flag should have been set.');
-        
-        try {
-          // Initialize RevenueCat first (without timeout)
-          console.log('[SPLASH] Initializing RevenueCat...');
-          await revenueCatService.initialize(userId);
-          console.log('[SPLASH] RevenueCat initialized successfully');
-          
-          // Check RevenueCat subscription status with LONGER timeout for cold starts
-          console.log('[SPLASH] Checking RevenueCat subscription (15 second timeout)...');
-          const checkWithTimeout = async () => {
-            const timeoutPromise = new Promise<{ hasSubscription: boolean; source: string }>((_, reject) =>
-              setTimeout(() => reject(new Error('Subscription check timeout after 15 seconds')), 15000)
-            );
-            
-            const checkPromise = (async () => {
-              const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
-              console.log('[SPLASH] RevenueCat result:', hasRevenueCatSub);
-              
-              if (hasRevenueCatSub) {
-                console.log('[SPLASH] ✅ Active subscription found in RevenueCat!');
-                return { hasSubscription: true, source: 'RevenueCat' };
-              }
-              
-              console.log('[SPLASH] No RevenueCat subscription, checking lifetime pro...');
-              const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-              console.log('[SPLASH] Lifetime pro result:', lifetimeProStatus);
-              
-              if (lifetimeProStatus) {
-                console.log('[SPLASH] ✅ Lifetime pro found!');
-                return { hasSubscription: true, source: 'Lifetime' };
-              }
-              
-              console.log('[SPLASH] ❌ No subscription found anywhere');
-              return { hasSubscription: false, source: 'None' };
-            })();
-            
-            return await Promise.race([checkPromise, timeoutPromise]);
-          };
-          
-          const result = await checkWithTimeout();
-          
-          if (result.hasSubscription) {
-            console.log(`[SPLASH] ✅ Active subscription found via ${result.source}`);
-            console.log('[SPLASH] Setting _has_active_subscription flag for future fast starts...');
-            await AsyncStorage.setItem('_has_active_subscription', 'true');
-            
-            // Verify the flag was actually set
-            const verifyFlag = await AsyncStorage.getItem('_has_active_subscription');
-            console.log('[SPLASH] Flag verification - value after setting:', verifyFlag);
-            
-            setIsInitializing(false);
-            router.replace('/(tabs)/');
-            return;
-          }
-          
-          // No active subscription found
-          console.log('[SPLASH] ❌ No active subscription found anywhere, routing to subscription');
-          await AsyncStorage.removeItem('_has_active_subscription');
-          setIsInitializing(false);
-          router.replace('/subscription-wrapper');
-        } catch (error) {
-          console.error('[SPLASH] ❌ Error checking subscription:', error);
-          console.error('[SPLASH] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-          console.error('[SPLASH] Error message:', error instanceof Error ? error.message : String(error));
-          
-          // On error (timeout/network issue), route to subscription screen to be safe
-          console.log('[SPLASH] Routing to subscription screen due to error');
-          setIsInitializing(false);
-          router.replace('/subscription-wrapper');
-        }
+        setIsInitializing(false);
+        router.replace('/(tabs)/');
         
       } catch (error) {
         console.error('[SPLASH] Error during initialization:', error);
@@ -245,74 +122,11 @@ export default function IndexPage() {
         return;
       }
 
-      console.log('[SPLASH] Biometric authentication successful, checking subscription...');
+      console.log('[SPLASH] Biometric authentication successful');
+      console.log('[SPLASH] Routing to home screen (subscription check will happen there)');
       
-      // Check cached subscription flag first
-      const cachedSubscription = await AsyncStorage.getItem('_has_active_subscription');
-      console.log('[SPLASH] Biometric - Cached subscription flag:', cachedSubscription);
-      
-      if (cachedSubscription === 'true') {
-        // User had a subscription - let them in immediately
-        console.log('[SPLASH] Biometric - Cached subscription found, routing to home');
-        router.replace('/(tabs)/');
-        
-        // Background verification (non-blocking)
-        setTimeout(async () => {
-          try {
-            await revenueCatService.initialize(userId);
-            const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
-            if (!hasRevenueCatSub) {
-              const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-              if (!lifetimeProStatus) {
-                await AsyncStorage.removeItem('_has_active_subscription');
-              }
-            }
-          } catch (error) {
-            console.error('[SPLASH] Biometric - Background verification error:', error);
-          }
-        }, 1000);
-        return;
-      }
-      
-      // No cached flag - do full check with longer timeout
-      try {
-        const checkWithTimeout = async () => {
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Subscription check timeout after 15 seconds')), 15000)
-          );
-          
-          const checkPromise = (async () => {
-            await revenueCatService.initialize(userId);
-            const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
-            
-            if (hasRevenueCatSub) {
-              return { hasSubscription: true, source: 'RevenueCat' };
-            }
-            
-            const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-            if (lifetimeProStatus) {
-              return { hasSubscription: true, source: 'Lifetime' };
-            }
-            
-            return { hasSubscription: false, source: 'None' };
-          })();
-          
-          return await Promise.race([checkPromise, timeoutPromise]);
-        };
-        
-        const result = await checkWithTimeout();
-        
-        if (result.hasSubscription) {
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          router.replace('/(tabs)/');
-          return;
-        }
-        
-        router.replace('/subscription-wrapper');
-      } catch (error) {
-        console.error('[SPLASH] Biometric - Error checking subscription:', error);
-        router.replace('/subscription-wrapper');
-      }
+      // Route to home - subscription check will happen there
+      router.replace('/(tabs)/');
     } catch (error) {
       console.error('[SPLASH] Biometric authentication error:', error);
       Alert.alert('Error', 'An error occurred during authentication. Please try again.');
