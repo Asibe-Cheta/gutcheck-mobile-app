@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '@/lib/themeContext';
 import { getThemeColors } from '@/lib/theme';
 import { notificationService } from '@/lib/notifications';
+import { NotificationStorageService } from '@/lib/notificationStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Global error handler
@@ -55,16 +56,32 @@ function AppContent() {
 
           // Setup listener for when user taps notification
           notificationService.setupNotificationListeners((notificationData) => {
-            // Navigate to chat with notification data
-            router.push({
-              pathname: '/chat',
-              params: {
-                fromNotification: 'true',
-                notificationTitle: notificationData.title,
-                notificationBody: notificationData.body,
-                notificationType: notificationData.type,
-                chatPrompt: notificationData.chatPrompt,
-              },
+            // Find the notification ID from storage to pass to detail screen
+            NotificationStorageService.getAllNotifications().then((notifications) => {
+              const matchingNotification = notifications.find(
+                (n) => n.title === notificationData.title && n.body === notificationData.body
+              );
+              
+              if (matchingNotification) {
+                // Navigate to notification detail screen for AI elaboration
+                router.push({
+                  pathname: '/notification-detail',
+                  params: {
+                    notificationId: matchingNotification.id,
+                    title: notificationData.title,
+                    body: notificationData.body,
+                    type: notificationData.type,
+                    chatPrompt: notificationData.chatPrompt || '',
+                  },
+                });
+              } else {
+                // Fallback: navigate to notifications list
+                router.push('/notifications');
+              }
+            }).catch((error) => {
+              console.error('Error finding notification:', error);
+              // Fallback: navigate to notifications list
+              router.push('/notifications');
             });
           });
         }
