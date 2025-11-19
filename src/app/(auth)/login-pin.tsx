@@ -352,7 +352,7 @@ export default function LoginPinScreen() {
           >
             <Ionicons name="finger-print" size={32} color={colors.primary} />
             <Text style={styles.biometricButtonText}>
-              Sign in with {biometricType}
+              Log in with {biometricType}
             </Text>
           </TouchableOpacity>
         )}

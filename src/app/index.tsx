@@ -164,13 +164,13 @@ export default function IndexPage() {
       if (!userId) {
         Alert.alert(
           'Authentication Failed',
-          'Unable to authenticate with biometrics. Please sign in manually.',
+          'Unable to authenticate with biometrics. Please log in manually.',
           [
             {
-              text: 'Sign In',
+              text: 'Log In',
               onPress: () => {
                 setShowBiometricPrompt(false);
-                router.replace('/(auth)/signin');
+                router.replace('/(auth)/login-pin');
               },
             },
           ]
@@ -228,9 +228,9 @@ export default function IndexPage() {
   };
 
   const handleSkipBiometric = () => {
-    console.log('[SPLASH] User skipped biometric, routing to sign in');
+    console.log('[SPLASH] User skipped biometric, routing to login');
     setShowBiometricPrompt(false);
-    router.replace('/(auth)/signin');
+    router.replace('/(auth)/login-pin');
   };
 
   // Show splash screen with logo, welcome text, and pulse glow effect
@@ -307,7 +307,7 @@ export default function IndexPage() {
             >
               <Ionicons name="finger-print" size={48} color={colors.primary} />
               <Text style={styles.biometricButtonText}>
-                Use {biometricType} to Sign In
+                Use {biometricType} to Log In
               </Text>
             </TouchableOpacity>
             
@@ -317,7 +317,7 @@ export default function IndexPage() {
               activeOpacity={0.7}
             >
               <Text style={styles.skipBiometricText}>
-                Sign in with email instead
+                Log in with username instead
               </Text>
             </TouchableOpacity>
           </View>
