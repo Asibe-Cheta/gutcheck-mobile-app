@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 const BIOMETRIC_TOKEN_KEY = 'gutcheck_biometric_token';
 const BIOMETRIC_ENABLED_KEY = 'biometric_auth_enabled';
 const BIOMETRIC_USER_ID_KEY = 'biometric_user_id';
+const BIOMETRIC_USERNAME_KEY = 'gutcheck_biometric_username';
 
 export interface BiometricAuthResult {
   success: boolean;
@@ -116,9 +117,9 @@ class BiometricAuthService {
 
   /**
    * Enable biometric authentication for a user
-   * Stores user ID securely for auto-login
+   * Stores user ID and username securely for auto-login
    */
-  async enableBiometricAuth(userId: string): Promise<boolean> {
+  async enableBiometricAuth(userId: string, username?: string): Promise<boolean> {
     try {
       // First, authenticate to ensure user consent
       const authResult = await this.authenticate();
@@ -129,6 +130,11 @@ class BiometricAuthService {
 
       // Store user ID securely in device keychain/keystore
       await SecureStore.setItemAsync(BIOMETRIC_TOKEN_KEY, userId);
+      
+      // Store username securely if provided
+      if (username) {
+        await SecureStore.setItemAsync(BIOMETRIC_USERNAME_KEY, username);
+      }
       
       // Store flag in AsyncStorage (for quick checks)
       await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, 'true');
@@ -149,6 +155,7 @@ class BiometricAuthService {
   async disableBiometricAuth(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY);
+      await SecureStore.deleteItemAsync(BIOMETRIC_USERNAME_KEY).catch(() => {}); // Ignore if doesn't exist
       await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
       await AsyncStorage.removeItem(BIOMETRIC_USER_ID_KEY);
       console.log('[BIOMETRIC] Biometric authentication disabled');
@@ -216,6 +223,54 @@ class BiometricAuthService {
     } catch (error) {
       console.error('[BIOMETRIC] Error getting stored user ID:', error);
       return null;
+    }
+  }
+
+  /**
+   * Authenticate and retrieve username for login screen
+   * Returns username if biometric auth succeeds and username is stored
+   */
+  async authenticateAndGetUsername(): Promise<string | null> {
+    try {
+      // Check if biometric is available
+      const isAvailable = await this.isAvailable();
+      if (!isAvailable) {
+        console.log('[BIOMETRIC] Biometric auth not available');
+        return null;
+      }
+
+      // Authenticate user
+      const authResult = await this.authenticate();
+      if (!authResult.success) {
+        console.log('[BIOMETRIC] Authentication failed');
+        return null;
+      }
+
+      // Retrieve stored username
+      const username = await SecureStore.getItemAsync(BIOMETRIC_USERNAME_KEY);
+      if (!username) {
+        console.log('[BIOMETRIC] No username found in secure store');
+        return null;
+      }
+
+      console.log('[BIOMETRIC] Authentication successful, username retrieved');
+      return username;
+    } catch (error) {
+      console.error('[BIOMETRIC] Error authenticating and retrieving username:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if username is stored for biometric login
+   */
+  async hasStoredCredentials(): Promise<boolean> {
+    try {
+      const username = await SecureStore.getItemAsync(BIOMETRIC_USERNAME_KEY);
+      return !!username;
+    } catch (error) {
+      console.error('[BIOMETRIC] Error checking stored credentials:', error);
+      return false;
     }
   }
 }

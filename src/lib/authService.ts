@@ -8,6 +8,7 @@ import { supabase } from './supabase';
 import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 import { revenueCatService } from './revenueCatService';
+import { biometricAuthService } from './biometricAuth';
 
 export interface AuthUser {
   id: string;
@@ -312,6 +313,13 @@ class AuthService {
 
       // Set RevenueCat user ID to associate purchases with this user
       await revenueCatService.setAppUserID(data.user_id);
+
+      // Update biometric auth with username if enabled
+      const isBiometricEnabled = await biometricAuthService.isBiometricEnabled();
+      if (isBiometricEnabled) {
+        console.log('[AUTH] Updating biometric auth with new username');
+        await biometricAuthService.enableBiometricAuth(data.user_id, data.username);
+      }
 
       const user: AuthUser = {
         id: data.user_id,

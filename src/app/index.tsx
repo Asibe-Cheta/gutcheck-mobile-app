@@ -80,19 +80,6 @@ export default function IndexPage() {
         }
         
         // User is authenticated - check subscription status
-        // Check permanent subscription flag
-        const hasActiveSubscription = await AsyncStorage.getItem('_has_active_subscription');
-        
-        console.log('[SPLASH] Subscription check - hasActive:', hasActiveSubscription);
-        
-        if (hasActiveSubscription === 'true') {
-          // User has active subscription, go to home
-          console.log('[SPLASH] Active subscription found, routing to home');
-          setIsInitializing(false);
-          router.replace('/(tabs)/');
-          return;
-        }
-        
         // Check if user just completed a purchase
         const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
         if (skipCheck === 'true') {
@@ -104,16 +91,21 @@ export default function IndexPage() {
           return;
         }
         
-        // No subscription flag found - do a full check here instead of delegating to home
-        console.log('[SPLASH] No subscription flag found, performing full subscription check...');
+        // Always do a full subscription check (don't rely on cached flag after logout)
+        console.log('[SPLASH] Performing full subscription check...');
         
         try {
-          // Check RevenueCat subscription status
+          // Initialize RevenueCat with userId
+          console.log('[SPLASH] Initializing RevenueCat...');
           await revenueCatService.initialize(userId);
-          const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
           
-          if (hasActiveSubscription) {
-            console.log('[SPLASH] Active subscription found via RevenueCat, setting permanent flag');
+          // Check RevenueCat subscription status
+          console.log('[SPLASH] Checking RevenueCat subscription...');
+          const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
+          console.log('[SPLASH] RevenueCat result:', hasRevenueCatSub);
+          
+          if (hasRevenueCatSub) {
+            console.log('[SPLASH] Active subscription found via RevenueCat, routing to home');
             await AsyncStorage.setItem('_has_active_subscription', 'true');
             setIsInitializing(false);
             router.replace('/(tabs)/');
@@ -121,9 +113,12 @@ export default function IndexPage() {
           }
           
           // Check lifetime pro status
+          console.log('[SPLASH] Checking lifetime pro status...');
           const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+          console.log('[SPLASH] Lifetime pro result:', lifetimeProStatus);
+          
           if (lifetimeProStatus) {
-            console.log('[SPLASH] Lifetime pro found, setting permanent flag');
+            console.log('[SPLASH] Lifetime pro found, routing to home');
             await AsyncStorage.setItem('_has_active_subscription', 'true');
             setIsInitializing(false);
             router.replace('/(tabs)/');
@@ -136,7 +131,15 @@ export default function IndexPage() {
           router.replace('/subscription-wrapper');
         } catch (error) {
           console.error('[SPLASH] Error checking subscription:', error);
-          // On error, route to subscription screen to be safe
+          // On error, check if we have a cached flag as fallback
+          const cachedSubscription = await AsyncStorage.getItem('_has_active_subscription');
+          if (cachedSubscription === 'true') {
+            console.log('[SPLASH] Using cached subscription flag, routing to home');
+            setIsInitializing(false);
+            router.replace('/(tabs)/');
+            return;
+          }
+          // No cached flag, route to subscription screen
           setIsInitializing(false);
           router.replace('/subscription-wrapper');
         }
@@ -175,39 +178,47 @@ export default function IndexPage() {
         return;
       }
 
-      console.log('[SPLASH] Biometric authentication successful, proceeding with subscription check');
+      console.log('[SPLASH] Biometric authentication successful, checking subscription...');
       
-      // User authenticated via biometrics - check subscription status
-      const hasActiveSubscription = await AsyncStorage.getItem('_has_active_subscription');
-      
-      if (hasActiveSubscription === 'true') {
-        console.log('[SPLASH] Active subscription found, routing to home');
-        router.replace('/(tabs)/');
-        return;
-      }
-      
-      // Check subscription status
+      // Check subscription status (always do full check)
       try {
+        console.log('[SPLASH] Initializing RevenueCat...');
         await revenueCatService.initialize(userId);
-        const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
         
-        if (hasActiveSubscription) {
+        console.log('[SPLASH] Checking RevenueCat subscription...');
+        const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
+        console.log('[SPLASH] RevenueCat result:', hasRevenueCatSub);
+        
+        if (hasRevenueCatSub) {
+          console.log('[SPLASH] Active subscription found, routing to home');
           await AsyncStorage.setItem('_has_active_subscription', 'true');
           router.replace('/(tabs)/');
           return;
         }
         
+        console.log('[SPLASH] Checking lifetime pro status...');
         const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
+        console.log('[SPLASH] Lifetime pro result:', lifetimeProStatus);
+        
         if (lifetimeProStatus) {
+          console.log('[SPLASH] Lifetime pro found, routing to home');
           await AsyncStorage.setItem('_has_active_subscription', 'true');
           router.replace('/(tabs)/');
           return;
         }
         
         // No active subscription
+        console.log('[SPLASH] No subscription found, routing to subscription screen');
         router.replace('/subscription-wrapper');
       } catch (error) {
         console.error('[SPLASH] Error checking subscription:', error);
+        // On error, check for cached flag
+        const cachedSubscription = await AsyncStorage.getItem('_has_active_subscription');
+        if (cachedSubscription === 'true') {
+          console.log('[SPLASH] Using cached subscription flag, routing to home');
+          router.replace('/(tabs)/');
+          return;
+        }
         router.replace('/subscription-wrapper');
       }
     } catch (error) {

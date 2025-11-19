@@ -3,7 +3,7 @@
  * For logging in with username + PIN
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { router } from 'expo-router';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
+import { biometricAuthService } from '@/lib/biometricAuth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginPinScreen() {
   const { isDark } = useTheme();
@@ -19,7 +21,74 @@ export default function LoginPinScreen() {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState('Biometric');
+  const [hasStoredCredentials, setHasStoredCredentials] = useState(false);
   const pinInputRef = useRef<TextInput>(null);
+
+  // Check for biometric availability and stored credentials on mount
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const isAvailable = await biometricAuthService.isAvailable();
+      const hasCredentials = await biometricAuthService.hasStoredCredentials();
+      
+      console.log('[LOGIN] Biometric available:', isAvailable, 'Has credentials:', hasCredentials);
+      
+      if (isAvailable && hasCredentials) {
+        setBiometricAvailable(true);
+        setHasStoredCredentials(true);
+        const bioType = await biometricAuthService.getBiometricType();
+        setBiometricType(bioType);
+      }
+    } catch (error) {
+      console.error('[LOGIN] Error checking biometric availability:', error);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    try {
+      console.log('[LOGIN] Initiating biometric login...');
+      setIsLoggingIn(true);
+      
+      // Authenticate with biometrics and get stored user ID
+      const userId = await biometricAuthService.authenticateAndGetUserId();
+      
+      if (!userId) {
+        Alert.alert(
+          'Authentication Failed',
+          'Unable to authenticate with biometrics. Please enter your credentials manually.',
+          [{ text: 'OK' }]
+        );
+        setIsLoggingIn(false);
+        return;
+      }
+
+      console.log('[LOGIN] Biometric authentication successful');
+      
+      // Restore user session
+      await AsyncStorage.setItem('user_id', userId);
+      await AsyncStorage.setItem('is_logged_in', 'true');
+      
+      // Get username from AsyncStorage or secure store
+      const storedUsername = await biometricAuthService.authenticateAndGetUsername();
+      if (storedUsername) {
+        await AsyncStorage.setItem('username', storedUsername);
+      }
+      
+      setIsLoggingIn(false);
+      
+      // Navigate to main app - let splash screen handle subscription check
+      router.replace('/');
+    } catch (error) {
+      console.error('[LOGIN] Biometric login error:', error);
+      Alert.alert('Error', 'An error occurred during biometric authentication. Please try again.');
+      setIsLoggingIn(false);
+    }
+  };
 
   const handlePinChange = (value: string) => {
     // Only allow digits
@@ -150,6 +219,22 @@ export default function LoginPinScreen() {
       height: 1,
       width: 1,
     },
+    biometricButton: {
+      backgroundColor: 'rgba(67, 184, 151, 0.1)',
+      borderWidth: 2,
+      borderColor: colors.primary,
+      paddingVertical: 20,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 12,
+    },
+    biometricButtonText: {
+      color: colors.primary,
+      fontSize: 18,
+      fontWeight: '600',
+    },
     loginButton: {
       backgroundColor: colors.primary,
       paddingVertical: 16,
@@ -258,6 +343,27 @@ export default function LoginPinScreen() {
             placeholderTextColor="transparent"
           />
         </View>
+
+        {biometricAvailable && hasStoredCredentials && (
+          <TouchableOpacity
+            style={styles.biometricButton}
+            onPress={handleBiometricLogin}
+            disabled={isLoggingIn}
+          >
+            <Ionicons name="finger-print" size={32} color={colors.primary} />
+            <Text style={styles.biometricButtonText}>
+              Sign in with {biometricType}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {biometricAvailable && hasStoredCredentials && (
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+        )}
 
         <TouchableOpacity
           style={[styles.loginButton, !canLogin && styles.loginButtonDisabled]}

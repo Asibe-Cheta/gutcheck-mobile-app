@@ -105,8 +105,9 @@ export default function PinSetupScreen() {
                 onPress: async () => {
                   console.log('User wants to enable biometric auth');
                   const userId = await AsyncStorage.getItem('user_id');
+                  const username = await AsyncStorage.getItem('username');
                   if (userId) {
-                    const success = await biometricAuthService.enableBiometricAuth(userId);
+                    const success = await biometricAuthService.enableBiometricAuth(userId, username || undefined);
                     if (success) {
                       console.log('Biometric auth enabled successfully');
                     } else {
