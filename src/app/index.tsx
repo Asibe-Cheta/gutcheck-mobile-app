@@ -92,8 +92,19 @@ export default function IndexPage() {
         }
         
         // Check cached subscription flag FIRST (for fast app cold starts)
+        console.log('[SPLASH] ===== SUBSCRIPTION CHECK START =====');
+        console.log('[SPLASH] User ID:', userId);
+        
+        // Debug: Check ALL stored keys related to subscription
+        const allKeys = await AsyncStorage.getAllKeys();
+        console.log('[SPLASH] All AsyncStorage keys:', allKeys);
+        
         const cachedSubscription = await AsyncStorage.getItem('_has_active_subscription');
-        console.log('[SPLASH] Cached subscription flag:', cachedSubscription);
+        console.log('[SPLASH] Cached subscription flag value:', cachedSubscription);
+        console.log('[SPLASH] Cached subscription flag type:', typeof cachedSubscription);
+        console.log('[SPLASH] Is cached flag === "true"?', cachedSubscription === 'true');
+        console.log('[SPLASH] Is cached flag null?', cachedSubscription === null);
+        console.log('[SPLASH] Is cached flag undefined?', cachedSubscription === undefined);
         
         if (cachedSubscription === 'true') {
           // User had a subscription last time - let them in immediately
@@ -127,34 +138,41 @@ export default function IndexPage() {
         
         // No cached flag - perform full subscription check
         console.log('[SPLASH] No cached subscription, performing full check...');
+        console.log('[SPLASH] ⚠️ WARNING: No cached flag found. This may cause slow cold starts.');
+        console.log('[SPLASH] If you have an active subscription, the flag should have been set.');
         
         try {
-          // Add timeout to RevenueCat check (5 seconds)
+          // Initialize RevenueCat first (without timeout)
+          console.log('[SPLASH] Initializing RevenueCat...');
+          await revenueCatService.initialize(userId);
+          console.log('[SPLASH] RevenueCat initialized successfully');
+          
+          // Check RevenueCat subscription status with timeout
+          console.log('[SPLASH] Checking RevenueCat subscription...');
           const checkWithTimeout = async () => {
-            const timeoutPromise = new Promise((_, reject) =>
+            const timeoutPromise = new Promise<{ hasSubscription: boolean; source: string }>((_, reject) =>
               setTimeout(() => reject(new Error('Subscription check timeout')), 5000)
             );
             
             const checkPromise = (async () => {
-              console.log('[SPLASH] Initializing RevenueCat...');
-              await revenueCatService.initialize(userId);
-              
-              console.log('[SPLASH] Checking RevenueCat subscription...');
               const hasRevenueCatSub = await revenueCatService.hasActiveSubscription();
               console.log('[SPLASH] RevenueCat result:', hasRevenueCatSub);
               
               if (hasRevenueCatSub) {
+                console.log('[SPLASH] ✅ Active subscription found in RevenueCat!');
                 return { hasSubscription: true, source: 'RevenueCat' };
               }
               
-              console.log('[SPLASH] Checking lifetime pro status...');
+              console.log('[SPLASH] No RevenueCat subscription, checking lifetime pro...');
               const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
               console.log('[SPLASH] Lifetime pro result:', lifetimeProStatus);
               
               if (lifetimeProStatus) {
+                console.log('[SPLASH] ✅ Lifetime pro found!');
                 return { hasSubscription: true, source: 'Lifetime' };
               }
               
+              console.log('[SPLASH] ❌ No subscription found anywhere');
               return { hasSubscription: false, source: 'None' };
             })();
             
@@ -164,22 +182,31 @@ export default function IndexPage() {
           const result = await checkWithTimeout();
           
           if (result.hasSubscription) {
-            console.log(`[SPLASH] Active subscription found via ${result.source}, routing to home`);
+            console.log(`[SPLASH] ✅ Active subscription found via ${result.source}`);
+            console.log('[SPLASH] Setting _has_active_subscription flag for future fast starts...');
             await AsyncStorage.setItem('_has_active_subscription', 'true');
+            
+            // Verify the flag was actually set
+            const verifyFlag = await AsyncStorage.getItem('_has_active_subscription');
+            console.log('[SPLASH] Flag verification - value after setting:', verifyFlag);
+            
             setIsInitializing(false);
             router.replace('/(tabs)/');
             return;
           }
           
           // No active subscription found
-          console.log('[SPLASH] No active subscription found, routing to subscription');
+          console.log('[SPLASH] ❌ No active subscription found anywhere, routing to subscription');
           await AsyncStorage.removeItem('_has_active_subscription');
           setIsInitializing(false);
           router.replace('/subscription-wrapper');
         } catch (error) {
-          console.error('[SPLASH] Error checking subscription:', error);
+          console.error('[SPLASH] ❌ Error checking subscription:', error);
+          console.error('[SPLASH] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+          console.error('[SPLASH] Error message:', error instanceof Error ? error.message : String(error));
+          
           // On error (timeout/network issue), route to subscription screen to be safe
-          console.log('[SPLASH] Error occurred, routing to subscription screen');
+          console.log('[SPLASH] Routing to subscription screen due to error');
           setIsInitializing(false);
           router.replace('/subscription-wrapper');
         }
