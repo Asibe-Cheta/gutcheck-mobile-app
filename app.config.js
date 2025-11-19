@@ -16,7 +16,7 @@ module.exports = {
     name: 'GutCheck',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '2.0.2',
+    version: '2.0.3',
     orientation: 'portrait',
     icon: './assets/gc-main.png',
     userInterfaceStyle: 'dark',
@@ -39,7 +39,7 @@ module.exports = {
         NSFaceIDUsageDescription: 'GutCheck uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutCheck',
-        CFBundleShortVersionString: '2.0.2',
+        CFBundleShortVersionString: '2.0.3',
       },
     },
     android: {
