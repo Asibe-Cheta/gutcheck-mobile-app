@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { getThemeColors } from '@/lib/theme';
 
 export function BiometricLockScreen() {
-  const { setIsLocked } = useAppLock();
+  const { unlock } = useAppLock();
   const router = useRouter();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
@@ -77,7 +77,7 @@ export function BiometricLockScreen() {
       
       if (userId) {
         console.log('[LockScreen] ✅ Authentication successful');
-        setIsLocked(false);
+        unlock(); // Use unlock method to properly clear both states
       } else {
         console.log('[LockScreen] ❌ Authentication failed or canceled');
         // Don't automatically route to login - let user try again or use skip button
@@ -92,7 +92,7 @@ export function BiometricLockScreen() {
 
   const handleSkipBiometric = () => {
     console.log('[LockScreen] User skipped biometric, routing to login');
-    setIsLocked(false);
+    unlock(); // Use unlock method to properly clear both states
     router.replace('/(auth)/login-pin');
   };
 
