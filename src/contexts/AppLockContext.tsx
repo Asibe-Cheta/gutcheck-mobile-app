@@ -14,6 +14,7 @@ interface AppLockContextType {
   shouldShowLock: boolean;
   checkAndLock: () => Promise<void>;
   unlock: () => void;
+  setAuthenticating: (authenticating: boolean) => void;
 }
 
 const AppLockContext = createContext<AppLockContextType | undefined>(undefined);
@@ -23,25 +24,42 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   const [shouldShowLock, setShouldShowLock] = useState(false);
   const appStateRef = useRef(AppState.currentState);
   const lastUnlockTimeRef = useRef<number>(0);
-  const UNLOCK_COOLDOWN_MS = 2000; // 2 seconds cooldown after unlock to prevent immediate re-lock
+  const isAuthenticatingRef = useRef(false); // Track if we're currently authenticating
+  const wasInBackgroundRef = useRef(false); // Track if we were truly in background
+  const UNLOCK_COOLDOWN_MS = 3000; // 3 seconds to be safe
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextAppState;
       
-      console.log('[AppLock] State changed:', previousState, '→', nextAppState);
+      console.log('[AppLock] State:', previousState, '→', nextAppState, {
+        wasInBackground: wasInBackgroundRef.current,
+        isAuthenticating: isAuthenticatingRef.current,
+        timeSinceUnlock: Date.now() - lastUnlockTimeRef.current
+      });
       
-      // App coming to foreground
-      if (previousState.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('[AppLock] 🔓 App returned from background to foreground');
-        
-        // Check if we just unlocked (cooldown period to prevent immediate re-lock)
+      // Track when app goes to background (not just inactive)
+      if (nextAppState === 'background') {
+        console.log('[AppLock] 📱 App entered background');
+        wasInBackgroundRef.current = true;
+      }
+      
+      // Only lock if:
+      // 1. We're coming back to active
+      // 2. We were actually in background (not just inactive from biometric prompt)
+      // 3. We're not currently authenticating
+      // 4. Cooldown period has passed
+      if (nextAppState === 'active' && wasInBackgroundRef.current && !isAuthenticatingRef.current) {
         const timeSinceUnlock = Date.now() - lastUnlockTimeRef.current;
+        
         if (timeSinceUnlock < UNLOCK_COOLDOWN_MS) {
-          console.log('[AppLock] ⏱️ Skipping lock - within unlock cooldown period');
+          console.log('[AppLock] ⏱️ Skipping lock - within cooldown period');
+          wasInBackgroundRef.current = false; // Reset the flag
           return;
         }
+        
+        console.log('[AppLock] 🔍 Checking if lock needed...');
         
         try {
           const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
@@ -52,25 +70,21 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
             isBiometricEnabled
           });
           
-          // Only lock if user is logged in and has biometrics enabled
           if (isLoggedIn === 'true' && isBiometricEnabled) {
             console.log('[AppLock] 🔒 Locking app - biometrics required');
             setIsLocked(true);
             setShouldShowLock(true);
+            wasInBackgroundRef.current = false; // Reset after locking
           } else {
-            console.log('[AppLock] ℹ️ No lock required - not logged in or biometrics disabled');
+            console.log('[AppLock] ℹ️ No lock needed - not logged in or biometrics disabled');
+            wasInBackgroundRef.current = false;
             setIsLocked(false);
             setShouldShowLock(false);
           }
         } catch (error) {
           console.error('[AppLock] Error checking lock status:', error);
+          wasInBackgroundRef.current = false;
         }
-      }
-      // App going to background - prepare for lock
-      else if (nextAppState.match(/inactive|background/)) {
-        console.log('[AppLock] 📱 App going to background - preparing lock state');
-        // Don't show lock screen yet, just mark that we should on return
-        setShouldShowLock(false);
       }
     });
 
@@ -101,10 +115,17 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
     setIsLocked(false);
     setShouldShowLock(false);
     lastUnlockTimeRef.current = Date.now();
+    wasInBackgroundRef.current = false; // Important: reset background flag
+    isAuthenticatingRef.current = false; // Reset auth flag
+  };
+
+  const setAuthenticating = (authenticating: boolean) => {
+    console.log('[AppLock] Setting authenticating:', authenticating);
+    isAuthenticatingRef.current = authenticating;
   };
 
   return (
-    <AppLockContext.Provider value={{ isLocked, setIsLocked, shouldShowLock, checkAndLock, unlock }}>
+    <AppLockContext.Provider value={{ isLocked, setIsLocked, shouldShowLock, checkAndLock, unlock, setAuthenticating }}>
       {children}
     </AppLockContext.Provider>
   );

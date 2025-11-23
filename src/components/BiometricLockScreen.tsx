@@ -4,7 +4,7 @@
  * Uses the same design as splash screen for consistency
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, Animated, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,10 +14,11 @@ import { useRouter } from 'expo-router';
 import { getThemeColors } from '@/lib/theme';
 
 export function BiometricLockScreen() {
-  const { unlock } = useAppLock();
+  const { unlock, setAuthenticating } = useAppLock();
   const router = useRouter();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
+  const hasTriggeredAuthRef = useRef(false);
   const colors = getThemeColors(true); // Use dark theme to match app
   
   // Animation values for pulse glow effect (same as splash screen)
@@ -57,29 +58,44 @@ export function BiometricLockScreen() {
     getBiometricType();
   }, []);
 
-  // Auto-trigger authentication when component mounts (after short delay)
+  // Auto-trigger authentication ONCE when component mounts
   useEffect(() => {
+    if (hasTriggeredAuthRef.current) {
+      console.log('[LockScreen] Auth already triggered, skipping...');
+      return;
+    }
+    
+    hasTriggeredAuthRef.current = true;
+    console.log('[LockScreen] Component mounted, will trigger auth in 300ms');
+    
     const timer = setTimeout(() => {
       handleAuthenticate();
-    }, 500); // Small delay to ensure UI is ready
+    }, 300);
     
-    return () => clearTimeout(timer);
-  }, []);
+    return () => {
+      clearTimeout(timer);
+      console.log('[LockScreen] Component unmounting');
+    };
+  }, []); // Empty dependency array - only run once on mount
 
   const handleAuthenticate = async () => {
-    if (isAuthenticating) return;
+    if (isAuthenticating) {
+      console.log('[LockScreen] Already authenticating, skipping...');
+      return;
+    }
     
+    console.log('[LockScreen] 🔐 Starting biometric authentication...');
     setIsAuthenticating(true);
-    console.log('[LockScreen] Starting biometric authentication...');
+    setAuthenticating(true); // Tell context we're authenticating
     
     try {
       const userId = await biometricAuthService.authenticateAndGetUserId();
       
       if (userId) {
-        console.log('[LockScreen] ✅ Authentication successful');
-        unlock(); // Use unlock method to properly clear both states
+        console.log('[LockScreen] ✅ Authentication successful, unlocking...');
+        unlock();
       } else {
-        console.log('[LockScreen] ❌ Authentication failed or canceled');
+        console.log('[LockScreen] ❌ Authentication failed or cancelled');
         // Don't automatically route to login - let user try again or use skip button
       }
     } catch (error) {
@@ -87,6 +103,7 @@ export function BiometricLockScreen() {
       Alert.alert('Error', 'An error occurred during authentication. Please try again.');
     } finally {
       setIsAuthenticating(false);
+      setAuthenticating(false); // Tell context we're done authenticating
     }
   };
 
