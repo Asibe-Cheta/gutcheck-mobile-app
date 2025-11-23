@@ -16,6 +16,10 @@ import { useTheme } from '@/lib/themeContext';
 import { profileService } from '@/lib/profileService';
 import { authService } from '@/lib/authService';
 import { biometricAuthService } from '@/lib/biometricAuth';
+import { panicButtonService } from '@/lib/panicButtonService';
+import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 // Settings Item Component
 const SettingsItem = ({ 
@@ -61,19 +65,36 @@ const SettingsItem = ({
 export default function SettingsScreen() {
   const router = useRouter();
   const { isDark, toggleTheme } = useTheme();
+  
+  // App lock state - show lock screen when app is locked
+  const { isLocked, shouldShowLock } = useAppLock();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
+  const [panicButtonEnabled, setPanicButtonEnabled] = useState(false);
   const [profileData, setProfileData] = useState<{username: string, avatarUri?: string} | null>(null);
   
   // Get current theme colors
   const currentTheme = getThemeColors(isDark);
 
+  // Authentication check only
   useEffect(() => {
+    const checkAuth = async () => {
+      const userId = await AsyncStorage.getItem('user_id');
+      const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+      
+      if (!userId || isLoggedIn !== 'true') {
+        router.replace('/(auth)/welcome');
+        return;
+      }
+    };
+    
+    checkAuth();
     checkNotificationStatus();
     loadProfileData();
     checkBiometricStatus();
+    checkPanicButtonStatus();
   }, []);
 
   // Reload biometric status when screen is focused
@@ -127,6 +148,43 @@ export default function SettingsScreen() {
     }
   };
 
+  const checkPanicButtonStatus = async () => {
+    try {
+      const enabled = await panicButtonService.isEnabled();
+      setPanicButtonEnabled(enabled);
+      console.log('[SETTINGS] Panic button status - enabled:', enabled);
+    } catch (error) {
+      console.error('[SETTINGS] Error checking panic button status:', error);
+    }
+  };
+
+  const handlePanicButtonToggle = async (value: boolean) => {
+    try {
+      if (value) {
+        // Enable panic button
+        await panicButtonService.enable();
+        setPanicButtonEnabled(true);
+        Alert.alert(
+          '🚨 Panic Button Enabled',
+          'Triple-tap anywhere on the screen to instantly exit to a calculator screen.\n\nThis feature is designed to help you quickly hide the app if you\'re in an unsafe situation.\n\nTo return to GutCheck, simply navigate back from the calculator.',
+          [{ text: 'Got It', style: 'default' }]
+        );
+      } else {
+        // Disable panic button
+        await panicButtonService.disable();
+        setPanicButtonEnabled(false);
+        Alert.alert(
+          'Panic Button Disabled',
+          'Triple-tap gesture will no longer trigger the quick exit.',
+          [{ text: 'OK', style: 'default' }]
+        );
+      }
+    } catch (error) {
+      console.error('[SETTINGS] Error toggling panic button:', error);
+      Alert.alert('Error', 'Failed to update panic button settings. Please try again.');
+    }
+  };
+
   const handleProfilePress = () => {
     router.push('/profile');
   };
@@ -160,39 +218,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleFixSubscriptionCache = async () => {
-    Alert.alert(
-      'Fix Subscription Issue',
-      'If the app keeps routing to the subscription screen when you close and reopen it, this will fix the issue.\n\nThis sets your subscription status flag to bypass the cold start problem.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Fix It',
-          onPress: async () => {
-            try {
-              console.log('[SETTINGS] Setting subscription cache flag...');
-              await AsyncStorage.setItem('_has_active_subscription', 'true');
-              const verify = await AsyncStorage.getItem('_has_active_subscription');
-              console.log('[SETTINGS] Flag verification:', verify);
-              
-              if (verify === 'true') {
-                Alert.alert(
-                  '✅ Fixed!',
-                  'Subscription cache has been fixed!\n\nNow close the app completely (swipe up) and reopen it. It should go directly to the home screen.',
-                  [{ text: 'OK' }]
-                );
-              } else {
-                Alert.alert('Error', 'Failed to set the flag. Please try again.');
-              }
-            } catch (error: any) {
-              console.error('[SETTINGS] Error fixing cache:', error);
-              Alert.alert('Error', `Failed to fix cache: ${error?.message}`);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   const handleNotificationsToggle = async (value: boolean) => {
     try {
@@ -298,11 +323,7 @@ export default function SettingsScreen() {
   };
 
   const handleHelpPress = () => {
-    Alert.alert(
-      'Help Center',
-      'Help and support features coming soon! You\'ll have access to FAQs, tutorials, and direct support.',
-      [{ text: 'OK', style: 'default' }]
-    );
+    router.push('/faq');
   };
 
   const handleContactPress = () => {
@@ -312,7 +333,7 @@ export default function SettingsScreen() {
   const handleAboutPress = () => {
     Alert.alert(
       'About GutCheck',
-      'GutCheck v1.0.0\n\nYour intelligent relationship companion that helps you navigate complex social situations with confidence.\n\nBuilt with React Native and powered by AI.',
+      'GutCheck v2.0.2\n\nYour confidential relationship companion that helps you navigate complex social situations with confidence.\n\n✨ Key Features:\n• AI-powered relationship analysis\n• Red flag detection\n• Anonymous and secure\n• Panic button (triple-tap to exit)\n• Daily supportive notifications\n• Export evidence as PDF\n• Local data storage\n• Crisis resources\n\n© 2024 GutCheck. Your safety matters.',
       [{ text: 'OK', style: 'default' }]
     );
   };
@@ -384,6 +405,11 @@ export default function SettingsScreen() {
 
   const styles = createStyles(isDark);
   
+  // Show lock screen if app is locked (when returning from background)
+  if (isLocked && shouldShowLock) {
+    return <BiometricLockScreen />;
+  }
+  
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -438,14 +464,6 @@ export default function SettingsScreen() {
             styles={styles}
             colors={currentTheme}
           />
-          <SettingsItem
-            icon="build"
-            title="Fix Subscription Issue"
-            description="Tap if app keeps routing to subscription screen"
-            onPress={handleFixSubscriptionCache}
-            styles={styles}
-            colors={currentTheme}
-          />
         </View>
 
         {/* Preferences Section */}
@@ -494,6 +512,29 @@ export default function SettingsScreen() {
                 />
               </View>
             </View>
+          )}
+
+          {/* Panic Button Toggle - TEMPORARILY DISABLED */}
+          {false && (
+          <View style={styles.settingsItem}>
+            <View style={styles.settingsItemContent}>
+              <View style={styles.settingsIcon}>
+                <Ionicons name="warning" size={24} color="#FF6B6B" />
+              </View>
+              <View style={styles.settingsTextContainer}>
+                <Text style={styles.settingsTitle}>Panic Button 🚨</Text>
+                <Text style={styles.settingsDescription}>
+                  {panicButtonEnabled ? 'Triple-tap screen to quickly exit app' : 'Enable to quickly hide the app'}
+                </Text>
+              </View>
+              <Switch
+                value={panicButtonEnabled}
+                onValueChange={handlePanicButtonToggle}
+                trackColor={{ false: '#767577', true: 'rgba(255, 107, 107, 0.5)' }}
+                thumbColor={panicButtonEnabled ? '#FF6B6B' : '#f4f3f4'}
+              />
+            </View>
+          </View>
           )}
           
           {/* Dark Mode Toggle */}

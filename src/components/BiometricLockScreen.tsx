@@ -1,27 +1,27 @@
 /**
- * App Entry Point / Splash Screen
- * Shows logo briefly then routes to appropriate screen based on auth/subscription state
+ * Biometric Lock Screen
+ * Overlay screen that appears when app is locked and requires biometric authentication
+ * Uses the same design as splash screen for consistency
  */
 
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Image, ActivityIndicator, Animated, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Animated, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getThemeColors } from '@/lib/theme';
-import { revenueCatService } from '@/lib/revenueCatService';
-import { getLifetimeProService } from '@/lib/lifetimeProService';
 import { biometricAuthService } from '@/lib/biometricAuth';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { useRouter } from 'expo-router';
+import { getThemeColors } from '@/lib/theme';
 
-export default function IndexPage() {
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+export function BiometricLockScreen() {
+  const { setIsLocked } = useAppLock();
+  const router = useRouter();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
-  const colors = getThemeColors(true); // Use dark theme for splash to match app
+  const colors = getThemeColors(true); // Use dark theme to match app
   
-  // Animation values for pulse glow effect
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Animation values for pulse glow effect (same as splash screen)
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
   
   // Start pulse animation
   useEffect(() => {
@@ -44,97 +44,58 @@ export default function IndexPage() {
     return () => pulse.stop();
   }, []);
 
+  // Get biometric type on mount
   useEffect(() => {
-    const initializeApp = async () => {
+    const getBiometricType = async () => {
       try {
-        console.log('[SPLASH] App initializing...');
-        
-        // Show logo for 1 second
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if user is authenticated
-        const userId = await AsyncStorage.getItem('user_id');
-        const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
-        
-        console.log('[SPLASH] Auth check - userId:', !!userId, 'isLoggedIn:', isLoggedIn);
-        
-        // If not authenticated, go to welcome screen
-        if (!userId || isLoggedIn !== 'true') {
-          console.log('[SPLASH] Not authenticated, routing to welcome');
-          setIsInitializing(false);
-          router.replace('/(auth)/welcome');
-          return;
-        }
-        
-        // User is authenticated - check for biometric authentication
-        const isBiometricEnabled = await biometricAuthService.isBiometricEnabled();
-        const biometricAvailable = await biometricAuthService.isAvailable();
-        
-        if (isBiometricEnabled && biometricAvailable) {
-          console.log('[SPLASH] Biometric auth enabled, showing prompt');
-          const bioType = await biometricAuthService.getBiometricType();
-          setBiometricType(bioType);
-          setShowBiometricPrompt(true);
-          setIsInitializing(false);
-          return;
-        }
-        
-        // No biometrics, go directly to home (user is authenticated and has subscription from previous session)
-        console.log('[SPLASH] User authenticated, routing to home');
-        setIsInitializing(false);
-        router.replace('/(tabs)/');
-        
+        const bioType = await biometricAuthService.getBiometricType();
+        setBiometricType(bioType);
       } catch (error) {
-        console.error('[SPLASH] Error during initialization:', error);
-        setIsInitializing(false);
-        router.replace('/(auth)/welcome');
+        console.error('[LockScreen] Error getting biometric type:', error);
       }
     };
-
-    initializeApp();
+    getBiometricType();
   }, []);
 
-  // Handle biometric authentication
-  const handleBiometricAuth = async () => {
+  // Auto-trigger authentication when component mounts (after short delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleAuthenticate();
+    }, 500); // Small delay to ensure UI is ready
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleAuthenticate = async () => {
+    if (isAuthenticating) return;
+    
+    setIsAuthenticating(true);
+    console.log('[LockScreen] Starting biometric authentication...');
+    
     try {
-      console.log('[SPLASH] User initiated biometric authentication');
       const userId = await biometricAuthService.authenticateAndGetUserId();
       
-      if (!userId) {
-        Alert.alert(
-          'Authentication Failed',
-          'Unable to authenticate with biometrics. Please log in manually.',
-          [
-            {
-              text: 'Log In',
-              onPress: () => {
-                setShowBiometricPrompt(false);
-                router.replace('/(auth)/login-pin');
-              },
-            },
-          ]
-        );
-        return;
+      if (userId) {
+        console.log('[LockScreen] ✅ Authentication successful');
+        setIsLocked(false);
+      } else {
+        console.log('[LockScreen] ❌ Authentication failed or canceled');
+        // Don't automatically route to login - let user try again or use skip button
       }
-
-      console.log('[SPLASH] Biometric authentication successful');
-      console.log('[SPLASH] Routing to home screen (subscription check will happen there)');
-      
-      // Route to home - subscription check will happen there
-      router.replace('/(tabs)/');
     } catch (error) {
-      console.error('[SPLASH] Biometric authentication error:', error);
+      console.error('[LockScreen] Authentication error:', error);
       Alert.alert('Error', 'An error occurred during authentication. Please try again.');
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
   const handleSkipBiometric = () => {
-    console.log('[SPLASH] User skipped biometric, routing to login');
-    setShowBiometricPrompt(false);
+    console.log('[LockScreen] User skipped biometric, routing to login');
+    setIsLocked(false);
     router.replace('/(auth)/login-pin');
   };
 
-  // Show splash screen with logo, welcome text, and pulse glow effect
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView 
@@ -142,11 +103,10 @@ export default function IndexPage() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.logoContainer}>
-          {/* Animated glow effect layers */}
+          {/* Animated glow effect layers (same as splash screen) */}
           <Animated.View style={[styles.glowContainer, {
             transform: [{ scale: pulseAnim }],
           }]}>
-            {/* Pulse glow effect */}
             <View style={[styles.glowOuter, { 
               shadowColor: colors.primary,
               shadowOpacity: 0.6,
@@ -164,7 +124,7 @@ export default function IndexPage() {
             }]} />
           </Animated.View>
           
-          {/* Large logo with gc-dark.png */}
+          {/* Large logo */}
           <Image 
             source={require('../../assets/gc-dark.png')} 
             style={styles.logo}
@@ -191,38 +151,30 @@ export default function IndexPage() {
           </Text>
         </View>
         
-        {isInitializing && (
-          <ActivityIndicator 
-            size="large" 
-            color={colors.primary} 
-            style={styles.loader}
-          />
-        )}
-        
-        {showBiometricPrompt && (
-          <View style={styles.biometricContainer}>
-            <TouchableOpacity
-              style={styles.biometricButton}
-              onPress={handleBiometricAuth}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="finger-print" size={48} color={colors.primary} />
-              <Text style={styles.biometricButtonText}>
-                Use {biometricType} to Log In
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.skipBiometricButton}
-              onPress={handleSkipBiometric}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.skipBiometricText}>
-                Log in with username instead
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {/* Biometric Button */}
+        <View style={styles.biometricContainer}>
+          <TouchableOpacity
+            style={styles.biometricButton}
+            onPress={handleAuthenticate}
+            activeOpacity={0.8}
+            disabled={isAuthenticating}
+          >
+            <Ionicons name="finger-print" size={48} color={colors.primary} />
+            <Text style={styles.biometricButtonText}>
+              {isAuthenticating ? 'Authenticating...' : `Use ${biometricType} to Log In`}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.skipBiometricButton}
+            onPress={handleSkipBiometric}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipBiometricText}>
+              Log in with username instead
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -304,9 +256,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#FFFFFF',
   },
-  loader: {
-    marginTop: 32,
-  },
   biometricContainer: {
     width: '100%',
     maxWidth: 400,
@@ -345,3 +294,4 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 });
+

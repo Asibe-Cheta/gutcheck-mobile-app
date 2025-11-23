@@ -15,8 +15,6 @@ interface PrivacySettings {
   dataSharing: boolean;
   analytics: boolean;
   crashReports: boolean;
-  personalizedAds: boolean;
-  locationTracking: boolean;
 }
 
 export default function PrivacyScreen() {
@@ -25,8 +23,6 @@ export default function PrivacyScreen() {
     dataSharing: false,
     analytics: true,
     crashReports: true,
-    personalizedAds: false,
-    locationTracking: false,
   });
 
   useEffect(() => {
@@ -169,32 +165,6 @@ export default function PrivacyScreen() {
             description="Share anonymized data with research partners"
             value={settings.dataSharing}
             onToggle={() => handleToggle('dataSharing')}
-          />
-        </View>
-
-        {/* Advertising Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Advertising</Text>
-          
-          <PrivacyItem
-            icon="megaphone"
-            title="Personalized Ads"
-            description="Show ads based on your interests and usage"
-            value={settings.personalizedAds}
-            onToggle={() => handleToggle('personalizedAds')}
-          />
-        </View>
-
-        {/* Location Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Location</Text>
-          
-          <PrivacyItem
-            icon="location"
-            title="Location Tracking"
-            description="Allow location-based features and analytics"
-            value={settings.locationTracking}
-            onToggle={() => handleToggle('locationTracking')}
           />
         </View>
 

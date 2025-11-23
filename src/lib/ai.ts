@@ -60,13 +60,10 @@ class AIAnalysisService {
   private config: AIConfig;
 
   constructor() {
-    // Get API keys from Expo Constants
-    const hasAnthropic = !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    const hasOpenAI = !!Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY;
-    
+    // Using Claude Sonnet 4.5 (latest model - confirmed by Anthropic)
     this.config = {
-      provider: hasAnthropic ? 'anthropic' : (hasOpenAI ? 'openai' : 'anthropic'),
-      model: hasAnthropic ? 'claude-sonnet-4-20250514' : (hasOpenAI ? 'gpt-4' : 'claude-sonnet-4-20250514'),
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 2000,
       temperature: 0.3,
     };
@@ -300,14 +297,22 @@ IMPORTANT:
 
   // Anthropic Claude analysis (for JSON responses)
   private async analyzeWithAnthropic(prompt: string): Promise<any> {
-    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    console.log('Anthropic API Key Status:', apiKey ? 'PRESENT' : 'MISSING');
-    console.log('Anthropic API Key Preview:', apiKey ? `${apiKey.substring(0, 10)}...` : 'NONE');
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    
+    // CRITICAL: Validate API key exists before making the call
+    if (!apiKey) {
+      console.error('[AI] API key is missing in analyzeWithAnthropic!', {
+        expoConfigPresent: !!Constants.expoConfig,
+        extraPresent: !!Constants.expoConfig?.extra,
+        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
+      });
+      throw new Error('API key is not configured. Please check your environment variables.');
+    }
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey || '',
+        'x-api-key': apiKey,
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
       },
@@ -326,13 +331,15 @@ IMPORTANT:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Anthropic API Error:', {
+      console.error('[AI] Anthropic API error in analyzeWithAnthropic:', {
         status: response.status,
         statusText: response.statusText,
-        errorText: errorText,
-        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : 'MISSING'
+        body: errorText,
+        apiKeyLength: apiKey.length,
+        apiKeyStart: apiKey.substring(0, 10) + '...',
+        model: this.config.model,
       });
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 200)}`);
     }
 
     const data = await response.json();
@@ -358,12 +365,22 @@ IMPORTANT:
 
   // Anthropic Claude conversational response (for plain text responses)
   private async getConversationalResponse(prompt: string): Promise<string> {
-    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    
+    // CRITICAL: Validate API key exists before making the call
+    if (!apiKey) {
+      console.error('[AI] API key is missing!', {
+        expoConfigPresent: !!Constants.expoConfig,
+        extraPresent: !!Constants.expoConfig?.extra,
+        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
+      });
+      throw new Error('API key is not configured. Please check your environment variables.');
+    }
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey || '',
+        'x-api-key': apiKey,
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
       },
@@ -380,15 +397,18 @@ IMPORTANT:
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Anthropic Conversational API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText,
-      });
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
-    }
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error('[AI] Anthropic API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorBody,
+          apiKeyLength: apiKey.length,
+          apiKeyStart: apiKey.substring(0, 10) + '...',
+          model: this.config.model,
+        });
+        throw new Error(`Anthropic API ${response.status}: ${errorBody.substring(0, 200)}`);
+      }
 
     const data = await response.json();
     return data.content[0].text.trim();
@@ -1159,25 +1179,19 @@ Always respond naturally and conversationally. Build on previous messages to mai
       };
     } catch (error: any) {
       console.error('Claude conversation error:', error);
+      const errorMessage = error?.message || String(error);
       console.error('Error details:', {
-        message: error?.message || 'Unknown error',
-        stack: error?.stack || 'No stack trace',
-        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length })),
-        isWeb: typeof window !== 'undefined',
-        apiKeyPresent: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
-        model: this.config.model
+        message: errorMessage,
+        fullError: JSON.stringify(error),
+        model: this.config.model,
+        apiKeyPresent: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY
       });
       
-      // More specific error message based on error type
-      let errorMessage = "I'm here to help. What's going on?";
-      if (error?.message?.includes('API error')) {
-        errorMessage = "I'm having trouble connecting to my AI service right now. Please try again in a moment.";
-      } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
-        errorMessage = "I'm having network issues. Please check your connection and try again.";
-      }
+      // User-friendly error message
+      const userMessage = "I'm having a bit of trouble connecting right now. This usually happens when there's a network hiccup or if too many people are using the app at once.\n\nGive it another try in a moment, and if it keeps happening, please reach out to us at support@mygutcheck.org. We're here to help!";
       
       return {
-        response: errorMessage,
+        response: userMessage,
         nextStage: 'initial'
       };
     }
@@ -1249,19 +1263,17 @@ Always respond naturally and conversationally. Build on previous messages to mai
    * Optimized for faster response times
    */
   private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false, imageData?: string): Promise<string> {
-    const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
     
-    // Reduced logging for performance
-    console.log('getDirectClaudeResponse called with:', {
-      hasImage,
-      messagesCount: messages.length
-    });
-    console.log('API Key debugging:', {
-      hasProcessEnv: !!process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY,
-      hasConstants: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY,
-      apiKeyPresent: !!apiKey,
-      apiKeyPreview: apiKey ? `${apiKey.substring(0, 15)}...` : 'MISSING'
-    });
+    // CRITICAL: Validate API key exists before making the call
+    if (!apiKey) {
+      console.error('[AI] API key is missing in getDirectClaudeResponse!', {
+        expoConfigPresent: !!Constants.expoConfig,
+        extraPresent: !!Constants.expoConfig?.extra,
+        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
+      });
+      throw new Error('API key is not configured. Please check your environment variables.');
+    }
     
     // If there's an image or document, add context to the system prompt
     let enhancedSystemPrompt = systemPrompt;
@@ -1414,7 +1426,7 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
     const headers: Record<string, string> = isWeb 
       ? { 'Content-Type': 'application/json' }
       : {
-          'x-api-key': apiKey || '',
+          'x-api-key': apiKey,  // API key validated above, safe to use
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
         };
@@ -1443,9 +1455,11 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
           apiKeyLength: apiKey?.length || 0,
           apiKeyPreview: apiKey ? `${apiKey.substring(0, 15)}...` : 'MISSING',
           isWeb: isWeb,
-          apiUrl: apiUrl
+          apiUrl: apiUrl,
+          model: this.config.model,
+          requestBodyPreview: JSON.stringify(requestBody).substring(0, 200)
         });
-        throw new Error(`Claude API error: ${response.status} - ${errorText}`);
+        throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 300)}`);
       }
 
       const data = await response.json();

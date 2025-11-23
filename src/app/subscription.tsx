@@ -11,7 +11,7 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
 import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -831,6 +831,11 @@ export default function SubscriptionScreen() {
       color: colors.textSecondary,
       lineHeight: 20,
     },
+    faqPlatformLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textPrimary,
+    },
     freeTrialBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -908,32 +913,37 @@ export default function SubscriptionScreen() {
             const storeState = useSubscriptionStore.getState();
             const hasActive = storeState.subscription || storeState.isLifetimePro;
             
-            // If they came from settings, go back to settings
+            // If they came from settings (viewing subscription), allow back
             if (cameFromScreen === 'settings') {
               console.log('[SUB] Back button pressed, returning to Settings');
               router.push('/(tabs)/settings');
-            } 
-            // If they have an active subscription, go to home
-            else if (hasActive) {
-              console.log('[SUB] Back button pressed, user has subscription, going to Home');
-              router.replace('/(tabs)/');
-            }
-            // Otherwise, try to go back in history
-            else {
-              console.log('[SUB] Back button pressed, using router.back()');
-              // Check if we can go back (navigation history exists)
-              if (router.canGoBack && router.canGoBack()) {
-                router.back();
-              } else {
-                // No history, go to home
-                console.log('[SUB] No navigation history, going to Home');
-                router.replace('/(tabs)/');
-              }
+              setTimeout(() => {
+                isNavigatingRef.current = false;
+              }, 500);
+              return;
             }
             
-            setTimeout(() => {
-              isNavigatingRef.current = false;
-            }, 500);
+            // If they have an active subscription, allow navigation to home
+            if (hasActive) {
+              console.log('[SUB] Back button pressed, user has subscription, going to Home');
+              router.replace('/(tabs)/');
+              setTimeout(() => {
+                isNavigatingRef.current = false;
+              }, 500);
+              return;
+            }
+            
+            // User doesn't have subscription and didn't come from settings
+            // This means they're in the registration flow - block back button
+            console.log('[SUB] ❌ Back button blocked - subscription required to continue');
+            Alert.alert(
+              'Subscription Required',
+              'To access GutCheck, you need an active subscription. You can restore previous purchases if you already subscribed, or choose a plan.',
+              [
+                { text: 'OK' }
+              ]
+            );
+            isNavigatingRef.current = false;
           }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -1094,53 +1104,43 @@ export default function SubscriptionScreen() {
         <View style={styles.faqSection}>
           <Text style={styles.faqTitle}>Frequently Asked Questions</Text>
           
-          {Platform.OS === 'ios' ? (
-            <>
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
-                <Text style={styles.faqAnswer}>
-                  Go to your Apple ID settings &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
-                </Text>
-              </View>
+          {/* How to cancel - Both platforms */}
+          <View style={styles.faqItem}>
+            <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
+            <Text style={styles.faqAnswer}>
+              <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
+              Go to Settings &gt; [Your Name] &gt; Subscriptions, find GutCheck, and tap Cancel. You'll keep premium access until the end of your billing period.{'\n\n'}
+              <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
+              Open Google Play Store &gt; Menu &gt; Subscriptions, find GutCheck, and tap Cancel. You'll keep premium access until the end of your billing period.
+            </Text>
+          </View>
 
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
-                <Text style={styles.faqAnswer}>
-                  Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
-                </Text>
-              </View>
+          {/* Restore purchases */}
+          <View style={styles.faqItem}>
+            <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
+            <Text style={styles.faqAnswer}>
+              Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device. This works on both iPhone and Android.
+            </Text>
+          </View>
 
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>How does Apple billing work?</Text>
-                <Text style={styles.faqAnswer}>
-                  Your subscription is billed through your Apple ID. You can manage billing and payment methods in your Apple ID settings.
-                </Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
-                <Text style={styles.faqAnswer}>
-                  Go to Google Play Store &gt; Subscriptions to manage your subscription. You'll keep premium access until the end of your billing period.
-                </Text>
-              </View>
+          {/* Billing - Both platforms */}
+          <View style={styles.faqItem}>
+            <Text style={styles.faqQuestion}>How does billing work?</Text>
+            <Text style={styles.faqAnswer}>
+              <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
+              Your subscription is billed through your Apple ID. Manage billing and payment methods in Settings &gt; [Your Name] &gt; Payment & Shipping.{'\n\n'}
+              <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
+              Your subscription is billed through Google Play. Manage billing and payment methods in Google Play Store &gt; Menu &gt; Payment methods.
+            </Text>
+          </View>
 
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
-                <Text style={styles.faqAnswer}>
-                  Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device.
-                </Text>
-              </View>
-
-              <View style={styles.faqItem}>
-                <Text style={styles.faqQuestion}>How does Google Play billing work?</Text>
-                <Text style={styles.faqAnswer}>
-                  Your subscription is billed through your Google Play account. You can manage billing and payment methods in your Google Play settings.
-                </Text>
-              </View>
-            </>
-          )}
+          {/* Free trial info */}
+          <View style={styles.faqItem}>
+            <Text style={styles.faqQuestion}>What happens after my free trial?</Text>
+            <Text style={styles.faqAnswer}>
+              After your 3-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged.
+            </Text>
+          </View>
         </View>
 
         {/* Legal Links - REQUIRED BY APPLE REVIEW */}

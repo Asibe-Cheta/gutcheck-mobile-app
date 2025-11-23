@@ -22,6 +22,10 @@ import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import { NotificationStorageService } from '@/lib/notificationStorage';
+import { BiometricSetupModal } from '@/components/BiometricSetupModal';
+import { biometricAuthService } from '@/lib/biometricAuth';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -30,6 +34,8 @@ export default function HomeScreen() {
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [showBiometricModal, setShowBiometricModal] = useState(false);
+  const [biometricType, setBiometricType] = useState('Biometric');
   
   // Get subscription state from store (synchronous check)
   const { subscription, isLifetimePro } = useSubscriptionStore();
@@ -42,6 +48,9 @@ export default function HomeScreen() {
   const { conversationHistory, startNewConversation } = useConversationStore();
   const { saveChat } = useChatHistoryStore();
   // const { checkLifetimePro } = useSubscriptionStore();
+  
+  // App lock state - show lock screen when app is locked
+  const { isLocked, shouldShowLock } = useAppLock();
 
   const quickPrompts = [
     "Someone made me feel guilty",
@@ -49,88 +58,114 @@ export default function HomeScreen() {
     "New person in my life"
   ];
 
-  // Subscription verification - check RevenueCat directly
+  // Authentication verification only
   useEffect(() => {
-    const verifyAccess = async () => {
+    const verifyAuth = async () => {
       try {
-        console.log('[HOME] ==== SUBSCRIPTION VERIFICATION START ====');
+        console.log('[HOME] ==== AUTHENTICATION CHECK ====');
         
-        // Check skip flag first (coming from subscription purchase)
-        const skipCheck = await AsyncStorage.getItem('_skip_sub_check');
-        if (skipCheck === 'true') {
-          console.log('[HOME] ✅ Skip flag found - access granted');
-          await AsyncStorage.setItem('_has_active_subscription', 'true');
-          await AsyncStorage.removeItem('_skip_sub_check');
-          setIsCheckingSubscription(false);
-          return;
-        }
-        
-        // Check if user has the subscription flag (fast path)
-        const hasActiveFlag = await AsyncStorage.getItem('_has_active_subscription');
-        if (hasActiveFlag === 'true') {
-          console.log('[HOME] ✅ Cached subscription flag found - access granted');
-          setIsCheckingSubscription(false);
-          return;
-        }
-        
-        // No cached flag - do a RevenueCat check
-        console.log('[HOME] No cached flag found, checking RevenueCat...');
         const userId = await AsyncStorage.getItem('user_id');
+        const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
         
-        if (!userId) {
-          console.log('[HOME] ❌ No user ID found - redirecting to welcome');
+        if (!userId || isLoggedIn !== 'true') {
+          console.log('[HOME] ❌ Not authenticated - redirecting to welcome');
           router.replace('/(auth)/welcome');
           return;
         }
         
-        try {
-          // Initialize and check RevenueCat
-          console.log('[HOME] Initializing RevenueCat...');
-          await revenueCatService.initialize(userId);
-          
-          console.log('[HOME] Checking subscription status...');
-          const hasSubscription = await revenueCatService.hasActiveSubscription();
-          console.log('[HOME] RevenueCat subscription result:', hasSubscription);
-          
-          if (hasSubscription) {
-            console.log('[HOME] ✅ Active subscription found! Setting flag and granting access');
-            await AsyncStorage.setItem('_has_active_subscription', 'true');
-            setIsCheckingSubscription(false);
-            return;
-          }
-          
-          // Check lifetime pro as backup
-          console.log('[HOME] Checking lifetime pro status...');
-          const lifetimeProStatus = await getLifetimeProService().checkUserLifetimeProStatus(userId);
-          console.log('[HOME] Lifetime pro result:', lifetimeProStatus);
-          
-          if (lifetimeProStatus) {
-            console.log('[HOME] ✅ Lifetime pro found! Setting flag and granting access');
-            await AsyncStorage.setItem('_has_active_subscription', 'true');
-            setIsCheckingSubscription(false);
-            return;
-          }
-          
-          // No subscription found - redirect to subscription screen
-          console.log('[HOME] ❌ No active subscription found - redirecting to subscription screen');
-          setIsCheckingSubscription(false);
-          router.replace('/subscription-wrapper');
-        } catch (error) {
-          console.error('[HOME] ❌ Error checking subscription:', error);
-          // On error, redirect to subscription screen to be safe
-          console.log('[HOME] Routing to subscription screen due to error');
-          setIsCheckingSubscription(false);
-          router.replace('/subscription-wrapper');
-        }
+        console.log('[HOME] ✅ User authenticated - access granted');
+        setIsCheckingSubscription(false);
+        
+        // Check if user should see biometric setup prompt
+        await checkBiometricSetupPrompt();
       } catch (error) {
-        console.error('[HOME] Error verifying access:', error);
+        console.error('[HOME] Error verifying authentication:', error);
         setIsCheckingSubscription(false);
         router.replace('/(auth)/welcome');
       }
     };
-    
-    verifyAccess();
+
+    verifyAuth();
   }, []);
+
+  const checkBiometricSetupPrompt = async () => {
+    try {
+      // Check if user has already seen this prompt
+      const hasSeenPrompt = await AsyncStorage.getItem('_biometric_setup_prompt_shown');
+      
+      // Check if biometrics are already enabled
+      const isBiometricEnabled = await biometricAuthService.isBiometricEnabled();
+      
+      // Check if biometrics are available on device
+      const biometricAvailable = await biometricAuthService.isAvailable();
+      
+      console.log('[HOME] Biometric setup check:', {
+        hasSeenPrompt,
+        isBiometricEnabled,
+        biometricAvailable
+      });
+      
+      // Show prompt if:
+      // 1. User hasn't seen it before
+      // 2. Biometrics not already enabled
+      // 3. Device supports biometrics
+      if (!hasSeenPrompt && !isBiometricEnabled && biometricAvailable) {
+        const bioType = await biometricAuthService.getBiometricType();
+        setBiometricType(bioType);
+        
+        // Small delay to let screen load first
+        setTimeout(() => {
+          setShowBiometricModal(true);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('[HOME] Error checking biometric setup prompt:', error);
+    }
+  };
+
+  const handleEnableBiometric = async () => {
+    try {
+      console.log('[HOME] User chose to enable biometric auth');
+      
+      // Get username and PIN - we need these to enable biometric auth
+      const username = await AsyncStorage.getItem('username');
+      const userId = await AsyncStorage.getItem('user_id');
+      
+      if (!username || !userId) {
+        Alert.alert('Error', 'Unable to enable biometric authentication. Please try again from Settings.');
+        setShowBiometricModal(false);
+        await AsyncStorage.setItem('_biometric_setup_prompt_shown', 'true');
+        return;
+      }
+      
+      // Enable biometric authentication
+      const result = await biometricAuthService.enableBiometricAuth(userId, username);
+      
+      if (result.success) {
+        Alert.alert(
+          'Success',
+          `${biometricType} has been enabled. You'll be prompted to authenticate when you open GutCheck.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to enable biometric authentication.');
+      }
+      
+      setShowBiometricModal(false);
+      await AsyncStorage.setItem('_biometric_setup_prompt_shown', 'true');
+    } catch (error) {
+      console.error('[HOME] Error enabling biometric auth:', error);
+      Alert.alert('Error', 'An error occurred. Please try again from Settings.');
+      setShowBiometricModal(false);
+      await AsyncStorage.setItem('_biometric_setup_prompt_shown', 'true');
+    }
+  };
+
+  const handleSkipBiometric = async () => {
+    console.log('[HOME] User skipped biometric setup');
+    setShowBiometricModal(false);
+    await AsyncStorage.setItem('_biometric_setup_prompt_shown', 'true');
+  };
 
   // Handle when user returns from chat screen
   useFocusEffect(
@@ -279,6 +314,12 @@ export default function HomeScreen() {
   };
 
   const styles = createStyles(currentTheme);
+  
+  // Show lock screen if app is locked (when returning from background)
+  // Only show if user is authenticated and biometrics are enabled (handled by AppLockContext)
+  if (isLocked && shouldShowLock) {
+    return <BiometricLockScreen />;
+  }
   
   // Show loading while checking subscription
   if (isCheckingSubscription) {
@@ -474,6 +515,14 @@ export default function HomeScreen() {
           )}
         </TouchableOpacity>
       </Modal>
+
+      {/* Biometric Setup Modal */}
+      <BiometricSetupModal
+        visible={showBiometricModal}
+        biometricType={biometricType}
+        onEnable={handleEnableBiometric}
+        onSkip={handleSkipBiometric}
+      />
     </SafeAreaView>
   );
 }

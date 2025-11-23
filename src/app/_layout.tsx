@@ -15,6 +15,8 @@ import { ThemeProvider, useTheme } from '@/lib/themeContext';
 import { getThemeColors } from '@/lib/theme';
 import { notificationService } from '@/lib/notifications';
 import { NotificationStorageService } from '@/lib/notificationStorage';
+import { panicButtonService } from '@/lib/panicButtonService';
+import { AppLockProvider } from '@/contexts/AppLockContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Global error handler
@@ -92,6 +94,18 @@ function AppContent() {
 
     setupNotifications();
 
+    // Setup panic button (no monitoring needed for tap detection)
+    const setupPanicButton = async () => {
+      try {
+        const enabled = await panicButtonService.isEnabled();
+        console.log('[PANIC] Panic button status:', enabled ? 'ENABLED (triple-tap)' : 'DISABLED');
+      } catch (error) {
+        console.error('[PANIC] Error checking panic button:', error);
+      }
+    };
+
+    setupPanicButton();
+
     // Cleanup listeners on unmount
     return () => {
       notificationService.removeNotificationListeners();
@@ -125,6 +139,8 @@ function AppContent() {
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="notification-detail" options={{ headerShown: false }} />
           <Stack.Screen name="contact" options={{ headerShown: false }} />
+          <Stack.Screen name="faq" options={{ headerShown: false }} />
+          <Stack.Screen name="calculator" options={{ headerShown: false, animation: 'fade' }} />
         </Stack>
       </GestureHandlerRootView>
     </SafeAreaProvider>
@@ -134,7 +150,9 @@ function AppContent() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <AppLockProvider>
+        <AppContent />
+      </AppLockProvider>
     </ThemeProvider>
   );
 }

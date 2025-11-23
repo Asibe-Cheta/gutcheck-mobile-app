@@ -13,6 +13,9 @@ import { useTheme } from '@/lib/themeContext';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { detectRegion, getHelplinesForRegion, type Region } from '@/lib/helplineService';
+import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 // Crisis Resource Component
 const CrisisResource = ({ 
@@ -99,12 +102,26 @@ export default function ResourcesScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+  
+  // App lock state - show lock screen when app is locked
+  const { isLocked, shouldShowLock } = useAppLock();
   const [region, setRegion] = useState<Region>('UK');
   const [helplines, setHelplines] = useState<any[]>([]);
   const [showRegionPicker, setShowRegionPicker] = useState(false);
   
-  // Load user's region on mount and when screen is focused
+  // Authentication check only
   useEffect(() => {
+    const checkAuth = async () => {
+      const userId = await AsyncStorage.getItem('user_id');
+      const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+      
+      if (!userId || isLoggedIn !== 'true') {
+        router.replace('/(auth)/welcome');
+        return;
+      }
+    };
+    
+    checkAuth();
     loadUserRegion();
   }, []);
   
@@ -428,6 +445,11 @@ export default function ResourcesScreen() {
       width: 40,
     },
   });
+  
+  // Show lock screen if app is locked (when returning from background)
+  if (isLocked && shouldShowLock) {
+    return <BiometricLockScreen />;
+  }
   
   return (
     <SafeAreaView style={styles.container}>

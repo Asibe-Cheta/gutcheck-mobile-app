@@ -81,8 +81,8 @@ export default function LoginPinScreen() {
       
       setIsLoggingIn(false);
       
-      // Navigate to main app - let splash screen handle subscription check
-      router.replace('/');
+      // Navigate to main app
+      router.replace('/(tabs)');
     } catch (error) {
       console.error('[LOGIN] Biometric login error:', error);
       Alert.alert('Error', 'An error occurred during biometric authentication. Please try again.');

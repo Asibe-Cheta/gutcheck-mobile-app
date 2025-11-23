@@ -13,6 +13,11 @@ import { useTheme } from '@/lib/themeContext';
 import Svg, { Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { useChatHistoryStore, SavedChat } from '@/lib/stores/chatHistoryStore';
+import { exportService } from '@/lib/exportService';
+import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppLock } from '@/contexts/AppLockContext';
+import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 const { width } = Dimensions.get('window');
 
@@ -20,7 +25,8 @@ const { width } = Dimensions.get('window');
 const ChatHistoryItem = ({ 
   chat, 
   onPress, 
-  onDelete, 
+  onDelete,
+  onExport, 
   isLast = false,
   colors,
   styles
@@ -28,6 +34,7 @@ const ChatHistoryItem = ({
   chat: SavedChat; 
   onPress: () => void; 
   onDelete: () => void;
+  onExport: () => void;
   isLast?: boolean;
   colors: any;
   styles: any;
@@ -84,12 +91,20 @@ const ChatHistoryItem = ({
             )}
           </View>
         </View>
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={onDelete}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
+        <View style={styles.chatActions}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={onExport}
+          >
+            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={onDelete}
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
       {!isLast && <View style={styles.chatDivider} />}
     </TouchableOpacity>
@@ -142,10 +157,25 @@ export default function HistoryScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+  
+  // App lock state - show lock screen when app is locked
+  const { isLocked, shouldShowLock } = useAppLock();
   const { savedChats, isLoading, loadChats, deleteChat } = useChatHistoryStore();
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
+  // Authentication check only
   useEffect(() => {
+    const checkAuth = async () => {
+      const userId = await AsyncStorage.getItem('user_id');
+      const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+      
+      if (!userId || isLoggedIn !== 'true') {
+        router.replace('/(auth)/welcome');
+        return;
+      }
+    };
+    
+    checkAuth();
     loadChats();
   }, []);
 
@@ -175,6 +205,42 @@ export default function HistoryScreen() {
     );
   };
 
+  const handleExportChat = async (chat: SavedChat) => {
+    try {
+      // Show confirmation dialog first
+      Alert.alert(
+        'Export Conversation as Evidence',
+        'This will create a timestamped PDF of your conversation that can be used as evidence.\n\nThe export will include:\n• All messages with timestamps\n• Risk analysis data\n• Legal notice\n• Secure watermark',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Export PDF',
+            onPress: async () => {
+              // Convert chat data to export format
+              const exportData = {
+                chatId: chat.id,
+                title: chat.title,
+                messages: chat.messages.map(msg => ({
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : Date.now(),
+                })),
+                createdAt: chat.createdAt instanceof Date ? chat.createdAt.getTime() : Date.now(),
+                analysis: chat.analysisData ? JSON.stringify(chat.analysisData, null, 2) : undefined,
+              };
+
+              // Export as PDF
+              await exportService.exportChatAsPDF(exportData);
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('[HISTORY] Error exporting chat:', error);
+      Alert.alert('Export Error', `Failed to export: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
   const getStats = () => {
     const totalChats = savedChats.length;
     const highRiskChats = savedChats.filter(chat => 
@@ -193,6 +259,11 @@ export default function HistoryScreen() {
   const stats = getStats();
 
   const styles = createStyles(currentTheme);
+  
+  // Show lock screen if app is locked (when returning from background)
+  if (isLocked && shouldShowLock) {
+    return <BiometricLockScreen />;
+  }
   
   return (
     <SafeAreaView style={styles.container}>
@@ -227,6 +298,7 @@ export default function HistoryScreen() {
                   chat={chat}
                   onPress={() => handleChatPress(chat)}
                   onDelete={() => handleDeleteChat(chat)}
+                  onExport={() => handleExportChat(chat)}
                   isLast={index === savedChats.length - 1}
                   colors={currentTheme}
                   styles={styles}
@@ -495,7 +567,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'Inter',
   },
-  deleteButton: {
+  chatActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
     padding: 8,
     borderRadius: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
