@@ -16,7 +16,7 @@ module.exports = {
     name: 'GutCheck',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '2.0.3',
+    version: '2.0.4',
     orientation: 'portrait',
     icon: './assets/gc-main.png',
     userInterfaceStyle: 'dark',
@@ -29,7 +29,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.gutcheck.app',
-      buildNumber: '38',
+      buildNumber: '39',
       infoPlist: {
         // NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
@@ -39,7 +39,7 @@ module.exports = {
         NSFaceIDUsageDescription: 'GutCheck uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutCheck',
-        CFBundleShortVersionString: '2.0.3',
+        CFBundleShortVersionString: '2.0.4',
       },
     },
     android: {

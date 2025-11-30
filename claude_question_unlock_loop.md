@@ -127,7 +127,7 @@ export default function HomeScreen() {
 2. User returns to app → Lock screen appears ✅
 3. User authenticates with biometrics → `unlock()` is called ✅
 4. **Problem:** Lock screen immediately reappears and keeps looping ❌
-5. User is stuck in infinite authentication loop
+5. User is stuck in infinite authentication loop, even while they're already on the app.
 
 **What I've Tried:**
 1. ✅ Added `unlock()` method that clears both `isLocked` and `shouldShowLock`

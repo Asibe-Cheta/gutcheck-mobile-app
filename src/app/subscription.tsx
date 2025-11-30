@@ -128,6 +128,19 @@ export default function SubscriptionScreen() {
   }
   
   const [mountError, setMountError] = useState<string | null>(null);
+  const [hasUserId, setHasUserId] = useState<boolean>(false);
+  
+  // Check if user is logged in (has user_id)
+  // Use useFocusEffect to refresh when screen comes into focus (e.g., after login)
+  useFocusEffect(
+    React.useCallback(() => {
+      const checkUserId = async () => {
+        const userId = await AsyncStorage.getItem('user_id');
+        setHasUserId(!!userId);
+      };
+      checkUserId();
+    }, [])
+  );
   
   // Check if imports succeeded
   if (!useSubscriptionStore) {
@@ -427,13 +440,42 @@ export default function SubscriptionScreen() {
 
   const handleRestorePurchases = async () => {
     try {
+      // Check if user is logged in before allowing restore
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        Alert.alert(
+          'Login Required',
+          'You must create an account and log in before you can restore purchases. This ensures your purchases are linked to your account.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
       const result = await restorePurchases();
       
       if (result.success) {
-        if (subscription) {
-          Alert.alert('Purchases Restored', 'Your previous purchases have been restored.');
+        // Check if subscription was actually restored
+        const currentState = useSubscriptionStore.getState();
+        if (currentState.subscription || currentState.isLifetimePro) {
+          Alert.alert(
+            'Purchases Restored', 
+            'Your previous purchases have been restored successfully.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  // Get fresh state before navigating (state may have changed between alert show and OK press)
+                  const freshState = useSubscriptionStore.getState();
+                  if (freshState.subscription || freshState.isLifetimePro) {
+                    await AsyncStorage.setItem('_skip_sub_check', 'true');
+                    router.replace('/(tabs)');
+                  }
+                }
+              }
+            ]
+          );
         } else {
-          Alert.alert('No Purchases Found', 'No previous purchases were found to restore.');
+          Alert.alert('No Purchases Found', 'No previous purchases were found to restore for your account.');
         }
       } else {
         Alert.alert('Restore Failed', result.error || 'Failed to restore purchases. Please try again.');
@@ -790,6 +832,29 @@ export default function SubscriptionScreen() {
       marginLeft: 8,
       fontWeight: '600',
     },
+    restoreButtonDisabled: {
+      opacity: 0.5,
+    },
+    restoreButtonTextDisabled: {
+      color: colors.textSecondary,
+    },
+    restoreInfoCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 12,
+      marginTop: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    restoreInfoText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginLeft: 12,
+      flex: 1,
+      lineHeight: 20,
+    },
     lifetimeProInfo: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -995,15 +1060,35 @@ export default function SubscriptionScreen() {
           {plans.map(renderPlanCard)}
         </View>
 
-        {/* Restore Purchases Button */}
-        <TouchableOpacity 
-          style={styles.restoreButton}
-          onPress={handleRestorePurchases}
-          disabled={isLoading}
-        >
-          <Ionicons name="refresh" size={20} color={colors.primary} />
-          <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-        </TouchableOpacity>
+        {/* Restore Purchases Button - Only show if user is logged in */}
+        {hasUserId && (
+          <TouchableOpacity 
+            style={[
+              styles.restoreButton,
+              isLoading && styles.restoreButtonDisabled
+            ]}
+            onPress={handleRestorePurchases}
+            disabled={isLoading}
+          >
+            <Ionicons name="refresh" size={20} color={isLoading ? colors.textSecondary : colors.primary} />
+            <Text style={[
+              styles.restoreButtonText,
+              isLoading && styles.restoreButtonTextDisabled
+            ]}>
+              Restore Purchases
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {/* Info message for new users */}
+        {!hasUserId && (
+          <View style={styles.restoreInfoCard}>
+            <Ionicons name="information-circle" size={20} color={colors.textSecondary} />
+            <Text style={styles.restoreInfoText}>
+              Create an account to restore previous purchases. Purchases are linked to your account for security.
+            </Text>
+          </View>
+        )}
 
         {/* Test Button: Remove Lifetime Pro for IAP Testing (TestFlight/Dev only) */}
         {/* Show button if: NOT Expo Go AND has lifetime pro (TestFlight/Production builds only) */}

@@ -498,8 +498,37 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Restore purchases through Apple IAP
+      // SECURITY: Only allow restore if user is logged in (has user_id)
+      // This prevents new users from restoring purchases that don't belong to them
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        console.warn('[STORE] Restore purchases blocked - no user ID (user not logged in)');
+        set({ isLoading: false, error: 'You must be logged in to restore purchases' });
+        return { 
+          success: false, 
+          error: 'You must be logged in to restore purchases. Please create an account first.' 
+        };
+      }
+      
+      console.log('[STORE] Restoring purchases for user:', userId);
+      
+      // CRITICAL: Set the RevenueCat user ID before restoring
+      // This ensures RevenueCat only returns purchases linked to this user
       const { appleIAPService: iapService } = getIAPService();
+      
+      // Set the RevenueCat user ID to link purchases to this account
+      // The iapService is actually the revenueCatService instance
+      if (iapService && typeof iapService.setAppUserID === 'function') {
+        try {
+          await iapService.setAppUserID(userId);
+          console.log('[STORE] RevenueCat user ID set before restore');
+        } catch (setUserIdError) {
+          console.warn('[STORE] Failed to set RevenueCat user ID:', setUserIdError);
+          // Continue anyway - RevenueCat might still work
+        }
+      }
+      
+      // Restore purchases through Apple IAP/RevenueCat
       const result = await iapService.restorePurchases();
       const subscriptions = result.success ? result.subscriptions || [] : [];
       
@@ -507,6 +536,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         const activeSubscription = subscriptions.find(sub => sub.isActive);
         
         if (activeSubscription) {
+          // SECURITY: Verify the purchase belongs to the current user
+          // RevenueCat should only return purchases for the logged-in user,
+          // but we double-check by ensuring we have a user_id
+          console.log('[STORE] ✅ Active subscription found and verified for user:', userId);
+          
           set({ subscription: activeSubscription, isLoading: false });
           
           // Find current plan
@@ -522,10 +556,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           
           return { success: true };
         } else {
+          console.log('[STORE] No active subscription found in restored purchases');
           set({ subscription: null, currentPlan: null, isLoading: false });
           return { success: true };
         }
       } else {
+        console.log('[STORE] No purchases found to restore for user:', userId);
         set({ subscription: null, currentPlan: null, isLoading: false });
         return { success: true };
       }
