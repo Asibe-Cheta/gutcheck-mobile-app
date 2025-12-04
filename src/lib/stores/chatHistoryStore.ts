@@ -61,18 +61,34 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
       const updatedChats = [newChat, ...currentChats];
       
       const storageKey = await getStorageKey();
+      
+      // Ensure AsyncStorage write completes before updating state
       await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
+      
+      // Verify the save was successful by reading it back
+      const verifySave = await AsyncStorage.getItem(storageKey);
+      if (!verifySave) {
+        throw new Error('Failed to verify chat save - AsyncStorage write may have failed');
+      }
       
       set({ 
         savedChats: updatedChats,
         isLoading: false 
       });
+      
+      console.log('[CHAT_HISTORY] Chat saved successfully:', {
+        chatId: newChat.id,
+        title: newChat.title,
+        messageCount: newChat.messages.length,
+        totalChats: updatedChats.length
+      });
     } catch (error) {
-      console.error('Error saving chat:', error);
+      console.error('[CHAT_HISTORY] Error saving chat:', error);
       set({ 
         error: 'Failed to save chat',
         isLoading: false 
       });
+      throw error; // Re-throw so caller knows save failed
     }
   },
 

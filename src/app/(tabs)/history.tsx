@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import Svg, { Path } from 'react-native-svg';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useChatHistoryStore, SavedChat } from '@/lib/stores/chatHistoryStore';
 import { exportService } from '@/lib/exportService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
@@ -178,6 +178,14 @@ export default function HistoryScreen() {
     checkAuth();
     loadChats();
   }, []);
+
+  // Refresh chat history when screen comes into focus
+  // This ensures chats saved in other screens appear immediately
+  useFocusEffect(
+    React.useCallback(() => {
+      loadChats();
+    }, [loadChats])
+  );
 
   const handleChatPress = (chat: SavedChat) => {
     // Navigate to chat with saved conversation

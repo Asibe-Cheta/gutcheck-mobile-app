@@ -74,22 +74,73 @@ class AIAnalysisService {
    * Returns basic context (username, age, location) always
    * Returns struggles/goals only when includePersonalContext is true
    */
-  private async getUserProfileContext(includePersonalContext: boolean = false): Promise<string> {
+  /**
+   * Get user region from profile or AsyncStorage (consistent with getUserProfileContext)
+   */
+  private async getUserRegion(): Promise<string | null> {
     try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      
+      // Get profile from database/service
       const profile = await profileService.getProfile();
       
-      if (!profile) {
+      // Get region from AsyncStorage as fallback (from onboarding)
+      const region = await AsyncStorage.getItem('user_region');
+      
+      // Determine region - prefer profile.region, then AsyncStorage
+      return profile?.region || region || null;
+    } catch (error) {
+      console.error('Error getting user region:', error);
+      return null;
+    }
+  }
+
+  private async getUserProfileContext(includePersonalContext: boolean = false): Promise<string> {
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      
+      // Get profile from database/service
+      const profile = await profileService.getProfile();
+      
+      // Get age and region from AsyncStorage as fallback (from onboarding)
+      const ageRange = await AsyncStorage.getItem('user_age_range');
+      const region = await AsyncStorage.getItem('user_region');
+      
+      // Determine age - prefer profile.age, then age_range from profile, then AsyncStorage
+      let userAge: string | undefined = undefined;
+      if (profile?.age) {
+        userAge = profile.age.toString();
+      } else if (profile?.age_range) {
+        userAge = profile.age_range;
+      } else if (ageRange) {
+        userAge = ageRange;
+      }
+      
+      // Determine region - prefer profile.region, then AsyncStorage
+      let userRegion: string | undefined = profile?.region || region || undefined;
+      
+      // If we have at least username, age, or region, build context
+      if (!profile && !userAge && !userRegion) {
         return '';
       }
 
       // Always include basic information
       let context = `\n\nUSER PROFILE CONTEXT:\n`;
-      context += `- Username: ${profile.username}\n`;
-      context += `- Age: ${profile.age}\n`;
-      context += `- Location: ${profile.region}\n`;
+      
+      if (profile?.username) {
+        context += `- Username: ${profile.username}\n`;
+      }
+      
+      if (userAge) {
+        context += `- Age: ${userAge}\n`;
+      }
+      
+      if (userRegion) {
+        context += `- Location/Region: ${userRegion}\n`;
+      }
 
       // Only include personal struggles/goals if requested
-      if (includePersonalContext) {
+      if (includePersonalContext && profile) {
         if (profile.struggles && profile.struggles.trim()) {
           context += `- Personal challenges: ${profile.struggles}\n`;
         }
@@ -670,6 +721,22 @@ IMPORTANT:
     // For initial messages, be more direct and analytical
     const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations.${profileContext}
 
+CRITICAL: USER INFORMATION RULES:
+- If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information
+- NEVER ask the user for their age if it's already in the USER PROFILE CONTEXT
+- NEVER ask the user for their location/region if it's already in the USER PROFILE CONTEXT
+- Use the age and region information from the context to provide age-appropriate and region-specific advice
+- Only ask for age or region if they are NOT present in the USER PROFILE CONTEXT above
+- When you have the user's age, adapt your language and safety advice to be appropriate for that age group
+- When you have the user's region, provide region-specific resources and helplines when relevant
+
+HELPLINE RULES - CRITICAL:
+- ALWAYS provide helplines that are specific to the user's region from the USER PROFILE CONTEXT
+- If the USER PROFILE CONTEXT shows a region (e.g., "UK", "US", "Canada", "Australia"), only recommend helplines for that region
+- NEVER provide helplines from a different region than the user's location
+- The system will automatically provide region-specific helplines based on the user's region - you don't need to list them manually
+- If you mention helplines, acknowledge that they are specific to the user's region
+
 Your approach:
 - Be DIRECT and ANALYTICAL - don't beat around the bush
 - Identify red flags and manipulation patterns immediately
@@ -679,6 +746,14 @@ Your approach:
 - Be empathetic but firm - you care enough to tell the truth
 
 TONE: Like a smart, caring friend who's direct and honest. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp. ALWAYS keep language professional and appropriate for young teens and adults.
+
+LANGUAGE RESTRICTIONS - CRITICAL:
+- NEVER use harsh language, profanity, or slang terms like "BS", "bullshit", "cut the BS", or any similar expressions
+- NEVER use dismissive or crude language, even when being direct
+- Maintain a respectful, professional tone at all times
+- You can be direct and honest without using harsh language
+- If you need to call out something clearly, use professional alternatives like "that's not accurate", "let's be clear", "that doesn't add up", etc.
+- Remember: being direct does NOT mean being harsh or using inappropriate language
 
 STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
@@ -703,9 +778,8 @@ Always respond naturally, conversationally, and with appropriate language for yo
     try {
       const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
       
-      // Get user's region for region-specific helplines
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-      const userRegion = await AsyncStorage.getItem('user_region');
+      // Get user's region for region-specific helplines (using consistent method)
+      const userRegion = await this.getUserRegion();
       
       // Check if helplines should be recommended for initial message
       const isCrisis = isCrisisSituation(userMessage);
@@ -1082,6 +1156,22 @@ Respond as if you're continuing the conversation from that notification.`;
     // Build conversation context for Claude
         const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations. You're like a wise friend who tells it like it is.${profileContext}
 
+CRITICAL: USER INFORMATION RULES:
+- If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information
+- NEVER ask the user for their age if it's already in the USER PROFILE CONTEXT
+- NEVER ask the user for their location/region if it's already in the USER PROFILE CONTEXT
+- Use the age and region information from the context to provide age-appropriate and region-specific advice
+- Only ask for age or region if they are NOT present in the USER PROFILE CONTEXT above
+- When you have the user's age, adapt your language and safety advice to be appropriate for that age group
+- When you have the user's region, provide region-specific resources and helplines when relevant
+
+HELPLINE RULES - CRITICAL:
+- ALWAYS provide helplines that are specific to the user's region from the USER PROFILE CONTEXT
+- If the USER PROFILE CONTEXT shows a region (e.g., "UK", "US", "Canada", "Australia"), only recommend helplines for that region
+- NEVER provide helplines from a different region than the user's location
+- The system will automatically provide region-specific helplines based on the user's region - you don't need to list them manually
+- If you mention helplines, acknowledge that they are specific to the user's region
+
 Your approach:
 - Be DIRECT and ANALYTICAL - don't beat around the bush
 - Identify red flags and manipulation patterns immediately
@@ -1091,6 +1181,14 @@ Your approach:
 - Be empathetic but firm - you care enough to tell the truth
 
 TONE: Like a smart, caring friend who's direct and honest. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp. ALWAYS keep language professional and appropriate for young teens and adults.
+
+LANGUAGE RESTRICTIONS - CRITICAL:
+- NEVER use harsh language, profanity, or slang terms like "BS", "bullshit", "cut the BS", or any similar expressions
+- NEVER use dismissive or crude language, even when being direct
+- Maintain a respectful, professional tone at all times
+- You can be direct and honest without using harsh language
+- If you need to call out something clearly, use professional alternatives like "that's not accurate", "let's be clear", "that doesn't add up", etc.
+- Remember: being direct does NOT mean being harsh or using inappropriate language
 
 STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
@@ -1109,15 +1207,30 @@ If a user asks questions unrelated to relationships, social dynamics, safety, or
 Always respond naturally and conversationally. Build on previous messages to maintain context.`;
 
     // Build the full conversation for Claude, filtering out empty messages
+    // Limit conversation history to last 50 messages to prevent hitting API limits
+    // Keep recent messages for context, but truncate very long conversations
+    const MAX_CONVERSATION_HISTORY = 50;
+    const filteredHistory = conversationHistory
+      .filter((msg: any) => msg.content && msg.content.trim().length > 0)
+      .map((msg: any) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content.trim()
+      }));
+    
+    // Keep the most recent messages if conversation is too long
+    const recentHistory = filteredHistory.length > MAX_CONVERSATION_HISTORY
+      ? filteredHistory.slice(-MAX_CONVERSATION_HISTORY)
+      : filteredHistory;
+    
     const messages = [
-      ...conversationHistory
-        .filter((msg: any) => msg.content && msg.content.trim().length > 0)
-        .map((msg: any) => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content.trim()
-        })),
+      ...recentHistory,
       { role: 'user', content: userMessage.trim() }
     ].filter(msg => msg.content && msg.content.length > 0);
+    
+    // Log if we truncated the conversation
+    if (filteredHistory.length > MAX_CONVERSATION_HISTORY) {
+      console.log(`[AI] Conversation truncated: ${filteredHistory.length} messages -> ${recentHistory.length} messages (keeping most recent)`);
+    }
 
     // Ensure we have at least the current user message
     if (messages.length === 0) {
@@ -1141,9 +1254,8 @@ Always respond naturally and conversationally. Build on previous messages to mai
         responsePreview: response.substring(0, 100) + '...'
       });
       
-      // Get user's region for region-specific helplines
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-      const userRegion = await AsyncStorage.getItem('user_region');
+      // Get user's region for region-specific helplines (using consistent method)
+      const userRegion = await this.getUserRegion();
       
       // Check if helplines should be recommended based on conversation content
       const fullConversationText = [
@@ -1188,7 +1300,7 @@ Always respond naturally and conversationally. Build on previous messages to mai
       });
       
       // User-friendly error message
-      const userMessage = "I'm having a bit of trouble connecting right now. This usually happens when there's a network hiccup or if too many people are using the app at once.\n\nGive it another try in a moment, and if it keeps happening, please reach out to us at support@mygutcheck.org. We're here to help!";
+      const userMessage = "I'm having a bit of trouble connecting right now. This usually happens when there's a network hiccup. Give it another try in a moment.";
       
       return {
         response: userMessage,

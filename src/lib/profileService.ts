@@ -191,12 +191,21 @@ class ProfileService {
       // Also save to local storage for offline access
       await AsyncStorage.setItem('user_profile', JSON.stringify({
         username: result.username,
-        age: result.age.toString(),
+        age: result.age ? result.age.toString() : '',
         region: result.region,
         avatarUri: result.avatar_url,
         struggles: result.struggles,
         goals: result.goals
       }));
+      
+      // Also save age and region to separate AsyncStorage keys for AI context
+      // This ensures the AI always has access to age and region
+      if (result.age) {
+        await AsyncStorage.setItem('user_age_range', result.age.toString());
+      }
+      if (result.region) {
+        await AsyncStorage.setItem('user_region', result.region);
+      }
 
       return result;
     } catch (error) {
@@ -298,6 +307,19 @@ class ProfileService {
           struggles: updatedProfile.struggles,
           goals: updatedProfile.goals
         }));
+        
+        // Also update age and region in separate AsyncStorage keys for AI context
+        if (updates.age !== undefined) {
+          await AsyncStorage.setItem('user_age_range', updates.age.toString());
+        } else if (updatedProfile.age) {
+          await AsyncStorage.setItem('user_age_range', updatedProfile.age.toString());
+        }
+        
+        if (updates.region !== undefined) {
+          await AsyncStorage.setItem('user_region', updates.region);
+        } else if (updatedProfile.region) {
+          await AsyncStorage.setItem('user_region', updatedProfile.region);
+        }
       }
     } catch (error) {
       console.error('Error updating profile:', error);

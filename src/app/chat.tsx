@@ -1054,8 +1054,10 @@ export default function ChatScreen() {
                     riskLevel: 'unknown'
                   }
                 });
+                console.log('[CHAT] Conversation auto-saved successfully');
               } catch (error) {
-                console.error('Error saving conversation:', error);
+                console.error('[CHAT] Error auto-saving conversation:', error);
+                // Don't block navigation if save fails - user can manually save if needed
               }
             }
             router.back();
