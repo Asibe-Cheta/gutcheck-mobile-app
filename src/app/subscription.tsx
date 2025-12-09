@@ -10,12 +10,14 @@ console.log('[SUB_FILE] subscription.tsx file is being evaluated/loaded');
 
 // IMPORTANT: Import ONLY lightweight React/RN modules at the top
 // Heavy dependencies are lazy-loaded below
-import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import * as Clipboard from 'expo-clipboard';
+import { getLogs, exportLogsAsText } from '@/lib/logCapture';
 
 console.log('[SUB_FILE] ✅ All basic imports completed successfully');
 
@@ -493,7 +495,7 @@ export default function SubscriptionScreen() {
     const message = Platform.OS === 'ios'
       ? 'To cancel your subscription, please go to your Apple ID settings > Subscriptions. You\'ll keep access until the end of your billing period.'
       : 'To cancel your subscription, please go to Google Play Store > Subscriptions. You\'ll keep access until the end of your billing period.';
-    
+
     Alert.alert(
       'Cancel Subscription',
       message,
@@ -501,6 +503,26 @@ export default function SubscriptionScreen() {
         { text: 'OK', style: 'default' }
       ]
     );
+  };
+
+  const handleCopyLogs = async () => {
+    try {
+      console.log('[SUB] Copy logs button pressed');
+      const logsText = await exportLogsAsText();
+      if (logsText.trim()) {
+        await Clipboard.setStringAsync(logsText);
+        Alert.alert(
+          'Logs Copied!',
+          'All logs have been copied to clipboard. You can now paste them in a message or email.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('No Logs', 'There are no logs captured yet. Try clicking the Subscribe button first.');
+      }
+    } catch (error) {
+      console.error('[SUB] Failed to copy logs:', error);
+      Alert.alert('Error', 'Failed to copy logs to clipboard');
+    }
   };
 
   const renderPlanCard = (plan: SubscriptionPlan) => {
@@ -622,6 +644,10 @@ export default function SubscriptionScreen() {
     },
     headerSpacer: {
       width: 40,
+    },
+    copyLogsButton: {
+      padding: 8,
+      marginLeft: 8,
     },
     content: {
       flex: 1,
@@ -755,17 +781,6 @@ export default function SubscriptionScreen() {
       fontSize: 16,
       color: colors.textSecondary,
       fontWeight: '400',
-    },
-    price: {
-      fontSize: 36,
-      fontWeight: 'bold',
-      color: colors.primary,
-    },
-    period: {
-      fontSize: 18,
-      color: colors.primary,
-      marginLeft: 4,
-      fontWeight: '600',
     },
     featuresContainer: {
       marginBottom: 24,
@@ -1017,7 +1032,12 @@ export default function SubscriptionScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Subscription</Text>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.copyLogsButton}
+          onPress={handleCopyLogs}
+        >
+          <Ionicons name="copy-outline" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
