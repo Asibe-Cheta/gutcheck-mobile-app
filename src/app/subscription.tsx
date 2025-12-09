@@ -362,11 +362,14 @@ export default function SubscriptionScreen() {
   const handleSubscribe = async (planId: string) => {
     try {
       console.log('[SUB] Subscribe button pressed for plan:', planId);
-      
+
+      // DEBUG: Alert to confirm button press is detected
+      Alert.alert('Debug', `Subscribe button clicked for ${planId}. Check logs for details.`);
+
       // Set flag to indicate we're starting a purchase flow
       // This allows useFocusEffect to auto-navigate if user returns from external purchase dialog
       await AsyncStorage.setItem('_returning_from_purchase', 'true');
-      
+
       if (!subscribeToPlan) {
         throw new Error('subscribeToPlan method not available');
       }
