@@ -176,7 +176,15 @@ class RevenueCatService {
           console.error('[RevenueCat] Invalid package:', pkg);
           throw new Error('Package or product is undefined');
         }
-        
+
+        console.log('[RevenueCat] Processing package:', {
+          identifier: pkg.identifier,
+          productId: pkg.product.identifier,
+          title: pkg.product.title,
+          price: pkg.product.price,
+          currency: pkg.product.currencyCode,
+        });
+
         // Extract introductory pricing (free trial) information
         const introPrice = pkg.product.introPrice;
         const hasFreeTrial = introPrice && introPrice.price === 0 && introPrice.periodUnit && introPrice.periodNumberOfUnits;
@@ -303,36 +311,82 @@ class RevenueCatService {
         packageIdentifier = '$rc_annual';
       }
 
+      console.log(`[RevenueCat] Looking for product: ${productId} with package identifier: ${packageIdentifier}`);
+      console.log(`[RevenueCat] Available packages:`, offerings.current.availablePackages.map(pkg => ({
+        identifier: pkg.identifier,
+        productId: pkg.product.identifier,
+        packageType: pkg.packageType,
+      })));
+
       // First, try to find package by identifier (recommended approach)
-      let packageToPurchase = packageIdentifier 
+      let packageToPurchase = packageIdentifier
         ? offerings.current.availablePackages.find(
             pkg => pkg.identifier === packageIdentifier
           )
         : null;
 
+      if (packageToPurchase) {
+        console.log(`[RevenueCat] ✅ Found package by identifier: ${packageToPurchase.identifier} -> ${packageToPurchase.product.identifier}`);
+      }
+
       // If not found by package identifier, try to find by product identifier
-      // This handles cases where product IDs might have suffixes (e.g., com.gutcheck.app.premium.monthly:monthly)
+      // This handles cases where product IDs might have suffixes (e.g., com.gutcheck.app.premium.monthly:monthly or :base)
       if (!packageToPurchase) {
         console.log(`[RevenueCat] Package not found by identifier ${packageIdentifier}, trying product identifier match...`);
         packageToPurchase = offerings.current.availablePackages.find(
           pkg => {
             const pkgProductId = pkg.product.identifier;
-            // Match exact or match if product ID starts with our product ID (for Android suffixes)
-            return pkgProductId === productId || pkgProductId.startsWith(productId + ':') || pkgProductId.includes(productId);
+            console.log(`[RevenueCat] Comparing: "${pkgProductId}" with "${productId}"`);
+
+            // Match exact
+            if (pkgProductId === productId) {
+              console.log(`[RevenueCat] ✅ Exact match found`);
+              return true;
+            }
+
+            // Match if product ID starts with our product ID followed by colon (for Android suffixes like :monthly, :yearly, :base)
+            if (pkgProductId.startsWith(productId + ':')) {
+              console.log(`[RevenueCat] ✅ Suffix match found: ${pkgProductId}`);
+              return true;
+            }
+
+            // For safety, also check if our base product ID is contained in the package product ID
+            if (pkgProductId.includes(productId)) {
+              console.log(`[RevenueCat] ✅ Partial match found: ${pkgProductId}`);
+              return true;
+            }
+
+            return false;
           }
         );
+
+        if (packageToPurchase) {
+          console.log(`[RevenueCat] ✅ Found package by product ID: ${packageToPurchase.product.identifier}`);
+        }
       }
 
       // Log available packages for debugging
       if (!packageToPurchase) {
-        console.error('[RevenueCat] Available packages:', offerings.current.availablePackages.map(pkg => ({
+        const availablePackages = offerings.current.availablePackages.map(pkg => ({
           identifier: pkg.identifier,
           productId: pkg.product.identifier,
           packageType: pkg.packageType,
-        })));
+        }));
+
+        console.error('[RevenueCat] ❌ PACKAGE NOT FOUND');
+        console.error('[RevenueCat] Searched for product:', productId);
+        console.error('[RevenueCat] With package identifier:', packageIdentifier);
+        console.error('[RevenueCat] Available packages:', JSON.stringify(availablePackages, null, 2));
+        console.error('[RevenueCat] Platform:', Platform.OS);
+
+        // Provide helpful error message
+        const packageList = offerings.current.availablePackages
+          .map(p => `${p.identifier} (${p.product.identifier})`)
+          .join(', ');
+
         return {
           success: false,
-          error: `Product ${productId} not found in RevenueCat offerings. Please configure it in RevenueCat dashboard. Available packages: ${offerings.current.availablePackages.map(p => `${p.identifier} (${p.product.identifier})`).join(', ')}`
+          error: `Product ${productId} not found in RevenueCat offerings. This may be due to a product ID mismatch between your app and RevenueCat configuration. Available packages: ${packageList}. Please verify your RevenueCat dashboard configuration matches the app's product IDs.`
         };
       }
 
