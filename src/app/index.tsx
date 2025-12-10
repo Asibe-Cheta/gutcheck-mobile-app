@@ -14,12 +14,42 @@ import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
 import { biometricAuthService } from '@/lib/biometricAuth';
 
+// Helper function to check subscription status
+async function checkSubscriptionStatus(userId: string): Promise<boolean> {
+  try {
+    // Check lifetime pro status first
+    const lifetimeProService = getLifetimeProService();
+    const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
+
+    if (isLifetimePro) {
+      console.log('[SPLASH] User has lifetime pro access');
+      return true;
+    }
+
+    // Check RevenueCat subscription
+    const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
+
+    if (hasActiveSubscription) {
+      console.log('[SPLASH] User has active RevenueCat subscription');
+      return true;
+    }
+
+    console.log('[SPLASH] No active subscription found');
+    return false;
+  } catch (error) {
+    console.error('[SPLASH] Error checking subscription:', error);
+    // On error, allow access to prevent locking users out
+    // They'll be checked again on home screen
+    return true;
+  }
+}
+
 export default function IndexPage() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
   const colors = getThemeColors(true); // Use dark theme for splash to match app
-  
+
   // Animation values for pulse glow effect
   const pulseAnim = useRef(new Animated.Value(1)).current;
   
@@ -79,10 +109,21 @@ export default function IndexPage() {
           return;
         }
         
-        // No biometrics, go directly to home (user is authenticated and has subscription from previous session)
-        console.log('[SPLASH] User authenticated, routing to home');
-        setIsInitializing(false);
-        router.replace('/(tabs)/');
+        // User authenticated - check subscription before allowing access
+        console.log('[SPLASH] User authenticated, checking subscription status...');
+
+        // Check for active subscription
+        const hasActiveSubscription = await checkSubscriptionStatus(userId);
+
+        if (hasActiveSubscription) {
+          console.log('[SPLASH] ✅ Active subscription found, routing to home');
+          setIsInitializing(false);
+          router.replace('/(tabs)/');
+        } else {
+          console.log('[SPLASH] ❌ No active subscription, routing to subscription screen');
+          setIsInitializing(false);
+          router.replace('/subscription');
+        }
         
       } catch (error) {
         console.error('[SPLASH] Error during initialization:', error);
@@ -118,10 +159,18 @@ export default function IndexPage() {
       }
 
       console.log('[SPLASH] Biometric authentication successful');
-      console.log('[SPLASH] Routing to home screen (subscription check will happen there)');
-      
-      // Route to home - subscription check will happen there
-      router.replace('/(tabs)/');
+      console.log('[SPLASH] Checking subscription status...');
+
+      // Check subscription before routing
+      const hasActiveSubscription = await checkSubscriptionStatus(userId);
+
+      if (hasActiveSubscription) {
+        console.log('[SPLASH] ✅ Active subscription found, routing to home');
+        router.replace('/(tabs)/');
+      } else {
+        console.log('[SPLASH] ❌ No active subscription, routing to subscription screen');
+        router.replace('/subscription');
+      }
     } catch (error) {
       console.error('[SPLASH] Biometric authentication error:', error);
       Alert.alert('Error', 'An error occurred during authentication. Please try again.');
