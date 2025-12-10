@@ -163,7 +163,7 @@ export function BiometricLockScreen() {
           </Text>
           
           <Text style={styles.welcomeBody}>
-            This is your safe space—with <Text style={styles.italicText}>zero judgment</Text> and{' '}
+            This is your safe space with <Text style={styles.italicText}>zero judgment</Text> and{' '}
             <Text style={styles.boldText}>complete anonymity</Text>. Your feelings are valid. Let's get started.
           </Text>
         </View>

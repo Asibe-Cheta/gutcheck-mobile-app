@@ -117,7 +117,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               An avalanche of child abuse and sexual exploitation is taking place behind closed doors a new study has found
             </Text>
             <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
-              — The University of Edinburgh, 2025
+              The University of Edinburgh, 2025
             </Text>
           </View>
 
@@ -126,7 +126,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               Approximately 50% of minors are being approached in a grooming context. In the UK
             </Text>
             <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
-              — NSPCC, 2024
+              NSPCC, 2024
             </Text>
           </View>
 
@@ -135,7 +135,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               Approximately one-third of the world's youth are being bullied.
             </Text>
             <Text style={[styles.statCardReference, { color: colors.textSecondary }]}>
-              — UNESCO Institute of Statistics, 2024
+              UNESCO Institute of Statistics, 2024
             </Text>
           </View>
         </View>
