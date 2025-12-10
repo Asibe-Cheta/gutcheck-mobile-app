@@ -26,6 +26,8 @@ import { BiometricSetupModal } from '@/components/BiometricSetupModal';
 import { biometricAuthService } from '@/lib/biometricAuth';
 import { useAppLock } from '@/contexts/AppLockContext';
 import { BiometricLockScreen } from '@/components/BiometricLockScreen';
+import ShareNudgeModal from '@/components/ShareNudgeModal';
+import { shareNudgeService } from '@/lib/shareNudgeService';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -36,6 +38,7 @@ export default function HomeScreen() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
+  const [showShareNudge, setShowShareNudge] = useState(false);
   
   // Get subscription state from store (synchronous check)
   const { subscription, isLifetimePro } = useSubscriptionStore();
@@ -172,15 +175,36 @@ export default function HomeScreen() {
     React.useCallback(() => {
       // Only reset if there's an ongoing conversation and we want to start fresh
       // Don't automatically reset - let the user decide when to start new conversations
-      
+
       // Update unread notifications count when screen is focused
       loadUnreadCount();
+
+      // Check if we should show share nudge
+      checkShareNudge();
     }, [])
   );
   
   const loadUnreadCount = async () => {
     const count = await NotificationStorageService.getUnreadCount();
     setUnreadNotifications(count);
+  };
+
+  const checkShareNudge = async () => {
+    try {
+      // Check if we should show the share nudge
+      const shouldShow = await shareNudgeService.shouldShowNudge();
+      if (shouldShow) {
+        console.log('[HOME] Share nudge trigger met, showing modal');
+        // Small delay to avoid showing multiple modals at once
+        setTimeout(() => {
+          setShowShareNudge(true);
+          // Mark as shown
+          shareNudgeService.markNudgeShown();
+        }, 500);
+      }
+    } catch (error) {
+      console.error('[HOME] Error checking share nudge:', error);
+    }
   };
 
 
@@ -522,6 +546,12 @@ export default function HomeScreen() {
         biometricType={biometricType}
         onEnable={handleEnableBiometric}
         onSkip={handleSkipBiometric}
+      />
+
+      {/* Share Nudge Modal */}
+      <ShareNudgeModal
+        visible={showShareNudge}
+        onClose={() => setShowShareNudge(false)}
       />
     </SafeAreaView>
   );

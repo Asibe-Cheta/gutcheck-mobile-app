@@ -31,6 +31,7 @@ import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { aiService } from '@/lib/ai';
+import { shareNudgeService } from '@/lib/shareNudgeService';
 
 // Animated Typing Indicator Component
 const AnimatedTypingIndicator = ({ colors }: { colors: any }) => {
@@ -456,7 +457,11 @@ export default function ChatScreen() {
           riskLevel: 'unknown'
         }
       });
-      
+
+      // Increment chat session count for share nudge tracking
+      await shareNudgeService.incrementChatCount();
+      console.log('[CHAT] Chat saved and session count incremented for share nudge');
+
       Alert.alert('Chat Saved', 'Your conversation has been saved to history.');
     } catch (error) {
       Alert.alert('Error', 'Failed to save conversation. Please try again.');
