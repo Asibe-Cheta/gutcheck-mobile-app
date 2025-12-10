@@ -956,6 +956,18 @@ export default function SubscriptionScreen() {
       marginRight: 6,
       textDecorationLine: 'underline',
     },
+    debugButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 12,
+    },
+    debugButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   // Show error UI if mount error occurred
@@ -1251,6 +1263,34 @@ export default function SubscriptionScreen() {
           </View>
         </View>
 
+        {/* Debug: Copy Logs Button - placed at bottom for accessibility */}
+        <TouchableOpacity
+          style={[
+            styles.debugButton,
+            {
+              backgroundColor: '#2196F320',
+              borderWidth: 2,
+              borderColor: '#2196F3',
+              marginTop: 24,
+              marginBottom: 16,
+            }
+          ]}
+          onPress={handleCopyLogs}
+        >
+          <Ionicons name="copy-outline" size={24} color="#2196F3" />
+          <Text style={[
+            styles.debugButtonText,
+            {
+              color: '#2196F3',
+              fontSize: 16,
+              fontWeight: '600',
+              marginLeft: 12
+            }
+          ]}>
+            Copy Debug Logs
+          </Text>
+        </TouchableOpacity>
+
         {/* Legal Links - REQUIRED BY APPLE REVIEW */}
         <View style={styles.legalSection}>
           <TouchableOpacity
@@ -1266,7 +1306,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.legalLinkText}>Privacy Policy</Text>
             <Ionicons name="open-outline" size={16} color={colors.primary} />
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             onPress={() => {
               const termsUrl = 'https://mygutcheck.org/terms';
