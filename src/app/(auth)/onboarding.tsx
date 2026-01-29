@@ -7,10 +7,13 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '@/lib/theme';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import CountryDropdown from '@/components/ui/CountryDropdown';
+import { councilAreaService } from '@/lib/councilAreaService';
 import Svg, { Path } from 'react-native-svg';
 
 // Privacy Icon
@@ -31,6 +34,9 @@ export default function OnboardingScreen() {
   const [currentStep, setCurrentStep] = useState(1);
   const [nickname, setNickname] = useState('');
   const [ageRange, setAgeRange] = useState<string>('');
+  const [country, setCountry] = useState('');
+  const [showPostcodeStep, setShowPostcodeStep] = useState(false);
+  const [postcode, setPostcode] = useState('');
   const [culturalBackground, setCulturalBackground] = useState('');
   const [communicationStyle, setCommunicationStyle] = useState<'direct' | 'gentle'>('gentle');
 
@@ -45,8 +51,13 @@ export default function OnboardingScreen() {
     'Western', 'Asian', 'African', 'Latin American', 'Middle Eastern', 'Other'
   ];
 
+  const totalSteps = showPostcodeStep ? 5 : 4;
+
   const handleNext = () => {
-    if (currentStep < 3) {
+    if (currentStep === 3 && showPostcodeStep) {
+      // Move to postcode step
+      setCurrentStep(4);
+    } else if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
       handleComplete();
@@ -59,13 +70,50 @@ export default function OnboardingScreen() {
     }
   };
 
-  const handleComplete = () => {
-    // TODO: Save user preferences to Supabase
+  const handleComplete = async () => {
+    try {
+      // Save user preferences to AsyncStorage
+      if (ageRange) {
+        await AsyncStorage.setItem('user_age_range', ageRange);
+      }
+      if (country) {
+        await AsyncStorage.setItem('user_country', country);
+      }
+      
+      // Process postcode for council area tracking (UK only)
+      if (postcode && country === 'United Kingdom') {
+        console.log('[ONBOARDING] Processing UK postcode for council area mapping');
+        
+        // Extract outward code (first part of postcode)
+        const outwardCode = postcode.trim().split(' ')[0].toUpperCase();
+        
+        // Record anonymous usage (postcode is NOT stored)
+        const result = await councilAreaService.processPostcodeAndRecordUsage(outwardCode);
+        
+        if (result.success) {
+          console.log('[ONBOARDING] ✅ Council area usage recorded successfully');
+        } else {
+          console.warn('[ONBOARDING] ⚠️ Council area recording failed:', result.error);
+          // Continue anyway - this is optional analytics, not critical functionality
+        }
+      }
+      
+      // TODO: Save to Supabase profile table (optional)
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('Error saving onboarding data:', error);
+      // Continue to app even if error - don't block user
     router.replace('/(tabs)');
+    }
   };
 
   const handleSkip = () => {
     router.replace('/(tabs)');
+  };
+
+  const handleCountryChange = (selectedCountry: string, hasCouncilAreas: boolean) => {
+    setCountry(selectedCountry);
+    setShowPostcodeStep(hasCouncilAreas);
   };
 
   const renderStep1 = () => (
@@ -132,6 +180,59 @@ export default function OnboardingScreen() {
   );
 
   const renderStep3 = () => (
+    <View style={styles.stepContent}>
+      <View style={styles.stepHeader}>
+        <Text style={styles.stepTitle}>Which country are you in?</Text>
+        <Text style={styles.stepDescription}>
+          This helps us provide region-specific support resources
+        </Text>
+      </View>
+      
+      <CountryDropdown
+        value={country}
+        onValueChange={handleCountryChange}
+        placeholder="Select your country"
+      />
+      
+      <View style={styles.privacyCard}>
+        <PrivacyIcon />
+        <Text style={styles.privacyText}>
+          Your country helps us show the right helplines and support services for your region. This information is never shared.
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderStep4 = () => (
+    <View style={styles.stepContent}>
+      <View style={styles.stepHeader}>
+        <Text style={styles.stepTitle}>Help us measure local impact</Text>
+        <Text style={styles.stepDescription}>
+          Which local area are you in?
+        </Text>
+      </View>
+      
+      <Input
+        placeholder="Enter first part of postcode (e.g., M1, SW1A)"
+        value={postcode}
+        onChangeText={setPostcode}
+        maxLength={4}
+        autoCapitalize="characters"
+        style={styles.input}
+      />
+      
+      <View style={styles.privacyCard}>
+        <ShieldIcon />
+        <Text style={styles.privacyText}>
+          <Text style={{ fontWeight: '700' }}>Your privacy is our priority.</Text>{'\n\n'}
+          To help us understand the reach of our safety tools, please provide the start of your postcode (e.g., G1).{'\n\n'}
+          This identifies your council area only. We don't know who you are and we don't track your movement. The postcode is deleted immediately after mapping to your local authority.
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderStep5 = () => (
     <View style={styles.stepContent}>
       <View style={styles.stepHeader}>
         <Text style={styles.stepTitle}>Personalize your experience</Text>
@@ -207,15 +308,18 @@ export default function OnboardingScreen() {
         {/* Progress indicator */}
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
+            <View style={[styles.progressFill, { width: `${(currentStep / totalSteps) * 100}%` }]} />
           </View>
-          <Text style={styles.progressText}>Step {currentStep} of 3</Text>
+          <Text style={styles.progressText}>Step {currentStep} of {totalSteps}</Text>
         </View>
         
         {/* Step content */}
         {currentStep === 1 && renderStep1()}
         {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep3()}
+        {currentStep === 4 && showPostcodeStep && renderStep4()}
+        {currentStep === 4 && !showPostcodeStep && renderStep5()}
+        {currentStep === 5 && renderStep5()}
         
         {/* Navigation buttons */}
         <View style={styles.buttonContainer}>
@@ -230,7 +334,7 @@ export default function OnboardingScreen() {
             )}
             
             <Button
-              title={currentStep === 3 ? "Complete Setup" : "Next"}
+              title={currentStep === totalSteps ? "Complete Setup" : "Next"}
               onPress={handleNext}
               style={[styles.nextButton, currentStep === 1 && styles.fullWidthButton]}
             />

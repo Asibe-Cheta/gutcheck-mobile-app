@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RevenueCat IAP Service
  * Handles Apple In-App Purchases via RevenueCat SDK
  * Replaces expo-in-app-purchases for better reliability and linking support
@@ -32,6 +32,10 @@ class RevenueCatService {
   private isInitialized = false;
   private apiKey: string | null = null;
   private currentAppUserID: string | null = null;
+  private getOfferingIdentifier() {
+    // Keep iOS on default offering, Android on default-android
+    return Platform.OS === 'android' ? 'default-android' : 'default';
+  }
 
   /**
    * Initialize RevenueCat SDK
@@ -143,11 +147,14 @@ class RevenueCatService {
 
       // Fetch offerings from RevenueCat
       const offerings: Offerings = await Purchases.getOfferings();
+      const offeringId = this.getOfferingIdentifier();
+      const selectedOffering = offerings.all?.[offeringId] || offerings.current;
       
       console.log('[RevenueCat] Offerings response:', JSON.stringify(offerings, null, 2));
+      console.log('[RevenueCat] Using offering:', offeringId, 'found:', !!offerings.all?.[offeringId]);
       
-      if (!offerings.current) {
-        console.warn('[RevenueCat] No current offering available');
+      if (!selectedOffering) {
+        console.warn('[RevenueCat] No offering available for:', offeringId);
         return {
           success: false,
           error: 'No offerings available. Please check RevenueCat dashboard configuration.'
@@ -155,7 +162,7 @@ class RevenueCatService {
       }
 
       // Extract products from packages
-      const packages = offerings.current.availablePackages;
+      const packages = selectedOffering.availablePackages;
       console.log('[RevenueCat] Available packages:', packages?.length || 0);
       console.log('[RevenueCat] Packages details:', JSON.stringify(packages?.map(p => ({ 
         id: p?.identifier, 
@@ -293,8 +300,10 @@ class RevenueCatService {
 
       // Get current offerings to find the package for this product
       const offerings: Offerings = await Purchases.getOfferings();
+      const offeringId = this.getOfferingIdentifier();
+      const selectedOffering = offerings.all?.[offeringId] || offerings.current;
       
-      if (!offerings.current) {
+      if (!selectedOffering) {
         return {
           success: false,
           error: 'No offerings available. Please check RevenueCat dashboard.'
@@ -312,7 +321,7 @@ class RevenueCatService {
       }
 
       console.log(`[RevenueCat] Looking for product: ${productId} with package identifier: ${packageIdentifier}`);
-      console.log(`[RevenueCat] Available packages:`, offerings.current.availablePackages.map(pkg => ({
+      console.log(`[RevenueCat] Available packages:`, selectedOffering.availablePackages.map(pkg => ({
         identifier: pkg.identifier,
         productId: pkg.product.identifier,
         packageType: pkg.packageType,
@@ -320,7 +329,7 @@ class RevenueCatService {
 
       // First, try to find package by identifier (recommended approach)
       let packageToPurchase = packageIdentifier
-        ? offerings.current.availablePackages.find(
+        ? selectedOffering.availablePackages.find(
             pkg => pkg.identifier === packageIdentifier
           )
         : null;
@@ -333,7 +342,7 @@ class RevenueCatService {
       // This handles cases where product IDs might have suffixes (e.g., com.gutcheck.app.premium.monthly:monthly or :base)
       if (!packageToPurchase) {
         console.log(`[RevenueCat] Package not found by identifier ${packageIdentifier}, trying product identifier match...`);
-        packageToPurchase = offerings.current.availablePackages.find(
+        packageToPurchase = selectedOffering.availablePackages.find(
           pkg => {
             const pkgProductId = pkg.product.identifier;
             console.log(`[RevenueCat] Comparing: "${pkgProductId}" with "${productId}"`);
@@ -367,7 +376,7 @@ class RevenueCatService {
 
       // Log available packages for debugging
       if (!packageToPurchase) {
-        const availablePackages = offerings.current.availablePackages.map(pkg => ({
+        const availablePackages = selectedOffering.availablePackages.map(pkg => ({
           identifier: pkg.identifier,
           productId: pkg.product.identifier,
           packageType: pkg.packageType,
@@ -380,7 +389,7 @@ class RevenueCatService {
         console.error('[RevenueCat] Platform:', Platform.OS);
 
         // Provide helpful error message
-        const packageList = offerings.current.availablePackages
+        const packageList = selectedOffering.availablePackages
           .map(p => `${p.identifier} (${p.product.identifier})`)
           .join(', ');
 
