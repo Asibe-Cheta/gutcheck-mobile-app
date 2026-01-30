@@ -365,9 +365,6 @@ export default function SubscriptionScreen() {
     try {
       console.log('[SUB] Subscribe button pressed for plan:', planId);
 
-      // DEBUG: Alert to confirm button press is detected
-      Alert.alert('Debug', `Subscribe button clicked for ${planId}. Check logs for details.`);
-
       // Set flag to indicate we're starting a purchase flow
       // This allows useFocusEffect to auto-navigate if user returns from external purchase dialog
       await AsyncStorage.setItem('_returning_from_purchase', 'true');
@@ -436,10 +433,19 @@ export default function SubscriptionScreen() {
       } else {
         // Handle purchase failure
         console.log('[SUB] Purchase was not successful');
+        Alert.alert(
+          'Subscription Unavailable',
+          'We couldn’t start your subscription right now. Please try again in a moment.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('[SUB] Error during subscription:', error);
-      Alert.alert('Error', 'An error occurred during subscription. Please try again.');
+      Alert.alert(
+        'Subscription Unavailable',
+        'We couldn’t start your subscription right now. Please try again in a moment.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -641,13 +647,6 @@ export default function SubscriptionScreen() {
       fontSize: 18,
       fontWeight: '600',
       color: colors.textPrimary,
-    },
-    headerSpacer: {
-      width: 40,
-    },
-    copyLogsButton: {
-      padding: 8,
-      marginLeft: 8,
     },
     content: {
       flex: 1,
@@ -1044,12 +1043,7 @@ export default function SubscriptionScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Subscription</Text>
-        <TouchableOpacity
-          style={styles.copyLogsButton}
-          onPress={handleCopyLogs}
-        >
-          <Ionicons name="copy-outline" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       {/* Content */}
