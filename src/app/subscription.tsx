@@ -86,6 +86,14 @@ try {
   // These are critical for UI, but we'll handle it in the component
 }
 
+let LinearGradient: any = null;
+try {
+  const lg = require('expo-linear-gradient');
+  LinearGradient = lg.LinearGradient;
+} catch (_) {
+  // Fallback: gradient button will use solid color
+}
+
 interface SubscriptionPlan {
   id: string;
   name: string;
@@ -131,6 +139,8 @@ export default function SubscriptionScreen() {
   
   const [mountError, setMountError] = useState<string | null>(null);
   const [hasUserId, setHasUserId] = useState<boolean>(false);
+  // Selected tier for the primary CTA (default to yearly / best value)
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('yearly');
   
   // Check if user is logged in (has user_id)
   // Use useFocusEffect to refresh when screen comes into focus (e.g., after login)
@@ -224,6 +234,13 @@ export default function SubscriptionScreen() {
       setMountError(`Debug error: ${error?.message || 'Unknown error'}`);
     }
   }, [isLifetimePro]);
+
+  // Sync selected plan when plans load (default to yearly if available)
+  useEffect(() => {
+    if (plans.length === 0) return;
+    const hasYearly = plans.some((p: SubscriptionPlan) => p.id === 'yearly');
+    setSelectedPlanId((prev) => (hasYearly ? 'yearly' : (plans[0]?.id ?? prev)));
+  }, [plans.length]);
 
   // Load plans and subscription on mount
   useEffect(() => {
@@ -690,6 +707,130 @@ export default function SubscriptionScreen() {
     plansContainer: {
       gap: 16,
     },
+    tierCardsRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 24,
+      marginBottom: 20,
+    },
+    tierCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 16,
+      paddingTop: 20,
+      borderWidth: 2,
+      borderColor: colors.border,
+      alignItems: 'center',
+      position: 'relative',
+    },
+    tierCardSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '18',
+    },
+    tierCardBadge: {
+      position: 'absolute',
+      top: -10,
+      left: 0,
+      right: 0,
+      backgroundColor: colors.success,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+      alignSelf: 'center',
+      alignItems: 'center',
+    },
+    tierCardBadgeText: {
+      color: colors.textPrimary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    tierCardName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    tierCardNameSelected: {
+      color: colors.textPrimary,
+    },
+    tierCardPrice: {
+      fontSize: 22,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+    },
+    tierCardPriceSelected: {
+      color: colors.primary,
+    },
+    tierCardPeriod: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    tierCardPeriodSelected: {
+      color: colors.primary,
+    },
+    subscriptionFeaturesSection: {
+      marginBottom: 20,
+    },
+    subscriptionFeatureItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    subscriptionFeatureText: {
+      fontSize: 15,
+      color: colors.textPrimary,
+      marginLeft: 10,
+      flex: 1,
+    },
+    trialInfoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+      gap: 8,
+    },
+    trialInfoText: {
+      fontSize: 16,
+      color: colors.textPrimary,
+      fontWeight: '500',
+    },
+    ctaButtonWrap: {
+      marginBottom: 12,
+      borderRadius: 28,
+      overflow: 'hidden',
+      shadowColor: '#4ccaba',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.45,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    ctaButton: {
+      paddingVertical: 18,
+      paddingHorizontal: 24,
+      borderRadius: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ctaButtonGradient: {
+      borderWidth: 0,
+    },
+    ctaButtonSolid: {
+      backgroundColor: '#4ccaba',
+    },
+    ctaButtonText: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    billingDisclaimer: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: 8,
+      paddingHorizontal: 8,
+    },
     planCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
@@ -1084,10 +1225,89 @@ export default function SubscriptionScreen() {
           </View>
         )}
 
-        {/* Plans */}
-        <View style={styles.plansContainer}>
-          {plans.map(renderPlanCard)}
+        {/* Horizontal tier cards - selectable */}
+        <View style={styles.tierCardsRow}>
+          {plans.map((plan) => {
+            const isSelected = selectedPlanId === plan.id;
+            const isPopular = plan.popular;
+            const currencySymbol = plan.currency === 'GBP' ? '£' : plan.currency === 'USD' ? '$' : plan.currency;
+            const label = plan.interval === 'month' ? 'Monthly' : 'Annual';
+            const periodLabel = plan.interval === 'month' ? '/mo' : '/yr';
+            return (
+              <TouchableOpacity
+                key={plan.id}
+                style={[styles.tierCard, isSelected && styles.tierCardSelected]}
+                onPress={() => setSelectedPlanId(plan.id)}
+                activeOpacity={0.8}
+              >
+                {isPopular && (
+                  <View style={styles.tierCardBadge}>
+                    <Text style={styles.tierCardBadgeText}>Best Value</Text>
+                  </View>
+                )}
+                <Text style={[styles.tierCardName, isSelected && styles.tierCardNameSelected]}>{label}</Text>
+                <Text style={[styles.tierCardPrice, isSelected && styles.tierCardPriceSelected]}>{currencySymbol}{plan.price.toFixed(2)}</Text>
+                <Text style={[styles.tierCardPeriod, isSelected && styles.tierCardPeriodSelected]}>{periodLabel}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+
+        {/* Subscription features - listed once beneath pricing cards */}
+        <View style={styles.subscriptionFeaturesSection}>
+          {(plans[0]?.features ?? [
+            'Unlimited AI conversations',
+            'Image and document analysis',
+            'Personalized guidance',
+            'Priority support',
+            'Advanced insights',
+          ]).map((feature: string, index: number) => (
+            <View key={index} style={styles.subscriptionFeatureItem}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+              <Text style={styles.subscriptionFeatureText}>{feature}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* No payment due now - when selected plan has free trial */}
+        {(() => {
+          const selectedPlan = plans.find((p: SubscriptionPlan) => p.id === selectedPlanId);
+          const hasTrial = selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays;
+          return hasTrial ? (
+            <View style={styles.trialInfoRow}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              <Text style={styles.trialInfoText}>No payment due now.</Text>
+            </View>
+          ) : null;
+        })()}
+
+        {/* Primary CTA - START YOUR 3 DAY FREE TRIAL */}
+        <TouchableOpacity
+          style={styles.ctaButtonWrap}
+          onPress={() => handleSubscribe(selectedPlanId)}
+          disabled={isLoading}
+          activeOpacity={0.9}
+        >
+          {LinearGradient ? (
+            <LinearGradient
+              colors={['#4ccaba', '#3db8a8', '#2fa89a']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaButton, styles.ctaButtonGradient]}
+            >
+              <Text style={styles.ctaButtonText}>START YOUR 3 DAY FREE TRIAL</Text>
+            </LinearGradient>
+          ) : (
+            <View style={[styles.ctaButton, styles.ctaButtonSolid]}>
+              <Text style={styles.ctaButtonText}>START YOUR 3 DAY FREE TRIAL</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Billing disclaimer */}
+        <Text style={styles.billingDisclaimer}>
+          Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after free trial ends. Renews automatically.
+        </Text>
 
         {/* Restore Purchases Button - Only show if user is logged in */}
         {hasUserId && (
@@ -1256,34 +1476,6 @@ export default function SubscriptionScreen() {
             </Text>
           </View>
         </View>
-
-        {/* Debug: Copy Logs Button - placed at bottom for accessibility */}
-        <TouchableOpacity
-          style={[
-            styles.debugButton,
-            {
-              backgroundColor: '#2196F320',
-              borderWidth: 2,
-              borderColor: '#2196F3',
-              marginTop: 24,
-              marginBottom: 16,
-            }
-          ]}
-          onPress={handleCopyLogs}
-        >
-          <Ionicons name="copy-outline" size={24} color="#2196F3" />
-          <Text style={[
-            styles.debugButtonText,
-            {
-              color: '#2196F3',
-              fontSize: 16,
-              fontWeight: '600',
-              marginLeft: 12
-            }
-          ]}>
-            Copy Debug Logs
-          </Text>
-        </TouchableOpacity>
 
         {/* Legal Links - REQUIRED BY APPLE REVIEW */}
         <View style={styles.legalSection}>

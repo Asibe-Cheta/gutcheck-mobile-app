@@ -58,7 +58,9 @@ export default function HomeScreen() {
   const quickPrompts = [
     "Someone made me feel guilty",
     "Someone asked me to keep a secret",
-    "Someone says I can't tell anyone"
+    "Someone says I can't tell anyone",
+    "A friend is asking for money but something feels off",
+    "A website is asking for my details to win a prize, should I share?"
   ];
 
   // Authentication verification only

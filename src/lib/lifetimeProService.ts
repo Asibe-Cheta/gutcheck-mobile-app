@@ -34,7 +34,8 @@ class LifetimeProService {
         .eq('is_active', true);
 
       if (countError) {
-        console.error('Error fetching lifetime pro users count:', countError);
+        // Log as warn so dev overlay doesn't treat network/Supabase errors as critical
+        console.warn('Lifetime pro count fetch failed (network/backend):', countError.message || countError);
         return { isEligible: false, isLifetimePro: false, count: 0 };
       }
 
@@ -71,8 +72,8 @@ class LifetimeProService {
       const isEligible = currentCount < this.MAX_LIFETIME_PRO_USERS && !isLifetimePro;
 
       return { isEligible, isLifetimePro, count: currentCount };
-    } catch (error) {
-      console.error('Error checking lifetime pro eligibility:', error);
+    } catch (error: any) {
+      console.warn('Lifetime pro check failed (e.g. network):', error?.message || error);
       return { isEligible: false, isLifetimePro: false, count: 0 };
     }
   }
