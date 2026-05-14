@@ -48,7 +48,7 @@ export function BiometricSetupModal({
           </Text>
 
           <Text style={[styles.description, { color: colors.textSecondary }]}>
-            With {biometricType} enabled, you'll need to authenticate every time you open GutCheck.
+            With {biometricType} enabled, you'll need to authenticate every time you open GutChecks: Red Flags & Safety.
           </Text>
 
           {/* Buttons */}

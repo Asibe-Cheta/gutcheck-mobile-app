@@ -1,14 +1,15 @@
 /**
- * Root Layout for GutCheck App
+ * Root Layout for GutChecks: Red Flags & Safety App
  * Main navigation structure
  */
 
 // CRITICAL: Import log capture FIRST before anything else
 import '@/lib/logCapture';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { AppState, AppStateStatus, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '@/lib/themeContext';
@@ -18,6 +19,8 @@ import { NotificationStorageService } from '@/lib/notificationStorage';
 import { panicButtonService } from '@/lib/panicButtonService';
 import { AppLockProvider } from '@/contexts/AppLockContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userHasPremiumAccess } from '@/lib/subscriptionAccess';
+import { runLaunchOtaApply } from '@/lib/easUpdates';
 
 // Global error handler
 if (typeof ErrorUtils !== 'undefined') {
@@ -38,6 +41,69 @@ function AppContent() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
+  const lastSubscriptionCheck = useRef<number>(0);
+
+  useEffect(() => {
+    void runLaunchOtaApply();
+  }, []);
+
+  // Re-check subscription whenever the app comes back to the foreground.
+  // This catches users whose trial expired while the app was backgrounded.
+  useEffect(() => {
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      if (nextState !== 'active') return;
+
+      // Throttle: only re-check once every 60 seconds to avoid hammering RevenueCat
+      const now = Date.now();
+      if (now - lastSubscriptionCheck.current < 60_000) return;
+      lastSubscriptionCheck.current = now;
+
+      try {
+        const userId = await AsyncStorage.getItem('user_id');
+        const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+
+        // Only enforce for authenticated users
+        if (!userId || isLoggedIn !== 'true') return;
+
+        const allowed = await userHasPremiumAccess(userId);
+        if (!allowed) {
+          console.log('[LAYOUT] No premium access on foreground - redirecting to subscription');
+          router.replace('/subscription');
+        }
+      } catch (error) {
+        // Allow continued access on error so paying users are not locked out
+        console.warn('[LAYOUT] Foreground subscription check error (allowing access):', error);
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const handleIncomingUrl = (url: string | null) => {
+      if (!url) return;
+      try {
+        const parsed = new URL(url);
+        const token = parsed.searchParams.get('ref') || parsed.searchParams.get('token');
+        const event = parsed.searchParams.get('event');
+        const isRecommendCallback = parsed.pathname.includes('/recommend-callback') || parsed.pathname.includes('/r');
+        const validEvent = event === 'opened' || event === 'downloaded';
+        if (isRecommendCallback && token && validEvent) {
+          router.push({
+            pathname: '/recommend-callback',
+            params: { token, event },
+          });
+        }
+      } catch (error) {
+        console.warn('[LAYOUT] Failed to parse deep link:', error);
+      }
+    };
+
+    Linking.getInitialURL().then(handleIncomingUrl).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => handleIncomingUrl(url));
+    return () => sub.remove();
+  }, [router]);
 
   useEffect(() => {
     // Setup notifications
@@ -141,6 +207,7 @@ function AppContent() {
           <Stack.Screen name="contact" options={{ headerShown: false }} />
           <Stack.Screen name="faq" options={{ headerShown: false }} />
           <Stack.Screen name="calculator" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="recommend-callback" options={{ headerShown: false }} />
         </Stack>
       </GestureHandlerRootView>
     </SafeAreaProvider>

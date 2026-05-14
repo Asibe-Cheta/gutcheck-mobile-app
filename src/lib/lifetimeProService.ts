@@ -331,3 +331,8 @@ class LifetimeProService {
 }
 
 export const lifetimeProService = new LifetimeProService();
+
+/** Accessor used by subscriptionAccess, welcome, chat, etc. */
+export function getLifetimeProService() {
+  return lifetimeProService;
+}

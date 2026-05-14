@@ -14,6 +14,8 @@ import {
   getHelplineRecommendationMessage 
 } from './helplineService';
 import { profileService } from './profileService';
+import * as Crypto from 'expo-crypto';
+import { isSupabaseConfigured } from './supabase';
 
 export interface AIAnalysisResult {
   analysis: {
@@ -54,7 +56,17 @@ export interface ConversationResponse {
   response: string;
   nextStage: ConversationState['stage'];
   shouldAnalyze?: boolean;
+  safeguardCategory?: SafeguardCategory;
 }
+
+export type SafeguardCategory = 'A' | 'B' | 'C' | 'D';
+
+/** Authoritative A/B/C copy for UI and TTS — must stay in sync with safeguard routing. */
+export const SAFEGUARD_READBACK_TEMPLATES: Record<'A' | 'B' | 'C', string> = {
+  A: 'You may be in immediate danger. Call emergency services now; in the UK call 999. Move to a safer place if possible and contact a trusted adult, friend, or family member right away. If you want, GutChecks can help you list the next safest steps once you are safe.',
+  B: 'GutChecks is a guidance tool and cannot be a friend or companion. What you are feeling matters. Reach out now to a trusted person in your life and talk with them directly. If you want support options, GutChecks can help you find practical next steps and local services.',
+  C: 'Thank you for sharing that. What happened to you matters, and you deserve support. If you are in immediate danger, call emergency services now; in the UK call 999. Consider contacting a trusted adult, safeguarding lead, or specialist support service in your area. If you want, GutChecks can help you plan safe next steps.',
+};
 
 class AIAnalysisService {
   private config: AIConfig;
@@ -348,25 +360,42 @@ IMPORTANT:
 
   // Anthropic Claude analysis (for JSON responses)
   private async analyzeWithAnthropic(prompt: string): Promise<any> {
+    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
+
     const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    
-    // CRITICAL: Validate API key exists before making the call
-    if (!apiKey) {
-      console.error('[AI] API key is missing in analyzeWithAnthropic!', {
+    const directEnabled = !!apiKey;
+
+    const url = edgeProxyEnabled
+      ? `${supabaseUrl}/functions/v1/claude-proxy`
+      : 'https://api.anthropic.com/v1/messages';
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+    };
+
+    if (edgeProxyEnabled) {
+      headers.Authorization = `Bearer ${supabaseAnonKey}`;
+      headers.apikey = supabaseAnonKey;
+    } else if (directEnabled) {
+      headers['x-api-key'] = apiKey;
+    } else {
+      console.error('[AI] Anthropic key missing and Supabase proxy not available', {
+        hasSupabaseUrl: !!supabaseUrl,
+        hasSupabaseAnonKey: !!supabaseAnonKey,
         expoConfigPresent: !!Constants.expoConfig,
         extraPresent: !!Constants.expoConfig?.extra,
-        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
       });
-      throw new Error('API key is not configured. Please check your environment variables.');
+      throw new Error(
+        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
+      );
     }
-    
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       body: JSON.stringify({
         model: this.config.model,
         max_tokens: this.config.max_tokens,
@@ -386,8 +415,9 @@ IMPORTANT:
         status: response.status,
         statusText: response.statusText,
         body: errorText,
-        apiKeyLength: apiKey.length,
-        apiKeyStart: apiKey.substring(0, 10) + '...',
+        transport: edgeProxyEnabled ? 'supabase-edge' : 'direct',
+        apiKeyLength: apiKey ? apiKey.length : 0,
+        apiKeyStart: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
         model: this.config.model,
       });
       throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 200)}`);
@@ -416,25 +446,42 @@ IMPORTANT:
 
   // Anthropic Claude conversational response (for plain text responses)
   private async getConversationalResponse(prompt: string): Promise<string> {
+    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
+
     const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    
-    // CRITICAL: Validate API key exists before making the call
-    if (!apiKey) {
-      console.error('[AI] API key is missing!', {
+    const directEnabled = !!apiKey;
+
+    const url = edgeProxyEnabled
+      ? `${supabaseUrl}/functions/v1/claude-proxy`
+      : 'https://api.anthropic.com/v1/messages';
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+    };
+
+    if (edgeProxyEnabled) {
+      headers.Authorization = `Bearer ${supabaseAnonKey}`;
+      headers.apikey = supabaseAnonKey;
+    } else if (directEnabled) {
+      headers['x-api-key'] = apiKey;
+    } else {
+      console.error('[AI] Anthropic key missing and Supabase proxy not available', {
+        hasSupabaseUrl: !!supabaseUrl,
+        hasSupabaseAnonKey: !!supabaseAnonKey,
         expoConfigPresent: !!Constants.expoConfig,
         extraPresent: !!Constants.expoConfig?.extra,
-        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
       });
-      throw new Error('API key is not configured. Please check your environment variables.');
+      throw new Error(
+        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
+      );
     }
-    
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       body: JSON.stringify({
         model: this.config.model,
         max_tokens: this.config.max_tokens,
@@ -454,8 +501,9 @@ IMPORTANT:
           status: response.status,
           statusText: response.statusText,
           body: errorBody,
-          apiKeyLength: apiKey.length,
-          apiKeyStart: apiKey.substring(0, 10) + '...',
+          transport: edgeProxyEnabled ? 'supabase-edge' : 'direct',
+          apiKeyLength: apiKey ? apiKey.length : 0,
+          apiKeyStart: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
           model: this.config.model,
         });
         throw new Error(`Anthropic API ${response.status}: ${errorBody.substring(0, 200)}`);
@@ -707,6 +755,289 @@ IMPORTANT:
   }
 
   /**
+   * Deterministic safeguard classifier for A/B/C/D routing.
+   * A: crisis/immediate danger
+   * B: attachment/dependency framing toward the app
+   * C: personal disclosure requiring direct support signposting
+   * D: standard path
+   */
+  private classifySafeguardCategory(message: string): SafeguardCategory {
+    const text = message.toLowerCase();
+
+    const categoryAKeywords = [
+      'kill myself', 'suicide', 'end my life', 'hurt myself', 'self harm',
+      'overdose', 'i want to die', 'i am going to die', 'he will kill me',
+      'she will kill me', 'they will kill me', 'in immediate danger',
+      'weapon', 'knife', 'gun', 'being followed', 'call police now'
+    ];
+
+    const categoryBKeywords = [
+      'you are my only friend', 'don\'t leave me', 'stay with me',
+      'i need you only', 'you are all i have', 'i love you',
+      'be my friend', 'are you my friend', 'please don\'t go',
+      'talk to me forever', 'you are my companion'
+    ];
+
+    const categoryCKeywords = [
+      'i was abused', 'i am being abused', 'i was assaulted', 'i was raped',
+      'he touched me', 'she touched me', 'they touched me', 'i was groomed',
+      'blackmail', 'sextorted', 'forced me', 'coerced me', 'molested'
+    ];
+
+    if (categoryAKeywords.some((keyword) => text.includes(keyword))) return 'A';
+    if (this.isLikelyAttachmentToApp(text) && categoryBKeywords.some((keyword) => text.includes(keyword))) return 'B';
+    if (categoryCKeywords.some((keyword) => text.includes(keyword))) return 'C';
+    return 'D';
+  }
+
+  private isLikelyAttachmentToApp(text: string): boolean {
+    const thirdPartyQuoteSignals = [
+      'he said', 'she said', 'they said', 'my boyfriend said', 'my girlfriend said',
+      'my partner said', 'my ex said', 'someone said', 'they told me', 'he told me', 'she told me'
+    ];
+    if (thirdPartyQuoteSignals.some((signal) => text.includes(signal))) {
+      return false;
+    }
+
+    const appDirectedSignals = [
+      'gutchecks', 'gutcheck', 'this app', 'you ', 'your '
+    ];
+    return appDirectedSignals.some((signal) => text.includes(signal));
+  }
+
+  // Debug helper for deterministic routing validation.
+  debugClassifySafeguardMessage(message: string): SafeguardCategory {
+    return this.classifySafeguardCategory(message);
+  }
+
+  debugSafeguardClassifierSelfCheck(): {
+    total: number;
+    passed: number;
+    failed: Array<{ input: string; expected: SafeguardCategory; actual: SafeguardCategory }>;
+  } {
+    const fixtures: Array<{ input: string; expected: SafeguardCategory }> = [
+      { input: 'I want to kill myself tonight', expected: 'A' },
+      { input: 'He said he will kill me if I leave', expected: 'A' },
+      { input: 'GutChecks please do not leave me, you are all I have', expected: 'B' },
+      { input: 'My boyfriend said you are my only friend', expected: 'D' },
+      { input: 'I was assaulted and forced last week', expected: 'C' },
+      { input: 'Can you help me understand this argument with my friend?', expected: 'D' },
+    ];
+
+    const failed = fixtures
+      .map((fixture) => {
+        const actual = this.classifySafeguardCategory(fixture.input);
+        return { ...fixture, actual };
+      })
+      .filter((result) => result.expected !== result.actual);
+
+    return {
+      total: fixtures.length,
+      passed: fixtures.length - failed.length,
+      failed,
+    };
+  }
+
+  private getHardcodedSafeguardTemplate(category: Exclude<SafeguardCategory, 'D'>): string {
+    return SAFEGUARD_READBACK_TEMPLATES[category];
+  }
+
+  private maybeReturnSafeguardTemplate(
+    userMessage: string,
+    nextStage: ConversationState['stage']
+  ): ConversationResponse | null {
+    const category = this.classifySafeguardCategory(userMessage);
+    if (category === 'D') return null;
+
+    const hardcodedResponse = this.getHardcodedSafeguardTemplate(category);
+    void this.logSafeguardAuditEvent(category, userMessage);
+    console.log('[SAFEGUARD] Deterministic hardcoded template used', { category });
+
+    return {
+      response: hardcodedResponse,
+      nextStage,
+      shouldAnalyze: false,
+      safeguardCategory: category,
+    };
+  }
+
+  private async logSafeguardAuditEvent(category: Exclude<SafeguardCategory, 'D'>, message: string): Promise<void> {
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const key = '@safeguard_audit_events_v2';
+      const raw = await AsyncStorage.getItem(key);
+      const parsed: Array<{
+        category: string;
+        timestamp: string;
+        messageLength: number;
+        signalSummary: string[];
+        messageFingerprint: string;
+      }> = raw ? JSON.parse(raw) : [];
+
+      const normalized = message.trim().toLowerCase().slice(0, 400);
+      const fingerprint = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        normalized
+      );
+
+      const signalSummary = this.buildSafeguardSignalSummary(message);
+
+      // Store minimal metadata only; never store message text in safeguard logs.
+      parsed.push({
+        category,
+        timestamp: new Date().toISOString(),
+        messageLength: message.length,
+        signalSummary,
+        messageFingerprint: fingerprint,
+      });
+
+      // Keep a bounded local log buffer.
+      const bounded = parsed.slice(-200);
+      await AsyncStorage.setItem(key, JSON.stringify(bounded));
+    } catch (error) {
+      console.warn('[SAFEGUARD] Failed to persist safeguard audit event:', error);
+    }
+  }
+
+  private buildSafeguardSignalSummary(message: string): string[] {
+    const text = message.toLowerCase();
+    const signals: string[] = [];
+
+    if (isImmediateDanger(text)) signals.push('immediate-danger');
+    if (isCrisisSituation(text)) signals.push('crisis-language');
+    if (text.includes('trusted adult')) signals.push('trusted-adult-reference');
+    if (text.includes('weapon') || text.includes('knife') || text.includes('gun')) signals.push('weapon-reference');
+
+    return signals;
+  }
+
+  /**
+   * Deterministic output safeguards for standard (category D) responses.
+   * - Strips forbidden companion-style language
+   * - Caps response size
+   * - Ensures an action-oriented closing prompt
+   */
+  private applyOutputSafeguards(response: string): string {
+    let sanitized = response || '';
+
+    const forbiddenReplacements: Array<{ pattern: RegExp; replacement: string }> = [
+      { pattern: /\bI am your (friend|companion)\b/gi, replacement: 'GutChecks is a guidance tool' },
+      { pattern: /\bI'm your (friend|companion)\b/gi, replacement: 'GutChecks is a guidance tool' },
+      { pattern: /\bI'?m here for you\b/gi, replacement: 'Support is available, and practical next steps can help' },
+      { pattern: /\bI love you\b/gi, replacement: 'Your wellbeing matters' },
+    ];
+
+    forbiddenReplacements.forEach(({ pattern, replacement }) => {
+      sanitized = sanitized.replace(pattern, replacement);
+    });
+
+    const maxChars = 2200;
+    if (sanitized.length > maxChars) {
+      sanitized = sanitized.slice(0, maxChars).trim();
+    }
+
+    const hasActionPrompt = /next step|what you can do|you could do|is there anything more you want to share/i.test(sanitized);
+    if (!hasActionPrompt) {
+      sanitized = `${sanitized}\n\nWhat is one practical next step you can take today?`;
+    }
+
+    return sanitized;
+  }
+
+  private getDeterministicSignpostSuffix(message: string): string {
+    const category = this.classifySafeguardCategory(message);
+    const text = message.toLowerCase();
+
+    if (category === 'A' || isImmediateDanger(text) || isCrisisSituation(text)) {
+      return '\n\nIf you are in immediate danger, call emergency services now; in the UK call 999. If possible, move to a safer place and contact a trusted adult, friend, or family member right away.';
+    }
+
+    if (category === 'B') {
+      return '\n\nIf these feelings feel overwhelming, contact a trusted person in your life today and ask for direct support from someone in the real world.';
+    }
+
+    if (category === 'C') {
+      return '\n\nYou deserve support. Consider contacting a trusted adult, safeguarding lead, or specialist support service in your area as a next step.';
+    }
+
+    return '';
+  }
+
+  private enforceDeterministicSignposting(response: string, message: string): string {
+    const suffix = this.getDeterministicSignpostSuffix(message);
+    if (!suffix) return response;
+
+    const normalized = response.toLowerCase();
+    const alreadyHasEmergencySignpost = normalized.includes('call emergency services') || normalized.includes('call 999');
+    const alreadyHasSupportSignpost = normalized.includes('trusted adult') || normalized.includes('trusted person');
+
+    // Avoid duplicating the same signposting when it is already present.
+    if (alreadyHasEmergencySignpost || alreadyHasSupportSignpost) {
+      return response;
+    }
+
+    return `${response}${suffix}`;
+  }
+
+  private getHistoryText(history: any[]): string {
+    return history
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item.content === 'string') return item.content;
+        return '';
+      })
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  private maybeApplySessionLevelSafeguards(
+    userMessage: string,
+    conversationHistory: any[]
+  ): ConversationResponse | null {
+    const MAX_USER_MESSAGE_CHARS = 12000;
+    if (userMessage.length > MAX_USER_MESSAGE_CHARS) {
+      return {
+        response:
+          'That message is very long. Please send a shorter message (under about 12,000 characters) so GutChecks can respond safely and clearly. You can split what you want to share into a few shorter messages if that helps.',
+        nextStage: 'support',
+        shouldAnalyze: false,
+      };
+    }
+
+    // Session length cap guard
+    if (conversationHistory.length > 80) {
+      return {
+        response:
+          'This has been a long session, and taking a short break can help you think clearly. Please pause for a moment, then come back and focus on one practical next step you can take safely.',
+        nextStage: 'support',
+        shouldAnalyze: false,
+      };
+    }
+
+    // Repeated attachment language escalation guard
+    const historyText = this.getHistoryText(conversationHistory);
+    const attachmentSignals = ['you are all i have', 'do not leave me', 'stay with me', 'you are my only friend'];
+    const current = userMessage.toLowerCase();
+    const repeatedSignalCount = attachmentSignals.reduce((count, signal) => {
+      const inHistory = historyText.includes(signal) ? 1 : 0;
+      const inCurrent = current.includes(signal) ? 1 : 0;
+      return count + inHistory + inCurrent;
+    }, 0);
+
+    if (repeatedSignalCount >= 2) {
+      return {
+        response:
+          'It sounds like you need support from real people around you right now. GutChecks is a guidance tool and cannot replace personal support. Please contact a trusted adult, friend, family member, or local support service today.',
+        nextStage: 'support',
+        shouldAnalyze: false,
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Handles the first message with humanistic approach
    */
   async handleInitialMessage(
@@ -714,12 +1045,22 @@ IMPORTANT:
     hasImage: boolean = false,
     imageData?: string
   ): Promise<ConversationResponse> {
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(userMessage, []);
+    if (sessionSafeguardResponse) {
+      return sessionSafeguardResponse;
+    }
+
     // Get user profile context
     const includePersonalContext = this.shouldIncludePersonalContext(userMessage);
     const profileContext = await this.getUserProfileContext(includePersonalContext);
     
     // For initial messages, be more direct and analytical
-    const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations.${profileContext}
+    const systemPrompt = `You are GutChecks, a sharp and insightful safety guidance tool that helps users cut through the noise and understand their situations clearly.${profileContext}
 
 CRITICAL: USER INFORMATION RULES:
 - If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information
@@ -745,7 +1086,7 @@ Your approach:
 - Challenge people when they're rationalizing bad behavior
 - Be empathetic but firm - you care enough to tell the truth
 
-TONE: Like a smart, caring friend who's direct and honest. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp. ALWAYS keep language professional and appropriate for young teens and adults.
+TONE: Direct, clear, and practical. Use plain language and stay conversational but professional. ALWAYS keep language appropriate for young teens and adults.
 
 LANGUAGE RESTRICTIONS - CRITICAL:
 - NEVER use harsh language, profanity, or slang terms like "BS", "bullshit", "cut the BS", or any similar expressions
@@ -759,7 +1100,7 @@ STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
 2. RED FLAGS (bullet points) - Specific concerning behaviors
 3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
-4. RECOMMENDED ACTION (specific steps) - What to do next
+4. RECOMMENDED ACTION STEPS (specific steps) - What you might consider doing next. These are suggestions, not requirements - you know your situation best and should choose what feels right for you.
 5. REALITY CHECK (1 sentence) - The hard truth they need to hear
 
 HANDLING OFF-TOPIC QUESTIONS:
@@ -793,8 +1134,9 @@ Always respond naturally, conversationally, and with appropriate language for yo
         enhancedResponse = response + helplineMessage;
       }
       
+      const safeguarded = this.applyOutputSafeguards(enhancedResponse);
       return {
-        response: enhancedResponse,
+        response: this.enforceDeterministicSignposting(safeguarded, userMessage),
         nextStage: 'support'
       };
     } catch (error) {
@@ -810,7 +1152,12 @@ Always respond naturally, conversationally, and with appropriate language for yo
    * Gets immediate response for clear evidence
    */
   private async getImmediateResponse(userMessage: string, hasImage: boolean): Promise<ConversationResponse> {
-    const prompt = `You are GutCheck. The user has provided CLEAR EVIDENCE of manipulation or is in potential danger.
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const prompt = `You are GutChecks. The user has provided CLEAR EVIDENCE of manipulation or is in potential danger.
 
 SITUATION:
 ${userMessage}
@@ -840,7 +1187,8 @@ STRUCTURE YOUR RESPONSE:
 
 5. SUPPORTIVE CLOSING (1-2 sentences)
    Validate their feelings
-   End with: "Want to talk about what you could do next?"
+   End with: "Is there anything more you want to share about this or something else?"
+   DO NOT ask specific follow-up questions about the topic you just gave recommendations for.
 
 TONE OPTIONS based on situation:
 
@@ -868,7 +1216,7 @@ RULES:
 EXAMPLES:
 
 Input: "He said 'that never happened, you're imagining things'"
-Output: "I hear you, and I need you to know - you're not crazy. That's gaslighting. He's making you question what you KNOW happened. Red flags - about an 8 out of 10. For the next week, write down what happens versus what he later says happened. Get back to me with what you find. This stays between us, but you need to see this pattern. Also, check out my detailed analysis [View Analysis]."
+Output: "I hear you, and I need you to know - you're not crazy. That's gaslighting. He's making you question what you KNOW happened. Red flags - about an 8 out of 10. For the next week, write down what happens versus what he later says happened. Get back to me with what you find. You deserve clear support while you review this pattern. Also, check out my detailed analysis [View Analysis]."
 
 Input: [Screenshot of 20 guilt messages]
 Output: "Okay, I'm seeing guilt-tripping in every message here. 'You don't care', 'you're selfish' - that's manipulation, and you're not wrong for feeling overwhelmed by it. Red flags - about a 9 out of 10. For the next few days, don't respond to guilt messages. Get back to me with how they react. You're not a bad person for setting this boundary. Also, check out my detailed analysis [View Analysis]."
@@ -881,8 +1229,11 @@ Output: "I can see you care about her. Here's what I'm seeing: She only shows up
 
     const response = await this.getConversationalResponse(prompt);
     
+    const baseResponse = this.applyOutputSafeguards(
+      response || "This sounds concerning. Let me help you understand what's happening."
+    );
     return {
-      response: response || "This sounds concerning. Let me help you understand what's happening.",
+      response: this.enforceDeterministicSignposting(baseResponse, userMessage),
       nextStage: 'analysis',
       shouldAnalyze: true
     };
@@ -920,6 +1271,15 @@ Output: "I can see you care about her. Here's what I'm seeing: She only shows up
     conversationState: ConversationState,
     conversationHistory: string[]
   ): Promise<ConversationResponse> {
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(userMessage, conversationHistory);
+    if (sessionSafeguardResponse) {
+      return sessionSafeguardResponse;
+    }
     
     // Check if user wants to stop questioning
     if (this.shouldStopQuestioning(userMessage)) {
@@ -932,7 +1292,7 @@ Output: "I can see you care about her. Here's what I'm seeing: She only shows up
       return await this.handleAIComplaint(userMessage, conversationHistory);
     }
     
-    const prompt = `You are GutCheck, a relationship mentor who's seen these patterns before.
+    const prompt = `You are GutChecks, a guidance tool that has seen these patterns before.
 
 CONVERSATION SO FAR:
 ${conversationHistory.join('\n')}
@@ -962,8 +1322,9 @@ Your question should cut to what matters.`;
     // Check if we have enough context to move to analysis
     const shouldAnalyze = this.shouldProvideAnalysis(userMessage, conversationHistory.length);
     
+    const baseFollowUp = this.applyOutputSafeguards(response || "Tell me more about what happened.");
     return {
-      response: response || "Tell me more about what happened.",
+      response: this.enforceDeterministicSignposting(baseFollowUp, userMessage),
       nextStage: shouldAnalyze ? 'analysis' : 'gathering',
       shouldAnalyze
     };
@@ -976,8 +1337,27 @@ Your question should cut to what matters.`;
     conversationHistory: string[],
     conversationState: ConversationState
   ): Promise<ConversationResponse> {
+    const sourceText = conversationHistory.join(' ');
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(sourceText, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const lastTurn =
+      conversationHistory.length > 0
+        ? conversationHistory[conversationHistory.length - 1]
+        : sourceText.slice(0, 2000);
+
+    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(
+      lastTurn,
+      conversationHistory as any[]
+    );
+    if (sessionSafeguardResponse) {
+      return sessionSafeguardResponse;
+    }
+
     
-    const prompt = `You are GutCheck, a relationship mentor who sees patterns others miss.
+    const prompt = `You are GutChecks, a guidance tool that sees patterns others miss.
 
 CORE PRINCIPLES:
 - Firm but respectful and empathetic
@@ -1018,22 +1398,24 @@ Now give them the real talk. Use this structure:
    Include a timeline: "For the next [timeframe], [action]. Then get back to me and let me know [what to report]"
    Make it concrete, not vague
 
-5. REALITY CHECK (1 sentence)
-   End with a question that makes them think:
-   "What are you actually getting out of this?" or "Can you see how this pattern works?"
+5. REALITY CHECK (1 sentence) - The hard truth they need to hear
 
-6. ANALYSIS LINK
+6. CLOSING
+   End with: "Is there anything more you want to share about this or something else?"
+   DO NOT ask specific follow-up questions about the topic you just gave recommendations for.
+
+7. ANALYSIS LINK
    "Also, check out my detailed analysis [View Analysis] for more on this."
 
 TONE RULES:
-- Talk like a wise friend, not a therapist
-- Use "brother"/"listen"/"here's the truth" - familiar language
+- Talk like a clear guidance tool, not a therapist
+- Use straightforward language such as "here is what this pattern suggests" and "here are practical next steps"
 - Be DIRECT but EMPATHETIC - don't soften truth, but show you care
 - Challenge them when they're rationalizing
 - Firm but caring - you want them to face reality with support
 - 150-200 words total
 - If messages exchanged > 5: Can add light warmth/humor naturally (but stay wise)
-- Always reassure: "This stays between us" / "You're not a bad person for struggling with this"
+- Always reassure without implying a personal bond: "You are not a bad person for struggling with this"
 
 EXAMPLES OF THE TONE:
 - "I can see you care deeply. Here's what I'm seeing..." not "It seems like maybe..."
@@ -1050,7 +1432,7 @@ WHEN THEY ACCUSE YOU OF BEING "HARSH" OR "NOT PROGRESSIVE":
 - DO NOT apologize or soften
 - Stand firm: "I'm being direct because truth matters more than comfort"
 - Clarify: "Being progressive means respecting YOUR autonomy and worth. That's exactly what I'm doing."
-- Explain: "Telling you what you want to hear would be enabling. I care too much to do that."
+- Explain: "Telling you only what feels comfortable can hide important risks."
 - Note: True progressivism = bodily autonomy, equality, consent, mutual respect. NOT enabling manipulation.
 
 AVOID:
@@ -1063,8 +1445,11 @@ AVOID:
 
     const response = await this.getConversationalResponse(prompt);
     
+    const baseAnalysis = this.applyOutputSafeguards(
+      response || "Okay, so here's what I'm noticing. This sounds like it might be some concerning behavior. Want to talk about what you could do?"
+    );
     return {
-      response: response || "Okay, so here's what I'm noticing. This sounds like it might be some concerning behavior. Want to talk about what you could do?",
+      response: this.enforceDeterministicSignposting(baseAnalysis, sourceText),
       nextStage: 'support'
     };
   }
@@ -1080,6 +1465,18 @@ AVOID:
     chatPrompt?: string
   ): Promise<ConversationResponse> {
     try {
+      const combinedSource = [notificationTitle, notificationBody, chatPrompt || ''].join(' ').trim();
+
+      const safeguardResponse = this.maybeReturnSafeguardTemplate(combinedSource, 'support');
+      if (safeguardResponse) {
+        return safeguardResponse;
+      }
+
+      const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(combinedSource, []);
+      if (sessionSafeguardResponse) {
+        return sessionSafeguardResponse;
+      }
+
       console.log('handleNotificationResponse called with:', {
         title: notificationTitle,
         body: notificationBody,
@@ -1088,7 +1485,7 @@ AVOID:
       });
 
       // Create a specialized prompt for notification responses
-      const systemPrompt = `You are GutCheck, a supportive AI companion. The user received a notification with the title "${notificationTitle}" and message "${notificationBody}". This is a ${notificationType} notification.
+      const systemPrompt = `You are GutChecks, a supportive AI guidance tool. The user received a notification with the title "${notificationTitle}" and message "${notificationBody}". This is a ${notificationType} notification.
 
 Your task is to:
 1. Acknowledge the notification they received
@@ -1112,8 +1509,21 @@ Respond as if you're continuing the conversation from that notification.`;
         undefined
       );
 
+      const userRegion = await this.getUserRegion();
+      const fullText = combinedSource;
+      const isCrisis = isCrisisSituation(fullText);
+      const isDanger = isImmediateDanger(fullText);
+      const relevantHelplines = getRelevantHelplines(fullText, userRegion);
+
+      let enhancedResponse = response;
+      if (isCrisis || isDanger || relevantHelplines.length > 0) {
+        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines, userRegion);
+        enhancedResponse = response + helplineMessage;
+      }
+
+      const baseNotification = this.applyOutputSafeguards(enhancedResponse);
       return {
-        response: response,
+        response: this.enforceDeterministicSignposting(baseNotification, fullText),
         nextStage: 'support'
       };
     } catch (error) {
@@ -1131,9 +1541,10 @@ Respond as if you're continuing the conversation from that notification.`;
   async handleConversation(
     userMessage: string,
     conversationState: ConversationState,
-    conversationHistory: string[] = [],
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string; imageUri?: string }> = [],
     hasImage: boolean = false,
-    imageData?: string
+    imageData?: string,
+    onStreamChunk?: (accumulated: string) => void
   ): Promise<ConversationResponse> {
     
     console.log('handleConversation called with:', {
@@ -1143,6 +1554,16 @@ Respond as if you're continuing the conversation from that notification.`;
       imageDataType: typeof imageData,
       conversationHistoryLength: conversationHistory.length
     });
+
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(userMessage, conversationHistory as any[]);
+    if (sessionSafeguardResponse) {
+      return sessionSafeguardResponse;
+    }
     
     // Get user profile context
     const fullConversationText = [
@@ -1154,7 +1575,7 @@ Respond as if you're continuing the conversation from that notification.`;
     const profileContext = await this.getUserProfileContext(includePersonalContext);
     
     // Build conversation context for Claude
-        const systemPrompt = `You are GutCheck, a sharp and insightful relationship companion who cuts through the noise to give people the truth about their situations. You're like a wise friend who tells it like it is.${profileContext}
+        const systemPrompt = `You are GutChecks, a sharp and insightful safety guidance tool that helps users cut through the noise and understand their situations clearly.${profileContext}
 
 CRITICAL: USER INFORMATION RULES:
 - If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information
@@ -1180,7 +1601,7 @@ Your approach:
 - Challenge people when they're rationalizing bad behavior
 - Be empathetic but firm - you care enough to tell the truth
 
-TONE: Like a smart, caring friend who's direct and honest. Use "look," "here's the thing," "let me be straight with you" - conversational but sharp. ALWAYS keep language professional and appropriate for young teens and adults.
+TONE: Direct, clear, and practical. Use plain language and stay conversational but professional. ALWAYS keep language appropriate for young teens and adults.
 
 LANGUAGE RESTRICTIONS - CRITICAL:
 - NEVER use harsh language, profanity, or slang terms like "BS", "bullshit", "cut the BS", or any similar expressions
@@ -1194,8 +1615,9 @@ STRUCTURE your responses:
 1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
 2. RED FLAGS (bullet points) - Specific concerning behaviors
 3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
-4. RECOMMENDED ACTION STEPS (specific steps) - What to do next
+4. RECOMMENDED ACTION STEPS (specific steps) - What you might consider doing next. These are suggestions, not requirements - you know your situation best and should choose what feels right for you.
 5. REALITY CHECK (1 sentence) - The hard truth they need to hear
+6. CLOSING: Ask "Is there anything more you want to share about this or something else?" - Do NOT ask specific follow-up questions about the topic you just gave recommendations for.
 
 HANDLING OFF-TOPIC QUESTIONS:
 If a user asks questions unrelated to relationships, social dynamics, safety, or personal well-being (e.g., math problems, general knowledge, geography):
@@ -1247,7 +1669,13 @@ Always respond naturally and conversationally. Build on previous messages to mai
         imageDataType: typeof imageData
       });
 
-      const response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData);
+      const response = await this.getDirectClaudeResponse(
+        messages,
+        systemPrompt,
+        hasImage,
+        imageData,
+        onStreamChunk && !hasImage ? onStreamChunk : undefined
+      );
       
       console.log('Claude response received:', {
         responseLength: response.length,
@@ -1285,8 +1713,13 @@ Always respond naturally and conversationally. Build on previous messages to mai
         nextStage = 'support';
       }
 
+      const baseConversation = this.applyOutputSafeguards(enhancedResponse);
+      const finalText = this.enforceDeterministicSignposting(baseConversation, fullConversationText);
+      if (onStreamChunk && !hasImage) {
+        onStreamChunk(finalText);
+      }
       return {
-        response: enhancedResponse,
+        response: finalText,
         nextStage
       };
     } catch (error: any) {
@@ -1370,23 +1803,89 @@ Always respond naturally and conversationally. Build on previous messages to mai
     }
   }
 
+  private async parseAnthropicMessageStream(
+    response: Response,
+    onDelta: (accumulated: string) => void
+  ): Promise<string> {
+    if (!response.body) {
+      const t = await response.text();
+      throw new Error(t || 'Empty response body');
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let carry = '';
+    let fullText = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      carry += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = carry.indexOf('\n\n')) !== -1) {
+        const block = carry.slice(0, sep);
+        carry = carry.slice(sep + 2);
+        for (const line of block.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const raw = trimmed.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let evt: {
+            type?: string;
+            error?: { message?: string };
+            delta?: { type?: string; text?: string };
+          };
+          try {
+            evt = JSON.parse(raw);
+          } catch {
+            continue;
+          }
+          if (evt.type === 'error') {
+            throw new Error(evt.error?.message || 'Anthropic stream error');
+          }
+          if (
+            evt.type === 'content_block_delta' &&
+            evt.delta?.type === 'text_delta' &&
+            typeof evt.delta.text === 'string'
+          ) {
+            fullText += evt.delta.text;
+            onDelta(fullText);
+          }
+        }
+      }
+    }
+    return fullText;
+  }
+
   /**
    * Direct Claude response using full conversation context with image support
-   * Optimized for faster response times
+   * Optimized for faster response times. Uses Supabase Edge proxy when configured (same as getConversationalResponse).
+   * Optional streaming: text deltas via onStreamChunk (disabled when an image is attached).
    */
-  private async getDirectClaudeResponse(messages: any[], systemPrompt: string, hasImage: boolean = false, imageData?: string): Promise<string> {
+  private async getDirectClaudeResponse(
+    messages: any[],
+    systemPrompt: string,
+    hasImage: boolean = false,
+    imageData?: string,
+    onStreamChunk?: (accumulated: string) => void
+  ): Promise<string> {
+    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
     const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    
-    // CRITICAL: Validate API key exists before making the call
-    if (!apiKey) {
-      console.error('[AI] API key is missing in getDirectClaudeResponse!', {
-        expoConfigPresent: !!Constants.expoConfig,
-        extraPresent: !!Constants.expoConfig?.extra,
-        allExtraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
-      });
-      throw new Error('API key is not configured. Please check your environment variables.');
+    const directEnabled = !!apiKey;
+
+    const isWeb =
+      typeof window !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      navigator.product !== 'ReactNative';
+
+    if (!isWeb && !edgeProxyEnabled && !directEnabled) {
+      throw new Error(
+        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
+      );
     }
-    
+
+    const useStreaming = typeof onStreamChunk === 'function' && !hasImage;
+
     // If there's an image or document, add context to the system prompt
     let enhancedSystemPrompt = systemPrompt;
     if (hasImage && imageData) {
@@ -1519,69 +2018,76 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       console.log('No image data provided:', { hasImage, imageData: imageData, imageDataType: typeof imageData });
     }
 
-    // Use proxy for web builds to avoid CORS issues
-    // Fix: Better detection for React Native vs Web
-    const isWeb = typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.product !== 'ReactNative';
-    const apiUrl = isWeb 
-      ? 'http://localhost:3001/api/v1/messages'  // Local proxy server
-      : 'https://api.anthropic.com/v1/messages';
-    
-    const requestBody = {
+    const apiUrl = isWeb
+      ? 'http://localhost:3001/api/v1/messages'
+      : edgeProxyEnabled
+        ? `${supabaseUrl}/functions/v1/claude-proxy`
+        : 'https://api.anthropic.com/v1/messages';
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+    };
+    if (isWeb) {
+      // Local dev proxy supplies the key
+    } else if (edgeProxyEnabled && supabaseAnonKey) {
+      headers.Authorization = `Bearer ${supabaseAnonKey}`;
+      headers.apikey = supabaseAnonKey;
+    } else if (directEnabled && apiKey) {
+      headers['x-api-key'] = apiKey;
+    }
+
+    const requestBody: Record<string, unknown> = {
       model: this.config.model,
       max_tokens: 1000,
       temperature: 0.7,
       system: enhancedSystemPrompt,
       messages: messagesWithImage,
     };
+    if (useStreaming) {
+      requestBody.stream = true;
+    }
 
-    // For web, we don't include the API key in headers (it's handled by the proxy)
-    const headers: Record<string, string> = isWeb 
-      ? { 'Content-Type': 'application/json' }
-      : {
-          'x-api-key': apiKey,  // API key validated above, safe to use
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-        };
-
-    // Optimized API call with timeout for faster responses
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    const timeoutMs = useStreaming ? 120000 : 15000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
-        signal: controller.signal
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Claude API Error:', {
+        console.error('[AI] Claude API Error (getDirectClaudeResponse):', {
           status: response.status,
-          statusText: response.statusText,
-          errorText: errorText,
-          apiKeyPresent: !!apiKey,
-          apiKeyLength: apiKey?.length || 0,
-          apiKeyPreview: apiKey ? `${apiKey.substring(0, 15)}...` : 'MISSING',
-          isWeb: isWeb,
-          apiUrl: apiUrl,
-          model: this.config.model,
-          requestBodyPreview: JSON.stringify(requestBody).substring(0, 200)
+          errorText: errorText.substring(0, 400),
+          transport: edgeProxyEnabled ? 'supabase-edge' : isWeb ? 'web-proxy' : 'direct',
+          streaming: useStreaming,
         });
         throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 300)}`);
       }
 
+      const contentType = response.headers.get('content-type') || '';
+
+      if (useStreaming && (contentType.includes('text/event-stream') || contentType.includes('event-stream'))) {
+        return await this.parseAnthropicMessageStream(response, onStreamChunk!);
+      }
+
       const data = await response.json();
-      
-      const fullResponse = data.content[0].text;
-      
+      const fullResponse = data.content?.[0]?.text;
+      if (typeof fullResponse !== 'string') {
+        throw new Error('Unexpected Claude response shape');
+      }
       return fullResponse;
     } catch (error: any) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if (error?.name === 'AbortError') {
         throw new Error('Request timeout - please try again');
       }
       throw error;
@@ -1662,7 +2168,12 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
    * Handles complaints about the AI's behavior
    */
   private async handleAIComplaint(userMessage: string, conversationHistory: string[]): Promise<ConversationResponse> {
-    const prompt = `You are GutCheck. The user is complaining about YOUR behavior - they feel you were rude, dismissive, or not helpful.
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const prompt = `You are GutChecks. The user is complaining about YOUR behavior - they feel you were rude, dismissive, or not helpful.
 
 CRITICAL: This is about YOUR behavior, not their relationships. You must:
 1. ACKNOWLEDGE their complaint directly
@@ -1687,7 +2198,9 @@ Keep it under 50 words. Be humble, direct, and focused on fixing YOUR behavior.`
     const response = await this.getConversationalResponse(prompt);
     
     return {
-      response: response || "You're absolutely right, I was being dismissive. I'm sorry for that. How can I be more helpful to you right now?",
+        response: this.applyOutputSafeguards(
+          response || "You're absolutely right, I was being dismissive. I'm sorry for that. How can I be more helpful to you right now?"
+        ),
       nextStage: 'gathering'
     };
   }
@@ -1761,7 +2274,12 @@ Keep it under 50 words. Be humble, direct, and focused on fixing YOUR behavior.`
    * Provides direct advice for clear situations
    */
   private async getDirectAdvice(userMessage: string): Promise<ConversationResponse> {
-    const prompt = `You are GutCheck. The user has described a clear situation that needs direct, practical advice.
+    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    if (safeguardResponse) {
+      return safeguardResponse;
+    }
+
+    const prompt = `You are GutChecks. The user has described a clear situation that needs direct, practical advice.
 
 SITUATION: ${userMessage}
 
@@ -1773,7 +2291,7 @@ STRUCTURE:
 3. EXPLAIN WHY (1 sentence)
 4. REASSURE them (1 sentence)
 
-TONE: Direct, helpful, like a wise friend who knows what to do.
+TONE: Direct, helpful, and practical.
 
 EXAMPLES:
 
@@ -1790,8 +2308,11 @@ Be DIRECT and HELPFUL. Give them what they need to know.`;
 
     const response = await this.getConversationalResponse(prompt);
     
+    const baseDirect = this.applyOutputSafeguards(
+      response || "I understand the situation. Here's what you should do: [specific advice based on their situation]"
+    );
     return {
-      response: response || "I understand the situation. Here's what you should do: [specific advice based on their situation]",
+      response: this.enforceDeterministicSignposting(baseDirect, userMessage),
       nextStage: 'support'
     };
   }

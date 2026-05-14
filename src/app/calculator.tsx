@@ -89,7 +89,7 @@ export default function CalculatorScreen() {
     }
   };
 
-  // Secret: Triple tap the display to return to GutCheck
+  // Secret: Triple tap the display to return to GutChecks: Red Flags & Safety
   const [tapCount, setTapCount] = useState(0);
   const [tapTimeout, setTapTimeout] = useState<NodeJS.Timeout | null>(null);
 

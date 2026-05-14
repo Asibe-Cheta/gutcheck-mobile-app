@@ -1,5 +1,5 @@
 /**
- * Core TypeScript Interfaces for GutCheck App
+ * Core TypeScript Interfaces for GutChecks App
  * Based on the specification's data models
  */
 

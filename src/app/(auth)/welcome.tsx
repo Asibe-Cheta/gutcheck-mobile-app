@@ -5,9 +5,10 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator, Animated } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { theme, getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
@@ -20,6 +21,32 @@ export default function WelcomeScreen() {
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  
+  // Animation values
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(30))[0];
+  const scaleAnim = useState(new Animated.Value(0.9))[0];
+
+  useEffect(() => {
+    // Staggered animation on mount
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const handleAnonymousAccess = () => {
     // Navigate to anonymous PIN setup
@@ -105,22 +132,46 @@ export default function WelcomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
-      <View style={styles.content}>
+      {/* Gradient Header Background */}
+      <LinearGradient
+        colors={['#1a3d3c', '#0d2927', currentTheme.background]}
+        locations={[0, 0.3, 0.6]}
+        style={styles.gradientBackground}
+      />
+      
+      <Animated.View 
+        style={[
+          styles.content, 
+          { 
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideAnim },
+              { scale: scaleAnim }
+            ]
+          }
+        ]}
+      >
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image 
-            source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
+            source={require('../../../assets/new-gut-logo.jpeg')} 
             style={styles.logo}
             resizeMode="contain"
           />
         </View>
         
-        {/* Main heading */}
-        <Text style={[styles.mainHeading, { color: currentTheme.textPrimary }]}>Visualize your intuition</Text>
+        {/* Main heading with new branding */}
+        <Text style={[styles.mainHeading, { color: currentTheme.textPrimary }]}>
+          GutChecks: Red Flags & Safety
+        </Text>
+        
+        <Text style={[styles.tagline, { color: currentTheme.primary }]}>
+          Visualize your intuition
+        </Text>
         
         {/* Description */}
         <Text style={[styles.description, { color: currentTheme.textSecondary }]}>
-          Your private space to decode everyday interactions, a second check to your instincts. Get evidence-based analysis of manipulation, bullying, blackmail, sextortion, grooming and predatory patterns with complete anonymity.
+          Your private space to decode everyday interactions and spot red flags early. Get evidence-based analysis of manipulation, bullying, grooming, and predatory patterns with complete anonymity.
         </Text>
         
         {/* Action buttons */}
@@ -157,9 +208,9 @@ export default function WelcomeScreen() {
         
         {/* Footer text */}
         <Text style={[styles.footerText, { color: '#43B897' }]}>
-          100% private • We don't collect, sell or share personal data, reflections. Nothing leaves your phone unless you choose to share it.
+          100% private • Your data never leaves your device unless you choose to share it
         </Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -169,7 +220,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+  },
+  gradientBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: height * 0.7,
   },
   content: {
     flex: 1,
@@ -177,26 +234,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     maxWidth: 400,
+    padding: 24,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 8, // Much smaller spacing
+    marginBottom: 8,
   },
   logo: {
-    width: 280,
-    height: 280,
+    width: 200,
+    height: 200,
   },
   appName: {
-    fontSize: 24, // text-3xl
-    fontWeight: '700', // font-bold
-    marginTop: 16, // mt-4
+    fontSize: 24,
+    fontWeight: '700',
+    marginTop: 16,
     fontFamily: 'Inter',
   },
   mainHeading: {
-    fontSize: 36, // text-4xl
-    fontWeight: '700', // font-bold
+    fontSize: 32,
+    fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: -0.5, // tracking-tight
+    letterSpacing: -0.5,
+    marginTop: 16,
+    lineHeight: 40,
+  },
+  tagline: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+    letterSpacing: 0.5,
     marginBottom: 16, // mt-4
     fontFamily: 'Inter',
   },

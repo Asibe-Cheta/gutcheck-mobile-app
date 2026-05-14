@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { aiService } from '@/lib/ai';
+import { getAiDataUseConsentMessage } from '@/lib/externalUrls';
 
 export default function NotificationDetailScreen() {
   const { isDark } = useTheme();
@@ -25,6 +27,26 @@ export default function NotificationDetailScreen() {
   }, []);
 
   const generateElaboration = async () => {
+    const aiConsentKey = 'ai_disclosure_accepted';
+    const accepted = await AsyncStorage.getItem(aiConsentKey);
+    if (accepted !== 'true') {
+      Alert.alert(
+        'Data Use & Privacy',
+        getAiDataUseConsentMessage(),
+        [
+          { text: 'Decline', style: 'cancel' },
+          {
+            text: 'Accept',
+            onPress: async () => {
+              await AsyncStorage.setItem(aiConsentKey, 'true');
+              generateElaboration();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     try {
       setIsLoading(true);
       

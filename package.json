@@ -1,13 +1,17 @@
 {
   "name": "gutcheck-app",
-  "version": "1.0.1",
+  "version": "2.2.2",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "start:tunnel": "expo start --tunnel",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "ota:production:android": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p android --non-interactive",
+    "ota:production:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p ios --non-interactive",
+    "ota:production:all": "npm run ota:production:android && npm run ota:production:ios",
+    "build:production": "EAS_BUILD_NO_EXPO_GO_WARNING=1 eas build --profile production --platform all --non-interactive --no-wait"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -20,7 +24,7 @@
     "@tanstack/react-query": "^5.90.2",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
-    "expo": "54.0.21",
+    "expo": "^54.0.21",
     "expo-clipboard": "^8.0.7",
     "expo-constants": "~18.0.10",
     "expo-crypto": "~15.0.7",
@@ -35,7 +39,10 @@
     "expo-secure-store": "~15.0.7",
     "expo-sensors": "~15.0.7",
     "expo-sharing": "~14.0.7",
+    "expo-speech": "~14.0.8",
+    "expo-speech-recognition": "^3.1.3",
     "expo-status-bar": "~3.0.8",
+    "expo-updates": "~29.0.17",
     "express": "^5.1.0",
     "http-proxy-middleware": "^3.0.5",
     "react": "19.1.0",

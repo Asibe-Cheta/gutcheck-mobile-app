@@ -83,7 +83,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         console.error('Error saving onboarding data:', error);
       }
 
-      // Navigate to subscription screen to start 3-day free trial
+      // Navigate to subscription screen to start 7-day free trial
       router.push('/subscription');
     } else {
       setCurrentScreen(currentScreen + 1);
@@ -605,7 +605,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             onPress={handleNext}
           >
             <Text style={styles.nextButtonText}>
-              {currentScreen === 2 ? 'Start My 3-Day Free Trial' : 'Continue'}
+              {currentScreen === 2 ? 'Start My 7-Day Free Trial' : 'Continue'}
             </Text>
             {currentScreen < 2 && (
               <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />

@@ -38,7 +38,7 @@ export default function PaymentForm({ planId, amount, currency, onSuccess, onErr
     try {
       // Initialize payment sheet
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'GutCheck',
+        merchantDisplayName: 'GutChecks: Red Flags & Safety',
         paymentIntentClientSecret: '', // This will be provided by your backend
         defaultBillingDetails: {
           name: 'Customer Name',

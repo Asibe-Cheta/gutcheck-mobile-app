@@ -55,11 +55,29 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="awareness-hub"
+        options={{
+          title: 'Hub',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="school-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="resources"
         options={{
           title: 'Resources',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="library-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="recommend-protect"
+        options={{
+          title: 'Recommend',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" size={size} color={color} />
           ),
         }}
       />

@@ -1,5 +1,5 @@
 /**
- * GutCheck Design System - Theme Configuration
+ * GutChecks Design System - Theme Configuration
  * Based on the specification's color palette and design tokens
  */
 

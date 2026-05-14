@@ -1,6 +1,6 @@
 /**
  * Chat Screen
- * Humanistic conversation interface for GutCheck
+ * Humanistic conversation interface for GutChecks: Red Flags & Safety
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -19,19 +19,35 @@ import {
   Dimensions,
   Animated,
   Linking,
+  AppState,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Speech from 'expo-speech';
+import type { Voice } from 'expo-speech';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { getThemeColors } from '@/lib/theme';
+import { getAiDataUseConsentMessage } from '@/lib/externalUrls';
 import { useTheme } from '@/lib/themeContext';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
-import { aiService } from '@/lib/ai';
+import { aiService, SAFEGUARD_READBACK_TEMPLATES } from '@/lib/ai';
 import { shareNudgeService } from '@/lib/shareNudgeService';
+import { revenueCatService } from '@/lib/revenueCatService';
+import { getLifetimeProService } from '@/lib/lifetimeProService';
+import { SubscriptionGateModal } from '@/components/SubscriptionGateModal';
+import {
+  filterCuratedTtsVoices,
+  recognitionLangFromTtsLanguage,
+  DEFAULT_VOICE_LOCALE,
+} from '@/lib/voiceTtsCurated';
+import { voiceSessionLogService } from '@/lib/voiceSessionLogService';
 
 // Animated Typing Indicator Component
 const AnimatedTypingIndicator = ({ colors }: { colors: any }) => {
@@ -121,7 +137,26 @@ export default function ChatScreen() {
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const [voiceSilenceHint, setVoiceSilenceHint] = useState(false);
+  const [autoReadBackEnabled, setAutoReadBackEnabled] = useState(false);
+  const [readBackSpeed, setReadBackSpeed] = useState<'0.75x' | '1x' | '1.25x' | '1.5x' | '2x'>('1x');
+  const [readBackLocale, setReadBackLocale] = useState(DEFAULT_VOICE_LOCALE);
+  const [readBackVoiceId, setReadBackVoiceId] = useState<string | null>(null);
+  const [curatedVoices, setCuratedVoices] = useState<Voice[]>([]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceDisabledForSession, setVoiceDisabledForSession] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceBaseTextRef = useRef('');
+  const pendingVoiceSendRef = useRef(false);
+  const voiceSessionStartRef = useRef<number | null>(null);
+  const voiceBreakPromptShownRef = useRef(false);
+  const isRecordingVoiceRef = useRef(false);
+  const voiceRecordStartMsRef = useRef<number | null>(null);
   
   const { 
     conversationState, 
@@ -135,6 +170,179 @@ export default function ChatScreen() {
   
   const { handleConversation, isLoading, error } = useAnalysisStore();
   const { saveChat, getChatById } = useChatHistoryStore();
+  const VOICE_SETTINGS_KEY = '@voice_settings_v1';
+  const VOICE_INPUT_RATIONALE_KEY = '@chat_voice_input_rationale_v1';
+  const HUB_AGE_BAND_KEY = '@awareness_hub_age_band_v1';
+
+  const resetVoiceSilenceTimer = () => {
+    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+    setVoiceSilenceHint(false);
+    silenceTimeoutRef.current = setTimeout(() => {
+      if (isRecordingVoice) {
+        setVoiceSilenceHint(true);
+      }
+    }, 5000);
+  };
+
+  const stopReadback = () => {
+    Speech.stop();
+    setIsSpeaking(false);
+  };
+
+  const maybePromptVoiceBreak = () => {
+    if (!voiceSessionStartRef.current || voiceBreakPromptShownRef.current) return;
+    const elapsedMs = Date.now() - voiceSessionStartRef.current;
+    if (elapsedMs >= 15 * 60 * 1000) {
+      voiceBreakPromptShownRef.current = true;
+      Alert.alert(
+        'Take a short break',
+        'You have been in voice mode for a while. Consider stepping away briefly or speaking with a trusted person.'
+      );
+    }
+  };
+
+  const getSpeechRate = () => {
+    const map = {
+      '0.75x': 0.38,
+      '1x': 0.5,
+      '1.25x': 0.62,
+      '1.5x': 0.72,
+      '2x': 0.9,
+    } as const;
+    return map[readBackSpeed];
+  };
+
+  // Helper: check subscription and show/hide the blocking gate modal.
+  const checkSubscriptionAccess = async () => {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+
+      if (!userId || isLoggedIn !== 'true') {
+        router.replace('/(auth)/welcome');
+        return;
+      }
+
+      const lifetimeProService = getLifetimeProService();
+      const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
+      if (isLifetimePro) {
+        setShowSubscriptionGate(false);
+        return;
+      }
+
+      const hasActive = await revenueCatService.hasActiveSubscription();
+      setShowSubscriptionGate(!hasActive);
+      if (!hasActive) console.log('[CHAT] ❌ Subscription expired — showing gate modal');
+      else console.log('[CHAT] ✅ Subscription verified');
+    } catch (error) {
+      // Allow access on error so paying users are not locked out when RevenueCat is temporarily down
+      console.warn('[CHAT] Subscription check error (allowing access):', error);
+    }
+  };
+
+  // Check on mount
+  useEffect(() => {
+    checkSubscriptionAccess();
+  }, []);
+
+  useEffect(() => {
+    isRecordingVoiceRef.current = isRecordingVoice;
+  }, [isRecordingVoice]);
+
+  useEffect(() => {
+    const loadVoiceSettings = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(VOICE_SETTINGS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as {
+          autoReadBackEnabled?: boolean;
+          readBackSpeed?: '0.75x' | '1x' | '1.25x' | '1.5x' | '2x';
+          readBackLocale?: string;
+          readBackVoiceId?: string | null;
+        };
+        setAutoReadBackEnabled(!!parsed.autoReadBackEnabled);
+        if (parsed.readBackSpeed) setReadBackSpeed(parsed.readBackSpeed);
+        if (parsed.readBackLocale) setReadBackLocale(parsed.readBackLocale);
+        if (parsed.readBackVoiceId !== undefined) setReadBackVoiceId(parsed.readBackVoiceId);
+      } catch {
+        // Ignore settings read failures
+      }
+    };
+    loadVoiceSettings();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(
+      VOICE_SETTINGS_KEY,
+      JSON.stringify({
+        autoReadBackEnabled,
+        readBackSpeed,
+        readBackLocale,
+        readBackVoiceId,
+      })
+    ).catch(() => {});
+  }, [autoReadBackEnabled, readBackSpeed, readBackLocale, readBackVoiceId]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active') {
+        stopReadback();
+        return;
+      }
+      try {
+        const mic = await ExpoSpeechRecognitionModule.getMicrophonePermissionsAsync();
+        if (!mic.granted && isRecordingVoiceRef.current) {
+          ExpoSpeechRecognitionModule.abort();
+          setIsRecordingVoice(false);
+          setVoiceSilenceHint(false);
+          if (silenceTimeoutRef.current) {
+            clearTimeout(silenceTimeoutRef.current);
+            silenceTimeoutRef.current = null;
+          }
+          Alert.alert(
+            'Microphone turned off',
+            'Microphone access was revoked or restricted. Voice capture stopped; you can keep chatting in text.'
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!showVoiceSettings) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await Speech.getAvailableVoicesAsync();
+        if (!cancelled) setCuratedVoices(filterCuratedTtsVoices(all));
+      } catch {
+        if (!cancelled) setCuratedVoices([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showVoiceSettings]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isRecordingVoice || isSpeaking) {
+        maybePromptVoiceBreak();
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isRecordingVoice, isSpeaking]);
+
+  // Re-check every 90 seconds while the chat screen is open (catches mid-session expiry)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkSubscriptionAccess();
+    }, 90_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle loading saved chat or initial message
   useEffect(() => {
@@ -190,7 +398,87 @@ export default function ChatScreen() {
     }, 100);
   }, [conversationHistory]);
 
+  useSpeechRecognitionEvent('start', () => {
+    voiceRecordStartMsRef.current = Date.now();
+    void voiceSessionLogService.append({
+      at: new Date().toISOString(),
+      action: 'record_start',
+    });
+    setIsRecordingVoice(true);
+    resetVoiceSilenceTimer();
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results?.[0]?.transcript || '';
+    const nextText = [voiceBaseTextRef.current, transcript].filter(Boolean).join(' ').trim();
+    setMessage(nextText);
+    resetVoiceSilenceTimer();
+  });
+
+  useSpeechRecognitionEvent('volumechange', (event) => {
+    setVoiceLevel(Math.max(0, Math.min(1, (event.value + 2) / 12)));
+    if (event.value > 0) {
+      resetVoiceSilenceTimer();
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    voiceRecordStartMsRef.current = null;
+    setIsRecordingVoice(false);
+    setVoiceSilenceHint(false);
+    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      Alert.alert(
+        'Voice input unavailable',
+        'Speech recognition or the microphone is not available. You can keep using text.'
+      );
+      return;
+    }
+    Alert.alert('Voice input unavailable', event.message || 'Voice recognition could not continue.');
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    const started = voiceRecordStartMsRef.current;
+    voiceRecordStartMsRef.current = null;
+    void voiceSessionLogService.append({
+      at: new Date().toISOString(),
+      action: 'record_end',
+      durationMs: started ? Date.now() - started : undefined,
+    });
+    setIsRecordingVoice(false);
+    setVoiceSilenceHint(false);
+    if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+    if (pendingVoiceSendRef.current) {
+      pendingVoiceSendRef.current = false;
+      setTimeout(() => {
+        sendMessage();
+      }, 120);
+    }
+  });
+
   const handleNotificationResponse = async (title: string, body: string, type: string, chatPrompt?: string) => {
+    const aiConsentKey = 'ai_disclosure_accepted';
+    const accepted = await AsyncStorage.getItem(aiConsentKey);
+    if (accepted !== 'true') {
+      return new Promise<void>((resolve) => {
+        Alert.alert(
+          'Data Use & Privacy',
+          getAiDataUseConsentMessage(),
+          [
+            { text: 'Decline', style: 'cancel', onPress: () => resolve() },
+            {
+              text: 'Accept',
+              onPress: async () => {
+                await AsyncStorage.setItem(aiConsentKey, 'true');
+                resolve();
+                handleNotificationResponse(title, body, type, chatPrompt);
+              },
+            },
+          ]
+        );
+      });
+    }
+
     setIsTyping(true);
 
     try {
@@ -212,6 +500,18 @@ export default function ChatScreen() {
       // Add assistant response
       addAssistantResponse(response.response);
 
+      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
+        setVoiceDisabledForSession(true);
+      }
+      if (autoReadBackEnabled) {
+        startReadback(response.response, {
+          safeguardCategory:
+            response.safeguardCategory && response.safeguardCategory !== 'D'
+              ? response.safeguardCategory
+              : undefined,
+        });
+      }
+
       // Update conversation state
       updateConversationState({ stage: response.nextStage });
 
@@ -223,7 +523,168 @@ export default function ChatScreen() {
     }
   };
 
+  const isUnder18User = async (): Promise<boolean> => {
+    const hubBand = await AsyncStorage.getItem(HUB_AGE_BAND_KEY);
+    if (hubBand && (hubBand.includes('Junior') || hubBand.includes('Teen (13-15)') || hubBand.includes('Older Teen (16-17)'))) {
+      return true;
+    }
+    const ageRange = await AsyncStorage.getItem('user_age_range');
+    if (!ageRange) return false;
+    const firstNumber = Number((ageRange.match(/\d+/) || [])[0]);
+    return Number.isFinite(firstNumber) && firstNumber < 18;
+  };
+
+  const handleToggleAutoReadBack = async (enabled: boolean) => {
+    if (!enabled) {
+      setAutoReadBackEnabled(false);
+      return;
+    }
+    if (await isUnder18User()) {
+      Alert.alert(
+        'Enable read-back?',
+        'Auto read-back is off by default. For users under 18, please confirm you want voice read-back enabled.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Enable', onPress: () => setAutoReadBackEnabled(true) },
+        ]
+      );
+      return;
+    }
+    setAutoReadBackEnabled(true);
+  };
+
+  const startReadback = (text: string, opts?: { safeguardCategory?: 'A' | 'B' | 'C' }) => {
+    stopReadback();
+    const cat = opts?.safeguardCategory;
+    let tts = text;
+    if (cat === 'A' || cat === 'B' || cat === 'C') {
+      tts = SAFEGUARD_READBACK_TEMPLATES[cat];
+    }
+    void voiceSessionLogService.append({
+      at: new Date().toISOString(),
+      action: 'readback_start',
+      ...(cat ? { safeguardCategory: cat } : {}),
+    });
+    setIsSpeaking(true);
+    Speech.speak(tts, {
+      rate: getSpeechRate(),
+      language: readBackLocale,
+      ...(readBackVoiceId ? { voice: readBackVoiceId } : {}),
+      onDone: () => {
+        setIsSpeaking(false);
+        void voiceSessionLogService.append({ at: new Date().toISOString(), action: 'readback_end' });
+      },
+      onStopped: () => {
+        setIsSpeaking(false);
+        void voiceSessionLogService.append({ at: new Date().toISOString(), action: 'readback_end' });
+      },
+      onError: () => {
+        setIsSpeaking(false);
+        void voiceSessionLogService.append({ at: new Date().toISOString(), action: 'readback_end' });
+      },
+    });
+  };
+
+  const ensureVoiceInputRationale = async (): Promise<boolean> => {
+    try {
+      const seen = await AsyncStorage.getItem(VOICE_INPUT_RATIONALE_KEY);
+      if (seen === 'true') return true;
+    } catch {
+      /* continue to prompt */
+    }
+    return new Promise((resolve) => {
+      Alert.alert(
+        'Voice input',
+        'GutChecks turns what you say into text on your device so you can review and send it. Audio is processed by your phone\'s speech service (for example Apple or Google), not stored by GutChecks as a voice recording. You can always type instead.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Continue',
+            onPress: async () => {
+              try {
+                await AsyncStorage.setItem(VOICE_INPUT_RATIONALE_KEY, 'true');
+              } catch {
+                /* ignore */
+              }
+              resolve(true);
+            },
+          },
+        ]
+      );
+    });
+  };
+
+  const startVoiceInput = async () => {
+    if (voiceDisabledForSession) {
+      Alert.alert(
+        'Voice temporarily disabled',
+        'Voice input is disabled for this session after a sensitive safety response. Text mode is still available.'
+      );
+      return;
+    }
+    if (!(await ensureVoiceInputRationale())) {
+      return;
+    }
+    try {
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Microphone permission required', 'Enable microphone and speech permissions to use voice input.');
+        return;
+      }
+      if (isSpeaking) stopReadback();
+      voiceBaseTextRef.current = message.trim();
+      if (!voiceSessionStartRef.current) {
+        voiceSessionStartRef.current = Date.now();
+        voiceBreakPromptShownRef.current = false;
+      }
+      setVoiceSilenceHint(false);
+      setVoiceLevel(0);
+      ExpoSpeechRecognitionModule.start({
+        lang: recognitionLangFromTtsLanguage(readBackLocale),
+        interimResults: true,
+        continuous: false,
+        maxAlternatives: 1,
+        addsPunctuation: true,
+      });
+    } catch {
+      Alert.alert('Voice input unavailable', 'Could not start voice capture on this device.');
+    }
+  };
+
+  const stopVoiceInput = () => {
+    pendingVoiceSendRef.current = false;
+    ExpoSpeechRecognitionModule.stop();
+  };
+
+  const sendVoiceInput = () => {
+    pendingVoiceSendRef.current = true;
+    ExpoSpeechRecognitionModule.stop();
+  };
+
   const sendInitialMessage = async (message: string, hasImageFlag: boolean = false, imageData?: string) => {
+    // Guideline 5.1.1/5.1.2: Same AI consent before sending to third party
+    const aiConsentKey = 'ai_disclosure_accepted';
+    const accepted = await AsyncStorage.getItem(aiConsentKey);
+    if (accepted !== 'true') {
+      return new Promise<void>((resolve) => {
+        Alert.alert(
+          'Data Use & Privacy',
+          getAiDataUseConsentMessage(),
+          [
+            { text: 'Decline', style: 'cancel', onPress: () => resolve() },
+            {
+              text: 'Accept',
+              onPress: async () => {
+                await AsyncStorage.setItem(aiConsentKey, 'true');
+                resolve();
+                sendInitialMessage(message, hasImageFlag, imageData);
+              },
+            },
+          ]
+        );
+      });
+    }
+
     setIsTyping(true);
 
     try {
@@ -262,6 +723,18 @@ export default function ChatScreen() {
       // Add assistant response
       addAssistantResponse(response.response);
 
+      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
+        setVoiceDisabledForSession(true);
+      }
+      if (autoReadBackEnabled) {
+        startReadback(response.response, {
+          safeguardCategory:
+            response.safeguardCategory && response.safeguardCategory !== 'D'
+              ? response.safeguardCategory
+              : undefined,
+        });
+      }
+
       // Update conversation state
       updateConversationState({ stage: response.nextStage });
 
@@ -278,6 +751,29 @@ export default function ChatScreen() {
 
   const sendMessage = async () => {
     if (!message.trim() && !uploadedImage) return;
+
+    // Guideline 5.1.1/5.1.2: Disclose AI data use and get consent before sending to third party
+    const aiConsentKey = 'ai_disclosure_accepted';
+    const accepted = await AsyncStorage.getItem(aiConsentKey);
+    if (accepted !== 'true') {
+      return new Promise<void>((resolve) => {
+        Alert.alert(
+          'Data Use & Privacy',
+          getAiDataUseConsentMessage(),
+          [
+            { text: 'Decline', style: 'cancel', onPress: () => resolve() },
+            {
+              text: 'Accept',
+              onPress: async () => {
+                await AsyncStorage.setItem(aiConsentKey, 'true');
+                resolve();
+                sendMessage(); // Retry send after consent
+              },
+            },
+          ]
+        );
+      });
+    }
 
     const userMessage = message.trim() || (uploadedImage ? '[Image attached]' : '');
     const imageToSend = uploadedImage; // Store image before clearing
@@ -306,29 +802,55 @@ export default function ChatScreen() {
       // Get the updated conversation history after adding the user message
       const updatedHistory = useConversationStore.getState().conversationHistory;
 
-      // Handle the conversation with image - pass updated conversation history
+      const useLiveStream = !imageToSend;
+      let streamedAny = false;
+
+      if (useLiveStream) {
+        setIsStreaming(true);
+        setStreamingMessage('');
+      }
+
       const response = await handleConversation(
         userMessage,
         conversationState,
         updatedHistory,
         !!imageToSend,
-        imageToSend || undefined
+        imageToSend || undefined,
+        useLiveStream
+          ? (chunk) => {
+              streamedAny = true;
+              setStreamingMessage(chunk);
+            }
+          : undefined
       );
 
-      // Show typing animation FIRST, then add complete response in one box
-      setIsStreaming(true);
-      setStreamingMessage('');
-      
-      console.log('Starting typing animation for response');
-      
-      await simulateTyping(response.response, (text) => {
-        setStreamingMessage(text);
-      });
-      
-      // Clear streaming state and THEN add complete response to conversation history
+      if (useLiveStream && !streamedAny && response.response) {
+        await simulateTyping(response.response, (text) => {
+          setStreamingMessage(text);
+        });
+      } else if (!useLiveStream && response.response) {
+        setIsStreaming(true);
+        setStreamingMessage('');
+        await simulateTyping(response.response, (text) => {
+          setStreamingMessage(text);
+        });
+      }
+
       setIsStreaming(false);
       setStreamingMessage('');
       addAssistantResponse(response.response);
+
+      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
+        setVoiceDisabledForSession(true);
+      }
+      if (autoReadBackEnabled) {
+        startReadback(response.response, {
+          safeguardCategory:
+            response.safeguardCategory && response.safeguardCategory !== 'D'
+              ? response.safeguardCategory
+              : undefined,
+        });
+      }
       
       console.log('Added complete response to conversation history');
 
@@ -346,6 +868,8 @@ export default function ChatScreen() {
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
       setIsTyping(false);
+      setIsStreaming(false);
+      setStreamingMessage('');
     }
   };
 
@@ -392,6 +916,10 @@ export default function ChatScreen() {
     // Start a fresh conversation, clear image, and navigate to home
     startNewConversation();
     setUploadedImage(null);
+    setVoiceDisabledForSession(false);
+    voiceSessionStartRef.current = null;
+    voiceBreakPromptShownRef.current = false;
+    stopReadback();
     router.push('/(tabs)/');
   };
 
@@ -460,6 +988,7 @@ export default function ChatScreen() {
 
       // Increment chat session count for share nudge tracking
       await shareNudgeService.incrementChatCount();
+      await shareNudgeService.requestDeferredTrigger('chat-session-complete');
       console.log('[CHAT] Chat saved and session count incremented for share nudge');
 
       Alert.alert('Chat Saved', 'Your conversation has been saved to history.');
@@ -736,8 +1265,11 @@ export default function ChatScreen() {
       alignItems: 'center',
       paddingHorizontal: 16,
       paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 6,
+      elevation: 2,
     },
     backButton: {
       padding: 8,
@@ -808,21 +1340,28 @@ export default function ChatScreen() {
       alignItems: 'flex-start',
     },
     messageBubble: {
-      maxWidth: '80%',
-      padding: 12,
-      borderRadius: 16,
+      maxWidth: '82%',
+      padding: 14,
+      borderRadius: 22,
     },
     userBubble: {
       backgroundColor: colors.primary,
-      borderBottomRightRadius: 4,
+      borderBottomRightRadius: 6,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      elevation: 3,
     },
     assistantBubble: {
       backgroundColor: colors.surface,
-      borderBottomLeftRadius: 4,
+      borderBottomLeftRadius: 6,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.06)',
     },
     messageText: {
       fontSize: 15,
-      lineHeight: 20,
+      lineHeight: 22,
     },
     userText: {
       color: '#FFFFFF',
@@ -839,18 +1378,20 @@ export default function ChatScreen() {
     typingIndicator: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 12,
-      backgroundColor: colors.border,
-      borderRadius: 16,
-      maxWidth: '80%',
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      backgroundColor: 'rgba(79, 209, 199, 0.12)',
+      borderRadius: 22,
+      borderBottomLeftRadius: 6,
+      maxWidth: '45%',
       marginBottom: 16,
     },
     typingDot: {
       width: 8,
       height: 8,
       borderRadius: 4,
-      backgroundColor: colors.textSecondary,
-      marginHorizontal: 2,
+      backgroundColor: colors.primary,
+      marginHorizontal: 3,
     },
     disclaimerContainer: {
       flexDirection: 'row',
@@ -859,9 +1400,7 @@ export default function ChatScreen() {
       paddingHorizontal: 16,
       paddingVertical: 8,
       paddingBottom: 12,
-      backgroundColor: colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      backgroundColor: colors.background,
     },
     disclaimerText: {
       fontSize: 12,
@@ -872,21 +1411,24 @@ export default function ChatScreen() {
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 6,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
       backgroundColor: colors.background,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -3 },
+      shadowOpacity: 0.07,
+      shadowRadius: 10,
+      elevation: 8,
     },
     inputWrapper: {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      borderRadius: 20,
-      paddingHorizontal: 12,
+      borderRadius: 26,
+      paddingHorizontal: 14,
       paddingVertical: 8,
-      marginHorizontal: 8,
+      marginHorizontal: 6,
     },
     uploadButton: {
       padding: 8,
@@ -932,14 +1474,150 @@ export default function ChatScreen() {
       maxHeight: 100,
     },
     sendButton: {
-      marginLeft: 8,
-      padding: 8,
+      marginLeft: 4,
       backgroundColor: colors.primary,
-      borderRadius: 20,
-      width: 40,
-      height: 40,
+      borderRadius: 24,
+      width: 46,
+      height: 46,
       justifyContent: 'center',
       alignItems: 'center',
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.35,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    sendButtonDisabled: {
+      backgroundColor: colors.border,
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    voiceButton: {
+      marginLeft: 2,
+      marginRight: 2,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    voiceRecordingBanner: {
+      marginHorizontal: 12,
+      marginBottom: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 10,
+    },
+    voiceRecordingText: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      marginTop: 8,
+    },
+    voiceHintText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      marginTop: 6,
+    },
+    voiceLevelTrack: {
+      width: '100%',
+      height: 8,
+      backgroundColor: colors.border,
+      borderRadius: 6,
+      overflow: 'hidden',
+    },
+    voiceLevelFill: {
+      height: '100%',
+      backgroundColor: colors.primary,
+      borderRadius: 6,
+    },
+    voiceActionRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 10,
+    },
+    voiceActionBtn: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: colors.background,
+    },
+    voiceActionText: {
+      color: colors.textPrimary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    readbackBar: {
+      marginHorizontal: 12,
+      marginBottom: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 10,
+    },
+    readbackText: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    voiceSettingsContent: {
+      padding: 16,
+      gap: 12,
+    },
+    voiceSettingsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    voiceSettingsLabel: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    voiceSettingsHint: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    speedRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 6,
+    },
+    speedChip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: colors.background,
+    },
+    speedChipText: {
+      color: colors.textPrimary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    voiceScroll: {
+      maxHeight: 200,
+      marginTop: 6,
+    },
+    errorContainer: {
+      marginTop: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.error,
+      backgroundColor: `${colors.error}22`,
+      padding: 10,
+    },
+    errorText: {
+      color: colors.error,
+      fontSize: 12,
+      lineHeight: 18,
     },
     modalOverlay: {
       flex: 1,
@@ -1030,6 +1708,34 @@ export default function ChatScreen() {
       height: 150,
       borderRadius: 8,
     },
+    analysisLinkButton: {
+      marginTop: 8,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: `${colors.primary}22`,
+      borderWidth: 1,
+      borderColor: `${colors.primary}66`,
+    },
+    analysisLinkText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    imageModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.92)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    imageModalClose: {
+      position: 'absolute',
+      top: 44,
+      right: 20,
+      zIndex: 2,
+      padding: 8,
+    },
   });
 
   return (
@@ -1071,10 +1777,13 @@ export default function ChatScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.title}>GutCheck</Text>
-          <Text style={styles.subtitle}>Your relationship companion</Text>
+          <Text style={styles.title}>GutChecks: Red Flags & Safety</Text>
+          <Text style={styles.subtitle}>Check the situation, not the feeling</Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.saveButton} onPress={() => setShowVoiceSettings(true)}>
+            <Ionicons name="volume-high-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.saveButton} onPress={saveCurrentChat}>
             <Ionicons name="bookmark-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
@@ -1102,8 +1811,8 @@ export default function ChatScreen() {
               <Ionicons name="chatbubbles" size={48} color={colors.primary} />
               <Text style={styles.welcomeTitle}>Hey there! 👋</Text>
               <Text style={styles.welcomeText}>
-                I'm here to help you understand what's happening in your relationships. 
-                Ask follow up questions - I'll listen and help you figure things out.
+                GutChecks helps you understand what is happening in everyday interactions and relationships.
+                Ask follow up questions to get practical guidance and next steps.
               </Text>
             </View>
           )}
@@ -1147,6 +1856,40 @@ export default function ChatScreen() {
           </View>
         )}
 
+        {isRecordingVoice && (
+          <View style={styles.voiceRecordingBanner}>
+            <View style={styles.voiceLevelTrack}>
+              <View style={[styles.voiceLevelFill, { width: `${Math.max(10, voiceLevel * 100)}%` }]} />
+            </View>
+            <Text style={styles.voiceRecordingText}>Listening... Tap Stop or Send when ready.</Text>
+            {voiceSilenceHint && (
+              <Text style={styles.voiceHintText}>Still listening. Tap Stop or Send when ready.</Text>
+            )}
+            <View style={styles.voiceActionRow}>
+              <TouchableOpacity style={styles.voiceActionBtn} onPress={stopVoiceInput}>
+                <Text style={styles.voiceActionText}>Stop</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceActionBtn} onPress={sendVoiceInput}>
+                <Text style={styles.voiceActionText}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {isSpeaking && (
+          <View style={styles.readbackBar}>
+            <Text style={styles.readbackText}>Read-back active</Text>
+            <View style={styles.voiceActionRow}>
+              <TouchableOpacity style={styles.voiceActionBtn} onPress={stopReadback}>
+                <Text style={styles.voiceActionText}>Mute/Pause</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceActionBtn} onPress={stopReadback}>
+                <Text style={styles.voiceActionText}>Skip</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Input Area */}
         <View style={styles.inputContainer}>
           <View style={styles.inputWrapper}>
@@ -1172,6 +1915,18 @@ export default function ChatScreen() {
               maxLength={500}
               editable={!isLoading}
             />
+
+            <TouchableOpacity
+              style={styles.voiceButton}
+              onPress={startVoiceInput}
+              disabled={isLoading || isRecordingVoice}
+            >
+              <Ionicons
+                name={isRecordingVoice ? 'mic' : 'mic-outline'}
+                size={20}
+                color={voiceDisabledForSession ? colors.textSecondary : colors.primary}
+              />
+            </TouchableOpacity>
             
             <TouchableOpacity 
               style={[
@@ -1193,8 +1948,135 @@ export default function ChatScreen() {
         {/* Disclaimer */}
         <View style={styles.disclaimerContainer}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
-          <Text style={styles.disclaimerText}>Disclaimer: This app is for guidance, not an authority. The final judgment will always lie with the user and or real world experts.</Text>
+          <Text style={styles.disclaimerText}>GutChecks is a guidance tool, not a counsellor, therapist, friend, or crisis service. If you are in danger, call 999. For confidential support, see the help options in the chat.</Text>
         </View>
+
+        <Modal
+          visible={showVoiceSettings}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowVoiceSettings(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.uploadModal}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Voice settings</Text>
+                <TouchableOpacity onPress={() => setShowVoiceSettings(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.voiceSettingsContent}>
+                <View style={styles.voiceSettingsRow}>
+                  <Text style={styles.voiceSettingsLabel}>Auto read-back</Text>
+                  <Switch
+                    value={autoReadBackEnabled}
+                    onValueChange={handleToggleAutoReadBack}
+                    trackColor={{ false: colors.border, true: `${colors.primary}99` }}
+                    thumbColor={autoReadBackEnabled ? colors.primary : '#f4f3f4'}
+                  />
+                </View>
+                <Text style={styles.voiceSettingsHint}>
+                  Off by default. If this session triggered a sensitive safeguarding template, voice input is disabled for the rest of the session.
+                </Text>
+                <Text style={styles.voiceSettingsLabel}>Read-back speed</Text>
+                <View style={styles.speedRow}>
+                  {(['0.75x', '1x', '1.25x', '1.5x', '2x'] as const).map((speed) => (
+                    <TouchableOpacity
+                      key={speed}
+                      onPress={() => setReadBackSpeed(speed)}
+                      style={[
+                        styles.speedChip,
+                        readBackSpeed === speed && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.speedChipText, readBackSpeed === speed && { color: '#fff' }]}>{speed}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.voiceSettingsLabel}>Read-back language</Text>
+                <Text style={styles.voiceSettingsHint}>
+                  English voices only for this release. Speech recognition follows this language.
+                </Text>
+                <View style={styles.speedRow}>
+                  {(['en-GB', 'en-US', 'en-AU'] as const).map((loc) => (
+                    <TouchableOpacity
+                      key={loc}
+                      onPress={() => {
+                        setReadBackLocale(loc);
+                        setReadBackVoiceId((prev) => {
+                          if (!prev) return null;
+                          const v = curatedVoices.find((x) => x.identifier === prev);
+                          if (!v) return null;
+                          const l = (v.language || '').toLowerCase();
+                          return l.startsWith(loc.toLowerCase()) ? prev : null;
+                        });
+                      }}
+                      style={[
+                        styles.speedChip,
+                        readBackLocale === loc && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.speedChipText, readBackLocale === loc && { color: '#fff' }]}>{loc}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.voiceSettingsLabel}>Read-back voice (curated)</Text>
+                <Text style={styles.voiceSettingsHint}>
+                  Neutral, English-only list. Founder review may narrow options before wider release.
+                </Text>
+                <ScrollView style={styles.voiceScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  <View style={styles.speedRow}>
+                    <TouchableOpacity
+                      onPress={() => setReadBackVoiceId(null)}
+                      style={[
+                        styles.speedChip,
+                        readBackVoiceId === null && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                    >
+                      <Text style={[styles.speedChipText, readBackVoiceId === null && { color: '#fff' }]}>
+                        System default
+                      </Text>
+                    </TouchableOpacity>
+                    {curatedVoices
+                      .filter((v) => (v.language || '').toLowerCase().startsWith(readBackLocale.toLowerCase()))
+                      .map((v) => (
+                        <TouchableOpacity
+                          key={v.identifier}
+                          onPress={() => {
+                            setReadBackVoiceId(v.identifier);
+                            const raw = (v.language || DEFAULT_VOICE_LOCALE).replace('_', '-');
+                            const parts = raw.split('-');
+                            const loc =
+                              parts.length >= 2
+                                ? `${parts[0].toLowerCase()}-${parts[1].toUpperCase()}`
+                                : DEFAULT_VOICE_LOCALE;
+                            setReadBackLocale(loc);
+                          }}
+                          style={[
+                            styles.speedChip,
+                            readBackVoiceId === v.identifier && {
+                              backgroundColor: colors.primary,
+                              borderColor: colors.primary,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.speedChipText,
+                              readBackVoiceId === v.identifier && { color: '#fff' },
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {v.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Upload Options Modal */}
         <Modal
@@ -1256,6 +2138,12 @@ export default function ChatScreen() {
           </View>
         </Modal>
       </KeyboardAvoidingView>
+
+      {/* Subscription Gate — blocks access when subscription has expired */}
+      <SubscriptionGateModal
+        visible={showSubscriptionGate}
+        onAccessRestored={() => setShowSubscriptionGate(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -143,7 +143,7 @@ export function BiometricLockScreen() {
           
           {/* Large logo */}
           <Image 
-            source={require('../../assets/gc-dark.png')} 
+            source={require('../../assets/new-gut-logo.jpeg')} 
             style={styles.logo}
             resizeMode="contain"
           />
@@ -152,7 +152,7 @@ export function BiometricLockScreen() {
         {/* Welcome Text */}
         <View style={styles.welcomeTextContainer}>
           <Text style={styles.welcomeTitle}>
-            <Text style={styles.boldText}>Welcome back to GutCheck!</Text>
+            <Text style={styles.boldText}>Welcome back to GutChecks: Red Flags & Safety!</Text>
           </Text>
           
           <Text style={styles.welcomeBody}>

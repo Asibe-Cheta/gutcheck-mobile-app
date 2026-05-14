@@ -18,8 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
-import { revenueCatService } from '@/lib/revenueCatService';
-import { getLifetimeProService } from '@/lib/lifetimeProService';
+import { userHasPremiumAccess } from '@/lib/subscriptionAccess';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import { NotificationStorageService } from '@/lib/notificationStorage';
 import { BiometricSetupModal } from '@/components/BiometricSetupModal';
@@ -28,6 +27,9 @@ import { useAppLock } from '@/contexts/AppLockContext';
 import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 import ShareNudgeModal from '@/components/ShareNudgeModal';
 import { shareNudgeService } from '@/lib/shareNudgeService';
+import { SubscriptionGateModal } from '@/components/SubscriptionGateModal';
+import ActionStepFollowUpModal from '@/components/ActionStepFollowUpModal';
+import { actionStepTrackerService, type PendingActionStepFollowUp } from '@/lib/actionStepTrackerService';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -39,6 +41,8 @@ export default function HomeScreen() {
   const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
   const [showShareNudge, setShowShareNudge] = useState(false);
+  const [showSubscriptionGate, setShowSubscriptionGate] = useState(false);
+  const [pendingActionFollowUp, setPendingActionFollowUp] = useState<PendingActionStepFollowUp | null>(null);
   
   // Get subscription state from store (synchronous check)
   const { subscription, isLifetimePro } = useSubscriptionStore();
@@ -63,26 +67,54 @@ export default function HomeScreen() {
     "A website is asking for my details to win a prize, should I share?"
   ];
 
-  // Authentication verification only
+  // Helper: check subscription and show/hide the gate modal accordingly.
+  // Returns true if access is granted (so callers can chain work after it).
+  const checkSubscriptionAccess = async (): Promise<boolean> => {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
+      if (!userId || isLoggedIn !== 'true') return false;
+
+      const hasAccess = await userHasPremiumAccess(userId);
+      setShowSubscriptionGate(!hasAccess);
+      return hasAccess;
+    } catch (subError) {
+      console.warn('[HOME] Subscription check error (denying access):', subError);
+      setShowSubscriptionGate(true);
+      return false;
+    }
+  };
+
+  // Authentication + initial subscription check on mount
   useEffect(() => {
+    shareNudgeService.startNewSession();
     const verifyAuth = async () => {
       try {
         console.log('[HOME] ==== AUTHENTICATION CHECK ====');
-        
+
         const userId = await AsyncStorage.getItem('user_id');
         const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
-        
+
         if (!userId || isLoggedIn !== 'true') {
           console.log('[HOME] ❌ Not authenticated - redirecting to welcome');
           router.replace('/(auth)/welcome');
           return;
         }
-        
-        console.log('[HOME] ✅ User authenticated - access granted');
+
+        const hasAccess = await checkSubscriptionAccess();
+        if (!hasAccess) {
+          console.log('[HOME] No premium access — sending user to subscription');
+          setIsCheckingSubscription(false);
+          router.replace('/subscription');
+          return;
+        }
+
+        console.log('[HOME] Auth + subscription check complete');
         setIsCheckingSubscription(false);
-        
+
         // Check if user should see biometric setup prompt
         await checkBiometricSetupPrompt();
+        await checkActionStepFollowUp();
       } catch (error) {
         console.error('[HOME] Error verifying authentication:', error);
         setIsCheckingSubscription(false);
@@ -91,6 +123,16 @@ export default function HomeScreen() {
     };
 
     verifyAuth();
+  }, []);
+
+  // Continuously re-check subscription every 90 seconds while this screen is mounted.
+  // This catches mid-session expiry (e.g. trial ends while app is open).
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const ok = await checkSubscriptionAccess();
+      if (!ok) router.replace('/subscription');
+    }, 90_000);
+    return () => clearInterval(interval);
   }, []);
 
   const checkBiometricSetupPrompt = async () => {
@@ -149,7 +191,7 @@ export default function HomeScreen() {
       if (result.success) {
         Alert.alert(
           'Success',
-          `${biometricType} has been enabled. You'll be prompted to authenticate when you open GutCheck.`,
+          `${biometricType} has been enabled. You'll be prompted to authenticate when you open GutChecks: Red Flags & Safety.`,
           [{ text: 'OK' }]
         );
       } else {
@@ -182,8 +224,11 @@ export default function HomeScreen() {
       loadUnreadCount();
 
       // Check if we should show share nudge
-      checkShareNudge();
-    }, [])
+      checkActionStepFollowUp();
+      if (!pendingActionFollowUp) {
+        checkShareNudge();
+      }
+    }, [pendingActionFollowUp])
   );
   
   const loadUnreadCount = async () => {
@@ -191,12 +236,22 @@ export default function HomeScreen() {
     setUnreadNotifications(count);
   };
 
-  const checkShareNudge = async () => {
+  const checkShareNudge = async (source: 'focus' | 'action-followup' | 'hub-quiz' | 'post-query' = 'focus') => {
+    if (pendingActionFollowUp) return;
     try {
+      const deferred = await shareNudgeService.popDeferredTrigger();
+      const triggerSource = (
+        deferred === 'hub-quiz-complete'
+          ? 'hub-quiz'
+          : deferred === 'chat-session-complete'
+            ? 'post-query'
+            : source
+      ) as 'focus' | 'action-followup' | 'hub-quiz' | 'post-query';
+
       // Check if we should show the share nudge
       const shouldShow = await shareNudgeService.shouldShowNudge();
       if (shouldShow) {
-        console.log('[HOME] Share nudge trigger met, showing modal');
+        console.log('[HOME] Share nudge trigger met, showing modal from:', triggerSource);
         // Small delay to avoid showing multiple modals at once
         setTimeout(() => {
           setShowShareNudge(true);
@@ -207,6 +262,47 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('[HOME] Error checking share nudge:', error);
     }
+  };
+
+  const checkActionStepFollowUp = async () => {
+    try {
+      const pending = await actionStepTrackerService.getPendingFollowUp();
+      if (pending) {
+        setPendingActionFollowUp(pending);
+      }
+    } catch (error) {
+      console.error('[HOME] Error checking action step follow-up:', error);
+    }
+  };
+
+  const handleSubmitActionFollowUp = async (payload: { selectedStepIndexes: number[]; barrierText?: string }) => {
+    if (!pendingActionFollowUp) return;
+    await actionStepTrackerService.submitFollowUp({
+      sourceChatId: pendingActionFollowUp.sourceChatId,
+      sourceChatUpdatedAt: pendingActionFollowUp.sourceChatUpdatedAt,
+      selectedStepIndexes: payload.selectedStepIndexes,
+      totalStepsPresented: pendingActionFollowUp.steps.length,
+      barrierText: payload.barrierText,
+      sourceCategory: pendingActionFollowUp.sourceCategory,
+    });
+    setPendingActionFollowUp(null);
+    Alert.alert('Thanks for the feedback', 'This helps GutChecks improve practical guidance.');
+    setTimeout(() => {
+      checkShareNudge('action-followup');
+    }, 250);
+  };
+
+  const handleSkipActionFollowUp = async () => {
+    if (!pendingActionFollowUp) return;
+    await actionStepTrackerService.skipFollowUp({
+      sourceChatId: pendingActionFollowUp.sourceChatId,
+      sourceChatUpdatedAt: pendingActionFollowUp.sourceChatUpdatedAt,
+      totalStepsPresented: pendingActionFollowUp.steps.length,
+    });
+    setPendingActionFollowUp(null);
+    setTimeout(() => {
+      checkShareNudge('action-followup');
+    }, 250);
   };
 
 
@@ -362,16 +458,23 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Image 
-              source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
+              source={require('../../../assets/new-gut-logo.jpeg')} 
               style={styles.headerLogo}
               resizeMode="contain"
             />
-            <Text style={styles.appTitle}>Home</Text>
+            <View style={styles.headerTitleContainer}>
+              <Text style={styles.appTitle}>GutChecks: Red Flags & Safety</Text>
+            </View>
           </View>
           <TouchableOpacity 
             style={styles.notificationButton}
@@ -386,7 +489,10 @@ export default function HomeScreen() {
 
         {/* Main Content */}
         <View style={styles.mainContent}>
-          <Text style={styles.greeting}>How can I help you today?</Text>
+          <Text style={styles.greeting}>What situation would you like to check?</Text>
+          <Text style={[styles.subGreeting, { color: currentTheme.textSecondary }]}>
+            Share what happened or upload a screenshot for analysis
+          </Text>
           
           {/* Analysis Input */}
           <View style={styles.inputContainer}>
@@ -436,6 +542,7 @@ export default function HomeScreen() {
 
           {/* Quick Prompts */}
           <View style={styles.promptsContainer}>
+            <Text style={styles.promptsLabel}>Try asking:</Text>
             {quickPrompts.map((prompt, index) => (
               <TouchableOpacity
                 key={index}
@@ -472,7 +579,7 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
         </View>
-        </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
 
       {/* Upload Options Modal */}
@@ -553,7 +660,23 @@ export default function HomeScreen() {
       {/* Share Nudge Modal */}
       <ShareNudgeModal
         visible={showShareNudge}
-        onClose={() => setShowShareNudge(false)}
+        onClose={() => {
+          shareNudgeService.markSessionDismissed();
+          setShowShareNudge(false);
+        }}
+      />
+
+      <ActionStepFollowUpModal
+        visible={!!pendingActionFollowUp}
+        steps={pendingActionFollowUp?.steps || []}
+        onSubmit={handleSubmitActionFollowUp}
+        onSkip={handleSkipActionFollowUp}
+      />
+
+      {/* Subscription Gate — blocks access when subscription has expired */}
+      <SubscriptionGateModal
+        visible={showSubscriptionGate}
+        onAccessRestored={() => setShowSubscriptionGate(false)}
       />
     </SafeAreaView>
   );
@@ -570,27 +693,39 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
+  contentContainer: {
+    paddingBottom: 20,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16, // py-4
     paddingHorizontal: 16, // p-4
+    marginBottom: 8,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+    paddingRight: 12,
   },
   headerLogo: {
-    width: 43,
-    height: 43,
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+  },
+  headerTitleContainer: {
+    flexDirection: 'column',
+    flex: 1,
   },
   appTitle: {
-    fontSize: 20, // text-xl
-    fontWeight: '700', // font-bold
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.textPrimary,
     fontFamily: 'Inter',
+    lineHeight: 20,
   },
   notificationButton: {
     padding: 4,
@@ -606,50 +741,72 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: '#43B897',
   },
   mainContent: {
-    flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: 16, // p-4
     gap: 24, // space-y-6
   },
   greeting: {
-    fontSize: 24, // text-2xl
-    fontWeight: '700', // font-bold
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.textPrimary,
     fontFamily: 'Inter',
+    marginBottom: 8,
+    lineHeight: 32,
+  },
+  subGreeting: {
+    fontSize: 14,
+    fontWeight: '400',
+    fontFamily: 'Inter',
+    marginBottom: 20,
+    lineHeight: 20,
   },
   inputContainer: {
     marginBottom: 16,
   },
   textArea: {
     width: '100%',
-    height: 192, // h-48
-    padding: 16, // p-4
-    borderRadius: 8, // rounded-lg
+    height: 148,
+    padding: 16,
+    borderRadius: 20,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
     color: colors.textPrimary,
-    fontSize: 16, // text-base
+    fontSize: 16,
     fontFamily: 'Inter',
     lineHeight: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   promptsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8, // gap-2
+    gap: 8,
     marginBottom: 16,
   },
+  promptsLabel: {
+    width: '100%',
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    fontFamily: 'Inter',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
   promptButton: {
-    paddingHorizontal: 16, // px-4
-    paddingVertical: 8, // py-2
-    borderRadius: 20, // rounded-full
-    backgroundColor: 'rgba(79, 209, 199, 0.1)', // bg-primary/10
-    borderWidth: 1,
-    borderColor: 'rgba(79, 209, 199, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: 'rgba(79, 209, 199, 0.1)',
   },
   promptButtonSelected: {
-    backgroundColor: 'rgba(79, 209, 199, 0.2)', // bg-primary/20
-    borderColor: colors.primary,
+    backgroundColor: 'rgba(79, 209, 199, 0.22)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 2,
   },
   promptText: {
     fontSize: 14, // text-sm
@@ -663,14 +820,21 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   analyzeButton: {
     width: '100%',
-    paddingVertical: 16, // py-4
-    borderRadius: 8, // rounded-lg
+    paddingVertical: 18,
+    borderRadius: 16,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 5,
   },
   analyzeButtonDisabled: {
     backgroundColor: colors.surface,
+    shadowOpacity: 0,
+    elevation: 0,
     opacity: 0.5,
   },
   analyzeButtonText: {
@@ -703,14 +867,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
-    paddingVertical: 12,
+    marginTop: 10,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    borderStyle: 'dashed',
+    borderRadius: 14,
+    backgroundColor: 'rgba(79, 209, 199, 0.08)',
   },
   uploadButtonText: {
     marginLeft: 8,

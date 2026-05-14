@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
 import { biometricAuthService } from '@/lib/biometricAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userHasPremiumAccess } from '@/lib/subscriptionAccess';
 
 export default function LoginPinScreen() {
   const { isDark } = useTheme();
@@ -80,9 +81,13 @@ export default function LoginPinScreen() {
       }
       
       setIsLoggingIn(false);
-      
-      // Navigate to main app
-      router.replace('/(tabs)');
+
+      const uid = await AsyncStorage.getItem('user_id');
+      if (await userHasPremiumAccess(uid)) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/subscription');
+      }
     } catch (error) {
       console.error('[LOGIN] Biometric login error:', error);
       Alert.alert('Error', 'An error occurred during biometric authentication. Please try again.');
@@ -112,8 +117,12 @@ export default function LoginPinScreen() {
     setIsLoggingIn(false);
 
     if (result.success) {
-      // Navigate to main app
-      router.replace('/(tabs)');
+      const uid = await AsyncStorage.getItem('user_id');
+      if (await userHasPremiumAccess(uid)) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/subscription');
+      }
     } else {
       Alert.alert('Login Failed', result.error || 'Invalid username or PIN');
       setPin(''); // Clear PIN on error
@@ -375,13 +384,9 @@ export default function LoginPinScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.forgotPinButton}
-          onPress={() => Alert.alert(
-            'Forgot PIN?',
-            'Unfortunately, PINs cannot be recovered for security reasons. You\'ll need to create a new account.',
-            [{ text: 'OK' }]
-          )}
+          onPress={() => router.push('/(auth)/account-recovery')}
         >
           <Text style={styles.forgotPinText}>Forgot PIN?</Text>
         </TouchableOpacity>

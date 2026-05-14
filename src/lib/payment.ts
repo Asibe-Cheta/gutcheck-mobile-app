@@ -77,8 +77,8 @@ class PrivacyPaymentService {
             price_data: {
               currency: currency.toLowerCase(),
               product_data: {
-                name: 'GutCheck Premium',
-                description: 'Anonymous relationship analysis service',
+                name: 'GutChecks Premium',
+                description: 'Anonymous interaction analysis service',
               },
               unit_amount: amount * 100, // Convert to pence
             },
@@ -234,7 +234,7 @@ class PrivacyPaymentService {
    * Get anonymous billing description
    */
   getBillingDescription(): string {
-    return 'GutCheck Premium - Anonymous Analysis Service';
+    return 'GutChecks Premium - Anonymous Analysis Service';
   }
 }
 

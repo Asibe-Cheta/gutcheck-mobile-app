@@ -5,12 +5,14 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import { recommendProtectService } from './recommendProtectService';
 
 const STORAGE_KEYS = {
   CHAT_SESSION_COUNT: 'share_nudge_chat_count',
   LAST_NUDGE_SHOWN: 'share_nudge_last_shown',
   NUDGE_SHOW_COUNT: 'share_nudge_show_count',
   CHATS_SINCE_LAST_NUDGE: 'share_nudge_chats_since_last',
+  DEFERRED_TRIGGER: 'share_nudge_deferred_trigger',
 };
 
 const NUDGE_CONFIG = {
@@ -28,6 +30,41 @@ interface NudgeState {
 }
 
 class ShareNudgeService {
+  private sessionPromptShown = false;
+  private sessionPromptDismissed = false;
+
+  startNewSession(): void {
+    this.sessionPromptShown = false;
+    this.sessionPromptDismissed = false;
+  }
+
+  markSessionDismissed(): void {
+    this.sessionPromptDismissed = true;
+  }
+
+  async requestDeferredTrigger(source: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.DEFERRED_TRIGGER,
+        JSON.stringify({ source, createdAt: Date.now() })
+      );
+    } catch (error) {
+      console.warn('[ShareNudge] Failed to store deferred trigger:', error);
+    }
+  }
+
+  async popDeferredTrigger(): Promise<string | null> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.DEFERRED_TRIGGER);
+      if (!raw) return null;
+      await AsyncStorage.removeItem(STORAGE_KEYS.DEFERRED_TRIGGER);
+      const parsed = JSON.parse(raw) as { source?: string };
+      return parsed.source || null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Increment chat session count
    * Call this after user completes a chat conversation
@@ -53,6 +90,17 @@ class ShareNudgeService {
    */
   async shouldShowNudge(): Promise<boolean> {
     try {
+      if (this.sessionPromptShown || this.sessionPromptDismissed) {
+        console.log('[ShareNudge] Session suppression active');
+        return false;
+      }
+
+      const hasAvailableSlot = await recommendProtectService.hasAvailableSlot();
+      if (!hasAvailableSlot) {
+        console.log('[ShareNudge] No remaining recommendation slots');
+        return false;
+      }
+
       const state = await this.getNudgeState();
 
       // Check 1: Haven't exceeded max lifetime shows
@@ -100,6 +148,7 @@ class ShareNudgeService {
    */
   async markNudgeShown(): Promise<void> {
     try {
+      this.sessionPromptShown = true;
       const currentCount = await this.getNudgeShowCount();
       await AsyncStorage.multiSet([
         [STORAGE_KEYS.NUDGE_SHOW_COUNT, String(currentCount + 1)],

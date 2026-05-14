@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, getThemeColors } from '@/lib/theme';
@@ -20,6 +20,9 @@ import { panicButtonService } from '@/lib/panicButtonService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import { useAppLock } from '@/contexts/AppLockContext';
 import { BiometricLockScreen } from '@/components/BiometricLockScreen';
+import * as Clipboard from 'expo-clipboard';
+import { getPinForReveal } from '@/lib/pinRevealStorage';
+import { externalUrls, GOOGLE_PLAY_APP_TITLE } from '@/lib/externalUrls';
 
 // Settings Item Component
 const SettingsItem = ({ 
@@ -166,7 +169,7 @@ export default function SettingsScreen() {
         setPanicButtonEnabled(true);
         Alert.alert(
           '🚨 Panic Button Enabled',
-          'Triple-tap anywhere on the screen to instantly exit to a calculator screen.\n\nThis feature is designed to help you quickly hide the app if you\'re in an unsafe situation.\n\nTo return to GutCheck, simply navigate back from the calculator.',
+          'Triple-tap anywhere on the screen to instantly exit to a calculator screen.\n\nThis feature is designed to help you quickly hide the app if you\'re in an unsafe situation.\n\nTo return to GutChecks: Red Flags & Safety, simply navigate back from the calculator.',
           [{ text: 'Got It', style: 'default' }]
         );
       } else {
@@ -270,7 +273,7 @@ export default function SettingsScreen() {
           setBiometricEnabled(true);
           Alert.alert(
             `${biometricType} Enabled`,
-            `You can now use ${biometricType} to quickly sign in to GutCheck.`,
+            `You can now use ${biometricType} to quickly sign in to GutChecks: Red Flags & Safety.`,
             [{ text: 'Great!', style: 'default' }]
           );
         } else {
@@ -322,6 +325,10 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleAwarenessHubAgePress = () => {
+    router.push('/(tabs)/awareness-hub?openAgeGate=1');
+  };
+
   const handleHelpPress = () => {
     router.push('/faq');
   };
@@ -332,10 +339,65 @@ export default function SettingsScreen() {
 
   const handleAboutPress = () => {
     Alert.alert(
-      'About GutCheck',
-      'GutCheck v2.0.2\n\nYour confidential relationship companion that helps you navigate complex social situations with confidence.\n\n✨ Key Features:\n• AI-powered relationship analysis\n• Red flag detection\n• Anonymous and secure\n• Panic button (triple-tap to exit)\n• Daily supportive notifications\n• Export evidence as PDF\n• Local data storage\n• Crisis resources\n\n© 2024 GutCheck. Your safety matters.',
+      'About GutChecks: Red Flags & Safety',
+      'GutChecks: Red Flags & Safety v2.0.2\n\nYour confidential guidance tool for navigating everyday interactions and relationships with confidence.\n\n✨ Key Features:\n• AI-powered interaction analysis\n• Red flag detection\n• Anonymous and secure\n• Panic button (triple-tap to exit)\n• Daily supportive notifications\n• Export evidence as PDF\n• Local data storage\n• Crisis resources\n\n© 2024 GutChecks: Red Flags & Safety. Your safety matters.',
       [{ text: 'OK', style: 'default' }]
     );
+  };
+
+  const handleShowMyPin = async () => {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) {
+        Alert.alert('Not signed in', 'Sign in to use this option.');
+        return;
+      }
+
+      const cachedPin = await getPinForReveal(userId);
+      if (!cachedPin) {
+        Alert.alert(
+          'PIN reminder unavailable',
+          'Your PIN is not saved for viewing on this device yet. Sign out and sign in once with your username and PIN (it will be stored only in your phone’s secure storage). You can also reset your PIN with your recovery code from the login screen.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+
+      const biometricAvailable = await biometricAuthService.isAvailable();
+      if (!biometricAvailable) {
+        Alert.alert(
+          'Verification required',
+          'Use Face ID, Touch ID, or your device passcode to show your PIN. Set up biometrics on your device first, or reset your PIN with your recovery code from the login screen.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+
+      const authResult = await biometricAuthService.authenticate();
+      if (!authResult.success) {
+        if (authResult.error && !/cancel/i.test(authResult.error)) {
+          Alert.alert('Could not verify', authResult.error);
+        }
+        return;
+      }
+
+      Alert.alert('Your PIN', cachedPin, [
+        {
+          text: 'Copy',
+          onPress: async () => {
+            try {
+              await Clipboard.setStringAsync(cachedPin);
+            } catch (e) {
+              console.warn('[SETTINGS] Copy PIN failed:', e);
+            }
+          },
+        },
+        { text: 'Done', style: 'default' },
+      ]);
+    } catch (e) {
+      console.error('[SETTINGS] Show PIN error:', e);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    }
   };
 
   const handleLogout = () => {
@@ -361,46 +423,64 @@ export default function SettingsScreen() {
     );
   };
 
+  const performDeleteAccount = async () => {
+    try {
+      await biometricAuthService.disableBiometricAuth();
+    } catch (e) {
+      console.warn('[SETTINGS] Biometric disable before account delete:', e);
+    }
+
+    const result = await authService.deleteAccount();
+    console.log('Delete account result:', result);
+
+    if (result.success) {
+      Alert.alert(
+        'Account Deleted',
+        'Your account has been permanently deleted. Thank you for using GutChecks: Red Flags & Safety.',
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/welcome') }]
+      );
+      return;
+    }
+
+    console.error('Delete account failed:', result.error);
+    Alert.alert(
+      'Something went wrong',
+      result.error || 'We could not finish deleting your account. Please try again.',
+    );
+  };
+
   const handleDeleteAccount = () => {
     console.log('Delete Account button pressed');
-    
-    // Use web-compatible confirm dialogs
-    const firstConfirm = confirm(
-      'Delete Account\n\nAre you sure you want to permanently delete your account? This action cannot be undone and will remove all your data, conversations, and settings.'
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account? This action cannot be undone and will remove all your data, conversations, and settings.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            // Defer second alert so the first can dismiss cleanly (avoids blank / stuck dialogs on some iOS/Android builds).
+            setTimeout(() => {
+              Alert.alert(
+                'Final Confirmation',
+                'This will permanently delete your account and all data. Are you absolutely sure?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete Account',
+                    style: 'destructive',
+                    onPress: () => {
+                      performDeleteAccount();
+                    },
+                  },
+                ]
+              );
+            }, 300);
+          },
+        },
+      ]
     );
-    
-    if (!firstConfirm) {
-      console.log('First confirmation cancelled');
-      return;
-    }
-    
-    console.log('First confirmation accepted');
-    
-    const secondConfirm = confirm(
-      'Final Confirmation\n\nThis will permanently delete your account and all data. Are you absolutely sure?'
-    );
-    
-    if (!secondConfirm) {
-      console.log('Second confirmation cancelled');
-      return;
-    }
-    
-    console.log('Second confirmation accepted, deleting account...');
-    
-    // Perform the deletion
-    const performDeletion = async () => {
-      const result = await authService.deleteAccount();
-      console.log('Delete account result:', result);
-      
-      if (result.success) {
-        alert('Account Deleted\n\nYour account has been permanently deleted. Thank you for using GutCheck.');
-        router.replace('/(auth)/welcome');
-      } else {
-        alert('Error\n\n' + (result.error || 'Failed to delete account'));
-      }
-    };
-    
-    performDeletion();
   };
 
   const styles = createStyles(isDark);
@@ -422,7 +502,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Image 
-            source={isDark ? require('../../../assets/gc-dark.png') : require('../../../assets/gc-white.png')} 
+            source={require('../../../assets/new-gut-logo.jpeg')} 
             style={styles.headerLogo}
             resizeMode="contain"
           />
@@ -461,6 +541,14 @@ export default function SettingsScreen() {
                 Alert.alert('Error', `Failed to navigate: ${error?.message}`);
               }
             }}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <SettingsItem
+            icon="keypad"
+            title="Show my PIN"
+            description="Verify with Face ID or Touch ID. Stored only on this device."
+            onPress={handleShowMyPin}
             styles={styles}
             colors={currentTheme}
           />
@@ -566,6 +654,14 @@ export default function SettingsScreen() {
             colors={currentTheme}
           />
           <SettingsItem
+            icon="school"
+            title="Awareness Hub Age Group"
+            description="Review or update age-based Hub content gating"
+            onPress={handleAwarenessHubAgePress}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <SettingsItem
             icon="language"
             title="Language"
             description="Choose your preferred language"
@@ -613,6 +709,18 @@ export default function SettingsScreen() {
             styles={styles}
             colors={currentTheme}
           />
+          <SettingsItem
+            icon="document-text"
+            title="Account deletion (web)"
+            description={`Official ${GOOGLE_PLAY_APP_TITLE} instructions for Google Play / support`}
+            onPress={() => {
+              Linking.openURL(externalUrls.accountDeletion).catch(() => {
+                Alert.alert('Unable to open link', `Please open ${externalUrls.accountDeletion} in your browser.`);
+              });
+            }}
+            styles={styles}
+            colors={currentTheme}
+          />
         </View>
 
         {/* Support Section */}
@@ -637,16 +745,8 @@ export default function SettingsScreen() {
           <SettingsItem
             icon="information-circle"
             title="About"
-            description="Learn more about GutCheck"
+            description={`Learn more about ${GOOGLE_PLAY_APP_TITLE}`}
             onPress={handleAboutPress}
-            styles={styles}
-            colors={currentTheme}
-          />
-          <SettingsItem
-            icon="bug"
-            title="Debug Info"
-            description="View debug information and logs"
-            onPress={() => router.push('/debug')}
             styles={styles}
             colors={currentTheme}
           />

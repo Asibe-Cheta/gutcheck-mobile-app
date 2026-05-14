@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
 import { getLogs, exportLogsAsText } from '@/lib/logCapture';
+import { externalUrls } from '@/lib/externalUrls';
 
 console.log('[SUB_FILE] ✅ All basic imports completed successfully');
 
@@ -71,6 +72,15 @@ console.log('[SUB_MODULE] Module load complete. useSubscriptionStore:', !!useSub
 let getThemeColors: any = null;
 let useTheme: any = null;
 let Ionicons: any = null;
+
+// Import trial tracking service for reminders
+let trialTrackingService: any = null;
+try {
+  const trialModule = require('@/lib/trialTrackingService');
+  trialTrackingService = trialModule.trialTrackingService;
+} catch (_) {
+  // Trial tracking not available
+}
 
 try {
   console.log('[SUB_MODULE] Step 3: Loading theme utilities...');
@@ -318,6 +328,24 @@ export default function SubscriptionScreen() {
           if (!returningFromPurchase) {
             // Normal navigation to subscription screen - don't auto-navigate
             console.log('[SUB] Normal navigation detected - not auto-navigating');
+            
+            // Check for trial reminders even if not returning from purchase
+            if (trialTrackingService) {
+              const reminders = await trialTrackingService.checkAndSendReminders();
+              if (reminders.shouldRemind24h) {
+                Alert.alert(
+                  'Trial Ends Tomorrow',
+                  'Your free trial ends in 24 hours. Stay subscribed to continue enjoying premium features!',
+                  [{ text: 'OK' }]
+                );
+              } else if (reminders.shouldRemind48h) {
+                Alert.alert(
+                  'Your Trial is Active',
+                  'You have 2 days left in your free trial. Explore all premium features!',
+                  [{ text: 'Great!' }]
+                );
+              }
+            }
             return;
           }
           
@@ -472,8 +500,8 @@ export default function SubscriptionScreen() {
       const userId = await AsyncStorage.getItem('user_id');
       if (!userId) {
         Alert.alert(
-          'Login Required',
-          'You must create an account and log in before you can restore purchases. This ensures your purchases are linked to your account.',
+          'Sign in required',
+          'Create or sign in to a GutChecks: Red Flags & Safety account first. Your subscription is tied to your Apple ID on this device; Restore Purchases will attach it to the account you are signed into.',
           [{ text: 'OK' }]
         );
         return;
@@ -503,7 +531,12 @@ export default function SubscriptionScreen() {
             ]
           );
         } else {
-          Alert.alert('No Purchases Found', 'No previous purchases were found to restore for your account.');
+          Alert.alert(
+            'No active subscription found',
+            Platform.OS === 'ios'
+              ? 'We could not find an active subscription for this Apple ID on this device. If you use Family Sharing, the subscriber must restore. You can also check Settings → Apple ID → Subscriptions.'
+              : 'We could not find an active subscription for this Google account on this device. Open Play Store → Payments & subscriptions to verify.',
+          );
         }
       } else {
         Alert.alert('Restore Failed', result.error || 'Failed to restore purchases. Please try again.');
@@ -512,6 +545,45 @@ export default function SubscriptionScreen() {
       console.error('Restore purchases error:', error);
       Alert.alert('Error', 'Failed to restore purchases. Please try again.');
     }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign out?',
+      'You will return to the welcome screen. You can sign in again anytime with your username and PIN.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { biometricAuthService } = await import('@/lib/biometricAuth');
+              await biometricAuthService.disableBiometricAuth();
+            } catch (e) {
+              console.warn('[SUB] Biometric disable on sign out:', e);
+            }
+            try {
+              const { authService } = await import('@/lib/authService');
+              const result = await authService.logout();
+              if (result.success) {
+                try {
+                  useSubscriptionStore.getState().reset();
+                } catch (_) {
+                  /* non-fatal */
+                }
+                router.replace('/(auth)/welcome');
+              } else {
+                Alert.alert('Error', result.error || 'Could not sign out. Please try again.');
+              }
+            } catch (e) {
+              console.error('[SUB] Sign out error:', e);
+              Alert.alert('Error', 'Could not sign out. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleCancelSubscription = () => {
@@ -1013,6 +1085,33 @@ export default function SubscriptionScreen() {
       flex: 1,
       lineHeight: 20,
     },
+    signOutButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: 'rgba(248, 113, 113, 0.55)',
+      backgroundColor: 'rgba(248, 113, 113, 0.1)',
+    },
+    signOutButtonText: {
+      marginLeft: 10,
+      fontSize: 17,
+      fontWeight: '700',
+      color: '#f87171',
+    },
+    signOutHint: {
+      marginTop: 10,
+      marginBottom: 4,
+      textAlign: 'center',
+      fontSize: 13,
+      color: colors.textSecondary,
+      paddingHorizontal: 12,
+      lineHeight: 18,
+    },
     lifetimeProInfo: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1173,7 +1272,7 @@ export default function SubscriptionScreen() {
             console.log('[SUB] ❌ Back button blocked - subscription required to continue');
             Alert.alert(
               'Subscription Required',
-              'To access GutCheck, you need an active subscription. You can restore previous purchases if you already subscribed, or choose a plan.',
+              'To access GutChecks: Red Flags & Safety, you need an active subscription. You can restore previous purchases if you already subscribed, or choose a plan.',
               [
                 { text: 'OK' }
               ]
@@ -1281,7 +1380,7 @@ export default function SubscriptionScreen() {
           ) : null;
         })()}
 
-        {/* Primary CTA - START YOUR 3 DAY FREE TRIAL */}
+        {/* Primary CTA - START YOUR 7 DAY FREE TRIAL */}
         <TouchableOpacity
           style={styles.ctaButtonWrap}
           onPress={() => handleSubscribe(selectedPlanId)}
@@ -1295,18 +1394,18 @@ export default function SubscriptionScreen() {
               end={{ x: 1, y: 0 }}
               style={[styles.ctaButton, styles.ctaButtonGradient]}
             >
-              <Text style={styles.ctaButtonText}>START YOUR 3 DAY FREE TRIAL</Text>
+              <Text style={styles.ctaButtonText}>START YOUR 7 DAY FREE TRIAL</Text>
             </LinearGradient>
           ) : (
             <View style={[styles.ctaButton, styles.ctaButtonSolid]}>
-              <Text style={styles.ctaButtonText}>START YOUR 3 DAY FREE TRIAL</Text>
+              <Text style={styles.ctaButtonText}>START YOUR 7 DAY FREE TRIAL</Text>
             </View>
           )}
         </TouchableOpacity>
 
         {/* Billing disclaimer */}
         <Text style={styles.billingDisclaimer}>
-          Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after free trial ends. Renews automatically.
+          Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after 7-day free trial ends. Renews automatically.
         </Text>
 
         {/* Restore Purchases Button - Only show if user is logged in */}
@@ -1334,9 +1433,28 @@ export default function SubscriptionScreen() {
           <View style={styles.restoreInfoCard}>
             <Ionicons name="information-circle" size={20} color={colors.textSecondary} />
             <Text style={styles.restoreInfoText}>
-              Create an account to restore previous purchases. Purchases are linked to your account for security.
+              Sign in to GutChecks: Red Flags & Safety first. Subscriptions are billed through Apple (or Google on Android) and follow that store account; Restore links that subscription to your current GutChecks: Red Flags & Safety profile—even if this is a new profile.
             </Text>
           </View>
+        )}
+
+        {hasUserId && (
+          <>
+            <TouchableOpacity
+              style={[styles.signOutButton, isLoading && styles.restoreButtonDisabled]}
+              onPress={handleSignOut}
+              disabled={isLoading}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out of GutChecks: Red Flags & Safety"
+            >
+              <Ionicons name="log-out-outline" size={22} color="#f87171" />
+              <Text style={styles.signOutButtonText}>Sign out</Text>
+            </TouchableOpacity>
+            <Text style={styles.signOutHint}>
+              Stuck here? Sign out to return to the welcome screen, use another account, or subscribe later.
+            </Text>
+          </>
         )}
 
         {/* Test Button: Remove Lifetime Pro for IAP Testing (TestFlight/Dev only) */}
@@ -1438,14 +1556,20 @@ export default function SubscriptionScreen() {
         <View style={styles.faqSection}>
           <Text style={styles.faqTitle}>Frequently Asked Questions</Text>
           
-          {/* How to cancel - Both platforms */}
+          {/* How to cancel - iOS only on iOS build (Guideline 2.3.10: no Android/Google references) */}
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>How do I cancel my subscription?</Text>
             <Text style={styles.faqAnswer}>
-              <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
-              Go to Settings &gt; [Your Name] &gt; Subscriptions, find GutCheck, and tap Cancel. You'll keep premium access until the end of your billing period.{'\n\n'}
-              <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
-              Open Google Play Store &gt; Menu &gt; Subscriptions, find GutCheck, and tap Cancel. You'll keep premium access until the end of your billing period.
+              {Platform.OS === 'ios' ? (
+                <>Go to Settings &gt; [Your Name] &gt; Subscriptions, find GutChecks: Red Flags & Safety, and tap Cancel. You'll keep premium access until the end of your billing period.</>
+              ) : (
+                <>
+                  <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
+                  Go to Settings &gt; [Your Name] &gt; Subscriptions, find GutChecks: Red Flags & Safety, and tap Cancel. You'll keep premium access until the end of your billing period.{'\n\n'}
+                  <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
+                  Open Google Play Store &gt; Menu &gt; Subscriptions, find GutChecks: Red Flags & Safety, and tap Cancel. You'll keep premium access until the end of your billing period.
+                </>
+              )}
             </Text>
           </View>
 
@@ -1453,18 +1577,26 @@ export default function SubscriptionScreen() {
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>Can I restore my purchases?</Text>
             <Text style={styles.faqAnswer}>
-              Yes! Use the "Restore Purchases" button above to restore any previous subscriptions on this device. This works on both iPhone and Android.
+              {Platform.OS === 'ios'
+                ? 'Yes. Tap Restore Purchases while signed in to GutChecks: Red Flags & Safety. Your plan is tied to your Apple ID; we sync it from Apple and attach it to your current GutChecks: Red Flags & Safety account (including a brand‑new profile on this device).'
+                : 'Yes. Tap Restore Purchases while signed in to GutChecks: Red Flags & Safety. Your plan follows your Google Play account; we sync it and attach it to your current GutChecks: Red Flags & Safety profile.'}
             </Text>
           </View>
 
-          {/* Billing - Both platforms */}
+          {/* Billing - iOS only on iOS build (Guideline 2.3.10) */}
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>How does billing work?</Text>
             <Text style={styles.faqAnswer}>
-              <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
-              Your subscription is billed through your Apple ID. Manage billing and payment methods in Settings &gt; [Your Name] &gt; Payment & Shipping.{'\n\n'}
-              <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
-              Your subscription is billed through Google Play. Manage billing and payment methods in Google Play Store &gt; Menu &gt; Payment methods.
+              {Platform.OS === 'ios' ? (
+                <>Your subscription is billed through your Apple ID. Manage billing and payment methods in Settings &gt; [Your Name] &gt; Payment & Shipping.</>
+              ) : (
+                <>
+                  <Text style={styles.faqPlatformLabel}>On iPhone/iPad:{'\n'}</Text>
+                  Your subscription is billed through your Apple ID. Manage billing and payment methods in Settings &gt; [Your Name] &gt; Payment & Shipping.{'\n\n'}
+                  <Text style={styles.faqPlatformLabel}>On Android:{'\n'}</Text>
+                  Your subscription is billed through Google Play. Manage billing and payment methods in Google Play Store &gt; Menu &gt; Payment methods.
+                </>
+              )}
             </Text>
           </View>
 
@@ -1472,7 +1604,7 @@ export default function SubscriptionScreen() {
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>What happens after my free trial?</Text>
             <Text style={styles.faqAnswer}>
-              After your 3-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged.
+              After your 7-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.
             </Text>
           </View>
         </View>
@@ -1481,10 +1613,10 @@ export default function SubscriptionScreen() {
         <View style={styles.legalSection}>
           <TouchableOpacity
             onPress={() => {
-              const privacyUrl = 'https://mygutcheck.org/privacy';
+              const privacyUrl = externalUrls.privacyPolicy;
               Linking.openURL(privacyUrl).catch(err => {
                 console.error('Failed to open Privacy Policy:', err);
-                Alert.alert('Error', 'Could not open Privacy Policy. Please visit mygutcheck.org/privacy');
+                Alert.alert('Error', `Could not open Privacy Policy. Please visit ${externalUrls.privacyPolicy}`);
               });
             }}
             style={styles.legalLink}
@@ -1495,10 +1627,10 @@ export default function SubscriptionScreen() {
 
           <TouchableOpacity
             onPress={() => {
-              const termsUrl = 'https://mygutcheck.org/terms';
+              const termsUrl = externalUrls.termsOfUse;
               Linking.openURL(termsUrl).catch(err => {
                 console.error('Failed to open Terms of Use:', err);
-                Alert.alert('Error', 'Could not open Terms of Use. Please visit mygutcheck.org/terms');
+                Alert.alert('Error', `Could not open Terms of Use. Please visit ${externalUrls.termsOfUse}`);
               });
             }}
             style={styles.legalLink}

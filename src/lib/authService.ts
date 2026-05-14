@@ -4,11 +4,13 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
+import Constants from 'expo-constants';
+import { supabase, isSupabaseConfigured } from './supabase';
 import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 import { revenueCatService } from './revenueCatService';
 import { biometricAuthService } from './biometricAuth';
+import { savePinForReveal, clearPinForReveal } from './pinRevealStorage';
 
 export interface AuthUser {
   id: string;
@@ -98,6 +100,10 @@ class AuthService {
       // Set RevenueCat user ID to associate purchases with this user
       await revenueCatService.setAppUserID(userId);
 
+      if (pin) {
+        await savePinForReveal(userId, pin);
+      }
+
       const user: AuthUser = {
         id: userId,
         username,
@@ -143,6 +149,15 @@ class AuthService {
         return { success: false, error: 'PIN must be exactly 4 digits' };
       }
 
+      if (!isSupabaseConfigured()) {
+        console.error('[AUTH] Supabase missing: set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY');
+        return {
+          success: false,
+          error:
+            'Cannot reach the server: Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to your .env (see .env.example), then restart Expo with: npx expo start -c',
+        };
+      }
+
       // Check if username already exists
       const { data: existingUser } = await supabase
         .from('profiles')
@@ -157,13 +172,7 @@ class AuthService {
       const userId = this.generateUserId();
       const pinHash = await this.hashPin(pin);
 
-      // Save to local storage
-      await AsyncStorage.setItem('user_id', userId);
-      await AsyncStorage.setItem('username', username);
-      await AsyncStorage.setItem('user_type', 'username');
-      await AsyncStorage.setItem('is_logged_in', 'true');
-
-      // Save to database with fallback for missing columns
+      // Save to database first; only persist session locally after success (avoids half-created accounts).
       try {
         console.log('Attempting to save to database:', {
           user_id: userId,
@@ -177,7 +186,6 @@ class AuthService {
           networkInfo: 'Testing network connectivity...'
         });
 
-        // Store debug info in AsyncStorage for later inspection
         try {
           const debugData = {
             type: 'auth_debug',
@@ -188,28 +196,25 @@ class AuthService {
             isTestFlight: __DEV__ === false,
             platform: Platform.OS,
             buildNumber: '56',
-            allExtraKeys: Object.keys(Constants.expoConfig?.extra || {}),
-            fullExtra: Constants.expoConfig?.extra
+            allExtraKeys: Object.keys(Constants?.expoConfig?.extra ?? {}),
+            fullExtra: Constants?.expoConfig?.extra,
           };
-          
+
           console.log('Debug data:', debugData);
-          
-          // Store in AsyncStorage so we can retrieve it later
+
           await AsyncStorage.setItem('debug_auth_data', JSON.stringify(debugData));
-          
+
           console.log('Debug data stored in AsyncStorage');
         } catch (e) {
           console.log('Debug storage failed:', e);
         }
 
-        // First try with all columns
         let insertData: any = {
           user_id: userId,
           username,
           created_at: new Date().toISOString(),
         };
 
-        // Try to add optional columns if they exist
         try {
           insertData.user_type = 'username';
           insertData.pin_hash = pinHash;
@@ -230,10 +235,9 @@ class AuthService {
             hint: error.hint
           });
 
-          // If the error is about missing columns, try a minimal insert
           if (error.message.includes('column') && error.message.includes('does not exist')) {
             console.log('Retrying with minimal data (missing columns detected)');
-            
+
             const { error: minimalError } = await supabase
               .from('profiles')
               .insert({
@@ -254,17 +258,24 @@ class AuthService {
         } else {
           console.log('Database save successful');
         }
-      } catch (dbError) {
+      } catch (dbError: any) {
         console.error('Database operation failed:', {
           error: dbError,
-          message: dbError.message,
-          stack: dbError.stack
+          message: dbError?.message,
+          stack: dbError?.stack
         });
-        return { success: false, error: `Database operation failed: ${dbError.message}` };
+        return { success: false, error: `Database operation failed: ${dbError?.message ?? 'Unknown error'}` };
       }
+
+      await AsyncStorage.setItem('user_id', userId);
+      await AsyncStorage.setItem('username', username);
+      await AsyncStorage.setItem('user_type', 'username');
+      await AsyncStorage.setItem('is_logged_in', 'true');
 
       // Set RevenueCat user ID to associate purchases with this user
       await revenueCatService.setAppUserID(userId);
+
+      await savePinForReveal(userId, pin);
 
       const user: AuthUser = {
         id: userId,
@@ -313,6 +324,8 @@ class AuthService {
 
       // Set RevenueCat user ID to associate purchases with this user
       await revenueCatService.setAppUserID(data.user_id);
+
+      await savePinForReveal(data.user_id, pin);
 
       // Update biometric auth with username if enabled
       const isBiometricEnabled = await biometricAuthService.isBiometricEnabled();
@@ -367,6 +380,8 @@ class AuthService {
       await AsyncStorage.setItem('user_type', data.user_type);
       await AsyncStorage.setItem('is_logged_in', 'true');
 
+      await savePinForReveal(data.user_id, pin);
+
       const user: AuthUser = {
         id: data.user_id,
         username: data.username,
@@ -386,6 +401,9 @@ class AuthService {
    */
   async logout(): Promise<{ success: boolean; error?: string }> {
     try {
+      const uidForPin = await AsyncStorage.getItem('user_id');
+      await clearPinForReveal(uidForPin);
+
       // Clear RevenueCat user data
       const { revenueCatService } = await import('./revenueCatService');
       await revenueCatService.logOut();
@@ -499,12 +517,150 @@ class AuthService {
         return { success: false, error: 'Failed to update PIN' };
       }
 
+      await savePinForReveal(userId, newPin);
+
       return { success: true };
     } catch (error) {
       console.error('Update PIN error:', error);
       return { success: false, error: 'Failed to update PIN' };
     }
   }
+
+  // ─── Recovery code helpers ─────────────────────────────────────────────────
+
+  private readonly recoveryWordList = [
+    'BEAR','BIRD','BLUE','BOLT','CAVE','CLAY','COIN','CROW',
+    'DAWN','DEER','DUSK','ECHO','FERN','FIRE','FISH','FLAME',
+    'FLEET','FOG','FORD','FROST','GATE','GLOW','GOLD','GROVE',
+    'HAWK','HILL','HORN','IRIS','JADE','LAKE','LEAF','LION',
+    'LOCH','MAST','MIST','MOON','MOTH','NEWT','OAK','OWL',
+    'PATH','PINE','POND','RAIN','REED','REEF','RISE','ROCK',
+    'ROOT','ROSE','RUSH','SAGE','SALT','SAND','SEED','SILK',
+    'SKYE','SLATE','SNOW','SOIL','STAR','STEM','STONE','STORM',
+    'SUN','SURF','SWAN','TIDE','TIGER','THORN','TRAIL','TREE',
+    'VALE','VINE','WAVE','WIND','WOLF','WOOD','WREN',
+  ];
+
+  /**
+   * Generate a human-readable recovery code in the form WORD-DIGITS-WORD
+   * e.g. TIGER-4821-WOLF
+   */
+  generateRecoveryCode(): string {
+    const pick = () =>
+      this.recoveryWordList[Math.floor(Math.random() * this.recoveryWordList.length)];
+    const digits = Math.floor(1000 + Math.random() * 9000).toString();
+    return `${pick()}-${digits}-${pick()}`;
+  }
+
+  /**
+   * Hash and persist the recovery code against the user's profile row.
+   * Requires the `recovery_code_hash` column to exist in the `profiles` table.
+   * Fails gracefully if the column is absent (logs a warning, does not throw).
+   */
+  async saveRecoveryCode(
+    userId: string,
+    code: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const codeHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        code.toUpperCase().trim(),
+      );
+      const { error } = await supabase
+        .from('profiles')
+        .update({ recovery_code_hash: codeHash })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('[AUTH] Could not save recovery code to DB (column may not exist yet):', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AUTH] saveRecoveryCode error:', err);
+      return { success: false, error: 'Failed to save recovery code' };
+    }
+  }
+
+  /**
+   * Verify a username + recovery code combination without making any changes.
+   * Returns true only if the pair exists in the database.
+   */
+  async verifyRecoveryCode(username: string, recoveryCode: string): Promise<boolean> {
+    try {
+      const codeHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        recoveryCode.toUpperCase().trim(),
+      );
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('username', username.trim())
+        .eq('recovery_code_hash', codeHash)
+        .single();
+
+      return !error && !!data;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Verify the recovery code, reset the PIN, and log the user back in.
+   * Should only be called after verifyRecoveryCode() returns true.
+   */
+  async resetPinWithRecoveryCode(
+    username: string,
+    recoveryCode: string,
+    newPin: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+        return { success: false, error: 'PIN must be exactly 4 digits' };
+      }
+
+      const codeHash = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        recoveryCode.toUpperCase().trim(),
+      );
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, username, user_type')
+        .eq('username', username.trim())
+        .eq('recovery_code_hash', codeHash)
+        .single();
+
+      if (error || !data) {
+        return { success: false, error: 'Invalid username or recovery code' };
+      }
+
+      const newPinHash = await this.hashPin(newPin);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ pin_hash: newPinHash })
+        .eq('user_id', data.user_id);
+
+      if (updateError) {
+        return { success: false, error: 'Failed to reset PIN. Please try again.' };
+      }
+
+      // Log the user back in
+      await AsyncStorage.setItem('user_id', data.user_id);
+      await AsyncStorage.setItem('username', data.username);
+      await AsyncStorage.setItem('user_type', data.user_type || 'username');
+      await AsyncStorage.setItem('is_logged_in', 'true');
+      await revenueCatService.setAppUserID(data.user_id);
+
+      await savePinForReveal(data.user_id, newPin);
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AUTH] resetPinWithRecoveryCode error:', err);
+      return { success: false, error: 'Recovery failed. Please try again.' };
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
 
   /**
    * Check if username is available
@@ -530,33 +686,52 @@ class AuthService {
   async deleteAccount(): Promise<{ success: boolean; error?: string }> {
     try {
       const userId = await AsyncStorage.getItem('user_id');
-      const userType = await AsyncStorage.getItem('user_type');
 
       if (!userId) {
         return { success: false, error: 'No user account found' };
       }
 
-      // Delete from database
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('profiles')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('user_id', userId);
 
       if (error) {
         console.error('Database delete error:', error);
-        return { success: false, error: 'Failed to delete account from database' };
+        return {
+          success: false,
+          error: 'Unable to delete your account on our servers. Please check your connection and try again.',
+        };
       }
 
-      // Clear all local storage
+      if (count === 0) {
+        console.warn(
+          '[deleteAccount] No profile row removed (local-only session or server policy). Clearing device data anyway.',
+        );
+      }
+
+      const cleared = await this.logout();
+      if (!cleared.success) {
+        return { success: false, error: cleared.error || 'Failed to clear data on this device' };
+      }
+
       await AsyncStorage.multiRemove([
-        'user_id',
-        'username', 
-        'user_type',
-        'is_logged_in',
-        'subscription_status',
-        'subscription_plan',
-        'onboarding_completed'
+        'onboarding_completed',
+        'anonymous_user_id',
+        'user_region',
+        'user_country',
+        'privacy_settings',
+        'notifications_scheduled',
+        'debug_auth_data',
+        `@trial_data_${userId}`,
+        `lifetime_pro_${userId}`,
       ]);
+
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutErr) {
+        console.warn('[deleteAccount] supabase.auth.signOut:', signOutErr);
+      }
 
       return { success: true };
     } catch (error) {

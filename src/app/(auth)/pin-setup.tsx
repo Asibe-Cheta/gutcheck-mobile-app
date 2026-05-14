@@ -13,17 +13,21 @@ import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
 import { biometricAuthService } from '@/lib/biometricAuth';
+import * as Clipboard from 'expo-clipboard';
 
 export default function PinSetupScreen() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const params = useLocalSearchParams();
   const username = params.username as string;
+  const isFresh = params.fresh === 'true'; // coming from "Start Fresh" in account recovery
 
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  const [step, setStep] = useState<'enter' | 'confirm'>('enter');
+  const [step, setStep] = useState<'enter' | 'confirm' | 'recovery'>('enter');
   const [isCreating, setIsCreating] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
   const textInputRef = useRef<TextInput>(null);
 
   // Focus the input when step changes
@@ -81,53 +85,77 @@ export default function PinSetupScreen() {
 
       if (result.success) {
         console.log('Account created successfully');
-        // Clear onboarding flag to show onboarding
         await AsyncStorage.removeItem('onboarding_completed');
-        
-        // Check if biometric auth is available and offer enrollment
-        const biometricAvailable = await biometricAuthService.isAvailable();
-        if (biometricAvailable) {
-          const biometricType = await biometricAuthService.getBiometricType();
-          Alert.alert(
-            `Enable ${biometricType}?`,
-            `Use ${biometricType} for quick and secure sign-in next time.`,
-            [
-              {
-                text: 'Not Now',
-                style: 'cancel',
-                onPress: () => {
-                  console.log('User declined biometric enrollment');
-                  router.replace('/onboarding-route');
-                },
-              },
-              {
-                text: 'Enable',
-                onPress: async () => {
-                  console.log('User wants to enable biometric auth');
-                  const userId = await AsyncStorage.getItem('user_id');
-                  const username = await AsyncStorage.getItem('username');
-                  if (userId) {
-                    const success = await biometricAuthService.enableBiometricAuth(userId, username || undefined);
-                    if (success) {
-                      console.log('Biometric auth enabled successfully');
-                    } else {
-                      console.log('Failed to enable biometric auth');
-                    }
-                  }
-                  router.replace('/onboarding-route');
-                },
-              },
-            ]
+
+        // Generate and save recovery code
+        const code = authService.generateRecoveryCode();
+        setRecoveryCode(code);
+
+        // Save to Supabase (best-effort — requires recovery_code_hash column)
+        const savedUserId = await AsyncStorage.getItem('user_id');
+        if (savedUserId) {
+          authService.saveRecoveryCode(savedUserId, code).catch(e =>
+            console.warn('[PIN_SETUP] Could not persist recovery code:', e),
           );
-        } else {
-          // No biometric available, proceed to onboarding
-          router.replace('/onboarding-route');
         }
+
+        setIsCreating(false);
+        setStep('recovery');
       } else {
         console.error('Account creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create account');
       }
     }
+  };
+
+  // Called when user taps "I've written this down" on the recovery code screen
+  const handleProceedAfterSetup = async () => {
+    // If this is a fresh-start account, restore any existing Apple subscription
+    if (isFresh) {
+      try {
+        const { useSubscriptionStore } = await import('@/lib/stores/subscriptionStore');
+        await useSubscriptionStore.getState().restorePurchases();
+        console.log('[PIN_SETUP] Purchase restore triggered for fresh account');
+      } catch (e) {
+        console.warn('[PIN_SETUP] Purchase restore failed (non-critical):', e);
+      }
+    }
+
+    // Offer biometric enrolment
+    const biometricAvailable = await biometricAuthService.isAvailable();
+    if (biometricAvailable) {
+      const biometricType = await biometricAuthService.getBiometricType();
+      Alert.alert(
+        `Enable ${biometricType}?`,
+        `Use ${biometricType} for quick and secure sign-in next time.`,
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: () => router.replace('/onboarding-route'),
+          },
+          {
+            text: 'Enable',
+            onPress: async () => {
+              const userId = await AsyncStorage.getItem('user_id');
+              const uname = await AsyncStorage.getItem('username');
+              if (userId) {
+                await biometricAuthService.enableBiometricAuth(userId, uname || undefined);
+              }
+              router.replace('/onboarding-route');
+            },
+          },
+        ],
+      );
+    } else {
+      router.replace('/onboarding-route');
+    }
+  };
+
+  const handleCopyCode = async () => {
+    await Clipboard.setStringAsync(recoveryCode);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 3000);
   };
 
   const handleBack = () => {
@@ -275,6 +303,88 @@ export default function PinSetupScreen() {
       textAlign: 'center',
       lineHeight: 20,
     },
+    // Recovery code reveal step
+    recoveryTitle: {
+      fontSize: 26,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: 10,
+    },
+    recoverySubtitle: {
+      fontSize: 15,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: 32,
+    },
+    recoveryCodeBox: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      paddingVertical: 28,
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    recoveryCodeLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      color: colors.textSecondary,
+      marginBottom: 14,
+    },
+    recoveryCodeText: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: colors.primary,
+      letterSpacing: 2,
+      fontFamily: 'Inter',
+    },
+    copyButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 16,
+      gap: 6,
+    },
+    copyButtonText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    recoveryWarning: {
+      backgroundColor: 'rgba(255, 180, 0, 0.08)',
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 28,
+    },
+    recoveryWarningText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    proceedButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 18,
+      borderRadius: 16,
+      alignItems: 'center',
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+    proceedButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   const currentValue = step === 'enter' ? pin : confirmPin;
@@ -288,6 +398,46 @@ export default function PinSetupScreen() {
     canContinue,
     isCreating
   });
+
+  // Recovery code reveal screen
+  if (step === 'recovery') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.content, { justifyContent: 'center' }]}>
+          <Text style={styles.recoveryTitle}>Save Your Recovery Code</Text>
+          <Text style={styles.recoverySubtitle}>
+            This is the only way to recover your account if you forget your PIN.
+            Write it down and keep it somewhere safe — it will not be shown again.
+          </Text>
+
+          <View style={styles.recoveryCodeBox}>
+            <Text style={styles.recoveryCodeLabel}>Your Recovery Code</Text>
+            <Text style={styles.recoveryCodeText}>{recoveryCode}</Text>
+            <TouchableOpacity style={styles.copyButton} onPress={handleCopyCode}>
+              <Ionicons
+                name={codeCopied ? 'checkmark-circle' : 'copy-outline'}
+                size={16}
+                color={codeCopied ? colors.primary : colors.textSecondary}
+              />
+              <Text style={[styles.copyButtonText, codeCopied && { color: colors.primary }]}>
+                {codeCopied ? 'Copied!' : 'Copy to clipboard'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.recoveryWarning}>
+            <Text style={styles.recoveryWarningText}>
+              There is no other way to recover your account. If you lose this code and forget your PIN, your account cannot be restored.
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.proceedButton} onPress={handleProceedAfterSetup}>
+            <Text style={styles.proceedButtonText}>I've written this down — Continue</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

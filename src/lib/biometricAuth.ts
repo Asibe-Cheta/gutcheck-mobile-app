@@ -89,7 +89,7 @@ class BiometricAuthService {
       const biometricType = await this.getBiometricType();
 
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Use ${biometricType} to sign in to GutCheck`,
+        promptMessage: `Use ${biometricType} to sign in to GutChecks`,
         fallbackLabel: 'Use passcode',
         disableDeviceFallback: false,
         cancelLabel: 'Cancel',

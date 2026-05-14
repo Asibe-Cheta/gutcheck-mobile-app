@@ -121,7 +121,7 @@ export default function OnboardingScreen() {
       <View style={styles.stepHeader}>
         <Text style={styles.stepTitle}>What should we call you?</Text>
         <Text style={styles.stepDescription}>
-          Choose a nickname for your GutCheck experience
+          Choose a nickname for your GutChecks: Red Flags & Safety experience
         </Text>
       </View>
       
@@ -135,8 +135,8 @@ export default function OnboardingScreen() {
       <View style={styles.privacyCard}>
         <PrivacyIcon />
         <Text style={styles.privacyText}>
-          Your nickname is only used to personalize your experience. 
-          It's never shared or stored permanently.
+          Your nickname is used to personalize your experience.
+          It is handled according to our Privacy Policy.
         </Text>
       </View>
     </View>
@@ -197,7 +197,8 @@ export default function OnboardingScreen() {
       <View style={styles.privacyCard}>
         <PrivacyIcon />
         <Text style={styles.privacyText}>
-          Your country helps us show the right helplines and support services for your region. This information is never shared.
+          Your country helps us show the right helplines and support services for your region.
+          It is used only for support relevance and handled according to our Privacy Policy.
         </Text>
       </View>
     </View>
@@ -295,7 +296,7 @@ export default function OnboardingScreen() {
       <View style={styles.privacyCard}>
         <ShieldIcon />
         <Text style={styles.privacyText}>
-          All information is encrypted and never shared. 
+          Your information is protected and used only to provide app features.
           You can change these settings anytime.
         </Text>
       </View>

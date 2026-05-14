@@ -6,6 +6,17 @@
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/** Synced Awareness Hub fields (see database/migration_awareness_hub_profile.sql). */
+export interface AwarenessHubStateBlob {
+  updatedAt: string;
+  ageBand: string | null;
+  juniorConsent: boolean;
+  trackProgress: Record<string, { level: number; progress: number; state: string }>;
+  streakDays: number;
+  lastActiveDate: string | null;
+  remindersEnabled: boolean;
+}
+
 export interface ProfileData {
   id?: string;
   username?: string;
@@ -346,6 +357,62 @@ class ProfileService {
     } catch (error) {
       console.error('Error deleting profile:', error);
       throw new Error('Failed to delete profile data');
+    }
+  }
+
+  /**
+   * Load Awareness Hub snapshot from the signed-in user's profile (cross-device).
+   */
+  async getAwarenessHubState(): Promise<AwarenessHubStateBlob | null> {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) return null;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('awareness_hub_state')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        const msg = error.message || '';
+        if (error.code === 'PGRST116' || msg.includes('awareness_hub_state') || msg.includes('schema cache')) {
+          return null;
+        }
+        console.warn('[Profile] getAwarenessHubState:', msg);
+        return null;
+      }
+
+      const raw = data?.awareness_hub_state as AwarenessHubStateBlob | null | undefined;
+      if (!raw || typeof raw !== 'object' || !raw.updatedAt) return null;
+      return raw;
+    } catch (e) {
+      console.warn('[Profile] getAwarenessHubState failed:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Persist Awareness Hub snapshot (best-effort; column may be missing until migration runs).
+   */
+  async setAwarenessHubState(blob: AwarenessHubStateBlob): Promise<boolean> {
+    try {
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) return false;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ awareness_hub_state: blob })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('[Profile] setAwarenessHubState:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[Profile] setAwarenessHubState failed:', e);
+      return false;
     }
   }
 }

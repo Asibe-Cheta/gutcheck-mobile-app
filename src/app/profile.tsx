@@ -482,7 +482,7 @@ export default function ProfileScreen() {
         <View style={styles.privacyNote}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
           <Text style={styles.privacyText}>
-            Your profile information is stored locally on your device and is not shared with third parties.
+            Your profile information is protected and used only to provide app features. See Privacy for full details.
           </Text>
         </View>
       </ScrollView>

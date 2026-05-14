@@ -463,10 +463,33 @@ class RevenueCatService {
         };
       }
 
-      // Restore purchases
+      // Fresh sync with App Store / Play after logIn(appUserId) so a new GutChecks account
+      // on the same Apple ID still picks up the receipt.
+      try {
+        await Purchases.invalidateCustomerInfoCache();
+      } catch (e) {
+        console.warn('[RevenueCat] invalidateCustomerInfoCache before restore (non-fatal):', e);
+      }
+
       const customerInfo: CustomerInfo = await Purchases.restorePurchases();
 
-      // Get active entitlements
+      // Prefer configured entitlement id (same as purchase + hasActiveSubscription checks)
+      const premium = customerInfo.entitlements.active['GutCheck Premium'];
+      if (premium) {
+        const subscriptions: AppleSubscription[] = [
+          {
+            productId: premium.productIdentifier,
+            transactionId: premium.transactionIdentifier || '',
+            purchaseDate: premium.latestPurchaseDate || new Date().toISOString(),
+            expirationDate: premium.expirationDate || undefined,
+            isActive: true,
+          },
+        ];
+        console.log('[RevenueCat] Restored via GutCheck Premium entitlement:', premium.productIdentifier);
+        return { success: true, subscriptions };
+      }
+
+      // Fallback: any active entitlement
       const activeEntitlements = Object.values(customerInfo.entitlements.active);
       
       const subscriptions: AppleSubscription[] = activeEntitlements.map(entitlement => ({
@@ -477,7 +500,7 @@ class RevenueCatService {
         isActive: true,
       }));
 
-      console.log('[RevenueCat] Ô£à Restored', subscriptions.length, 'active subscriptions');
+      console.log('[RevenueCat] Restored', subscriptions.length, 'active subscription(s) (all entitlements)');
       return { success: true, subscriptions };
     } catch (error: any) {
       console.error('[RevenueCat] Failed to restore purchases:', error);
@@ -567,10 +590,27 @@ class RevenueCatService {
 
   /**
    * Check if user has active subscription
+   * Always invalidates the local RevenueCat cache first so we get a fresh
+   * network response. This prevents stale "active" data from granting access
+   * after a trial has expired or a subscription has been cancelled.
    */
   async hasActiveSubscription(): Promise<boolean> {
     try {
       console.log('[RevenueCat] hasActiveSubscription: Checking for active subscription...');
+
+      // Bust the SDK cache so the next getCustomerInfo() hits RevenueCat's servers.
+      // Without this, a cancelled/expired subscription can still appear "active"
+      // if the cached CustomerInfo hasn't been refreshed since the trial ended.
+      try {
+        if (this.isInitialized && this.apiKey) {
+          await Purchases.invalidateCustomerInfoCache();
+          console.log('[RevenueCat] hasActiveSubscription: Cache invalidated');
+        }
+      } catch (cacheError) {
+        // Non-fatal — continue with whatever getCustomerInfo returns
+        console.warn('[RevenueCat] hasActiveSubscription: Cache invalidation failed (non-fatal):', cacheError);
+      }
+
       const customerInfo = await this.getCustomerInfo();
       if (!customerInfo) {
         console.log('[RevenueCat] hasActiveSubscription: No customerInfo returned');

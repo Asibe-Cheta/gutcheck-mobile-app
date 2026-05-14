@@ -1,6 +1,6 @@
 /**
  * Contact Screen
- * Provides contact information and links to reach the GutCheck team
+ * Provides contact information and links to reach the GutChecks: Red Flags & Safety team
  */
 
 import React from 'react';
@@ -167,13 +167,13 @@ export default function ContactScreen() {
           
           <Text style={styles.contactValue}>https://mygutcheck.org</Text>
           <Text style={styles.contactDescription}>
-            Visit our website for extensive resources, FAQs, blog posts, and learn more about how GutCheck can help you navigate relationships safely.
+            Visit our website for extensive resources, FAQs, blog posts, and learn more about how GutChecks: Red Flags & Safety can help you navigate relationships safely.
           </Text>
         </View>
 
         {/* Footer note */}
         <Text style={styles.footerNote}>
-          Your feedback helps us improve GutCheck and make it more helpful for everyone. We'd love to hear from you!
+          Your feedback helps us improve GutChecks: Red Flags & Safety and make it more helpful for everyone. We'd love to hear from you!
         </Text>
       </ScrollView>
     </SafeAreaView>

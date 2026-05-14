@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 export default function UsernameScreen() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const params = useLocalSearchParams();
   const [username, setUsername] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,10 +42,10 @@ export default function UsernameScreen() {
       return;
     }
 
-    // Navigate to PIN setup screen
+    // Navigate to PIN setup screen (pass fresh param through if present)
     router.push({
       pathname: '/(auth)/pin-setup',
-      params: { username: username.trim() }
+      params: { username: username.trim(), fresh: params.fresh || '' }
     });
   };
 

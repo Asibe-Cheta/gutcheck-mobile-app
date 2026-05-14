@@ -1,6 +1,6 @@
 /**
  * FAQ Screen
- * Frequently Asked Questions about GutCheck
+ * Frequently Asked Questions about GutChecks: Red Flags & Safety
  */
 
 import React, { useState } from 'react';
@@ -25,23 +25,23 @@ export default function FAQScreen() {
 
   const faqs: FAQItem[] = [
     {
-      question: 'What is GutCheck?',
-      answer: 'GutCheck is your confidential companion for navigating relationships, social dynamics, and difficult situations. We help you recognize red flags, understand patterns, and stay safe. Everything is anonymous and secure.',
+      question: 'What is GutChecks: Red Flags & Safety?',
+      answer: 'GutChecks: Red Flags & Safety is your confidential guidance tool for navigating everyday interactions, relationships, social dynamics, and difficult situations. It helps you recognize red flags, understand patterns, and stay safe. Everything is anonymous and secure.',
       icon: 'help-circle',
     },
     {
       question: 'How does the Panic Button work?',
-      answer: 'The Panic Button is a safety feature designed to help you quickly hide the app. Enable it in Settings, then triple-tap anywhere on the screen to instantly exit to a calculator disguise. This is perfect if you\'re in an unsafe situation and need to hide the app quickly. To return to GutCheck, simply navigate back from the calculator.',
+      answer: 'The Panic Button is a safety feature designed to help you quickly hide the app. Enable it in Settings, then triple-tap anywhere on the screen to instantly exit to a calculator disguise. This is perfect if you\'re in an unsafe situation and need to hide the app quickly. To return to GutChecks: Red Flags & Safety, simply navigate back from the calculator.',
       icon: 'alert-circle',
     },
     {
       question: 'Is my data private and secure?',
-      answer: 'Yes! All your conversations are stored locally on your device and are never shared with anyone. We don\'t track your location, show ads, or sell your data. You can export or delete all your data anytime from the Settings screen. Your privacy is our top priority.',
+      answer: 'Yes. Your data is handled with privacy safeguards. Messages and images you submit for AI responses are processed by our AI provider to generate guidance, and app data may be stored securely to support core features. We do not sell your personal information. You can export or delete your data from Settings.',
       icon: 'lock-closed',
     },
     {
       question: 'How does the AI analysis work?',
-      answer: 'Our AI analyzes your situations to identify patterns, red flags, and concerning behaviors. It provides direct, honest guidance like a trusted friend who always tells you the truth. The AI is trained to recognize manipulation, gaslighting, abuse, and other harmful patterns.',
+      answer: 'Our AI analyzes your situations to identify patterns, red flags, and concerning behaviors. It provides direct, honest guidance with practical next steps. The AI is trained to recognize manipulation, gaslighting, abuse, and other harmful patterns.',
       icon: 'analytics',
     },
     {
@@ -51,7 +51,7 @@ export default function FAQScreen() {
     },
     {
       question: 'What are the daily notifications?',
-      answer: 'GutCheck sends supportive daily notifications with insights about relationships, self-worth, and safety. These are designed to remind you that you deserve respect and healthy relationships. You can tap any notification to get AI elaboration and start a conversation.',
+      answer: 'GutChecks: Red Flags & Safety sends supportive daily notifications with insights about everyday interactions, relationships, self-worth, and safety. These are designed to remind you that you deserve respect and healthy interactions. You can tap any notification to get AI elaboration and start a conversation.',
       icon: 'notifications',
     },
     {
@@ -190,7 +190,7 @@ export default function FAQScreen() {
         <View style={styles.intro}>
           <Text style={styles.introTitle}>Frequently Asked Questions</Text>
           <Text style={styles.introText}>
-            Find answers to common questions about GutCheck, safety features, privacy, and more.
+            Find answers to common questions about GutChecks: Red Flags & Safety, safety features, privacy, and more.
           </Text>
         </View>
 

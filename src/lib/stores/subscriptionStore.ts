@@ -8,6 +8,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Lazy import lifetimeProService to prevent crash if module fails
 let lifetimeProService: any = null;
+let trialTrackingService: any = null;
+
+function getTrialTrackingService() {
+  if (!trialTrackingService) {
+    try {
+      const trialModule = require('@/lib/trialTrackingService');
+      trialTrackingService = trialModule.trialTrackingService;
+    } catch (error) {
+      console.warn('[STORE] Trial tracking service not available');
+      trialTrackingService = null;
+    }
+  }
+  return trialTrackingService;
+}
+
 function getLifetimeProService() {
   if (!lifetimeProService) {
     try {
@@ -309,8 +324,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           }
         }
         
-        // No active subscription found
+        // No active subscription found - clear stale local cache so the AsyncStorage
+        // fallback below cannot grant access based on an old 'active' value
         console.log('[STORE] loadSubscription: No active subscription found');
+        await AsyncStorage.removeItem('subscription_status');
+        await AsyncStorage.removeItem('subscription_plan');
         set({ subscription: null, currentPlan: null, isLoading: false });
       } catch (iapError: any) {
         console.error('[STORE] Failed to check subscription status:', iapError);
@@ -475,6 +493,17 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         await AsyncStorage.setItem('subscription_status', 'active');
         await AsyncStorage.setItem('subscription_plan', planId);
         
+        // Record trial start for tracking (if this was a trial)
+        const userId = await AsyncStorage.getItem('user_id');
+        if (userId && getTrialTrackingService()) {
+          await getTrialTrackingService().recordTrialStart(userId, planId, plan.productId);
+        }
+        
+        // Mark as converted if this was a trial conversion
+        if (userId && getTrialTrackingService()) {
+          await getTrialTrackingService().markTrialConverted(userId);
+        }
+        
         // DON'T refresh from RevenueCat - purchase result already has subscription
         // Calling RevenueCat here can crash during navigation transitions
         console.log('[STORE] ✅ Subscription set in store from purchase result');
@@ -512,34 +541,53 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       
       console.log('[STORE] Restoring purchases for user:', userId);
       
-      // CRITICAL: Set the RevenueCat user ID before restoring
-      // This ensures RevenueCat only returns purchases linked to this user
+      // Store purchases are tied to Apple ID / Google account on the device.
+      // We set RevenueCat appUserID to this GutChecks account first, then restore so
+      // the App Store receipt is applied to the current app user (including brand-new accounts).
       const { appleIAPService: iapService } = getIAPService();
       
-      // Set the RevenueCat user ID to link purchases to this account
-      // The iapService is actually the revenueCatService instance
       if (iapService && typeof iapService.setAppUserID === 'function') {
         try {
           await iapService.setAppUserID(userId);
           console.log('[STORE] RevenueCat user ID set before restore');
         } catch (setUserIdError) {
           console.warn('[STORE] Failed to set RevenueCat user ID:', setUserIdError);
-          // Continue anyway - RevenueCat might still work
         }
       }
       
-      // Restore purchases through Apple IAP/RevenueCat
       const result = await iapService.restorePurchases();
-      const subscriptions = result.success ? result.subscriptions || [] : [];
+      let subscriptions = result.success ? result.subscriptions || [] : [];
+
+      // Second pass: some SDK / timing paths return empty subs even when the receipt is active
+      if (
+        result.success &&
+        subscriptions.length === 0 &&
+        typeof iapService.hasActiveSubscription === 'function'
+      ) {
+        const active = await iapService.hasActiveSubscription();
+        if (active && typeof iapService.getCustomerInfo === 'function') {
+          const customerInfo = await iapService.getCustomerInfo();
+          const entitlement = customerInfo?.entitlements?.active?.['GutCheck Premium'];
+          if (entitlement) {
+            subscriptions = [
+              {
+                productId: entitlement.productIdentifier,
+                transactionId: entitlement.transactionIdentifier || '',
+                purchaseDate: entitlement.latestPurchaseDate || new Date().toISOString(),
+                expirationDate: entitlement.expirationDate || undefined,
+                isActive: true,
+              },
+            ];
+            console.log('[STORE] Restore: recovered subscription from CustomerInfo after empty list');
+          }
+        }
+      }
       
       if (subscriptions && subscriptions.length > 0) {
         const activeSubscription = subscriptions.find(sub => sub.isActive);
         
         if (activeSubscription) {
-          // SECURITY: Verify the purchase belongs to the current user
-          // RevenueCat should only return purchases for the logged-in user,
-          // but we double-check by ensuring we have a user_id
-          console.log('[STORE] ✅ Active subscription found and verified for user:', userId);
+          console.log('[STORE] Active subscription restored for app user (receipt verified by Apple/Google):', userId);
           
           set({ subscription: activeSubscription, isLoading: false });
           

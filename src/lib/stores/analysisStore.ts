@@ -8,6 +8,8 @@ import { aiService, AIAnalysisResult, ConversationState, ConversationResponse } 
 import { db } from '@/lib/supabase';
 import { Analysis, Pattern } from '@/types';
 
+export type ChatTurn = { role: 'user' | 'assistant'; content: string; imageUri?: string };
+
 interface AnalysisState {
   currentAnalysis: Analysis | null;
   analyses: Analysis[];
@@ -30,9 +32,10 @@ interface AnalysisState {
   handleConversation: (
     userMessage: string,
     conversationState: ConversationState,
-    conversationHistory: string[],
+    conversationHistory: ChatTurn[],
     hasImage?: boolean,
-    imageData?: string
+    imageData?: string,
+    onStreamChunk?: (accumulated: string) => void
   ) => Promise<ConversationResponse>;
   
   clearError: () => void;
@@ -139,9 +142,10 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   handleConversation: async (
     userMessage: string,
     conversationState: ConversationState,
-    conversationHistory: string[],
+    conversationHistory: ChatTurn[],
     hasImage: boolean = false,
-    imageData?: string
+    imageData?: string,
+    onStreamChunk?: (accumulated: string) => void
   ) => {
     try {
       set({ isLoading: true, error: null });
@@ -158,7 +162,8 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         conversationState,
         conversationHistory,
         hasImage,
-        imageData
+        imageData,
+        onStreamChunk
       );
 
       set({ isLoading: false });

@@ -31,6 +31,16 @@ function getEnvVar(key: string, defaultValue: string = ''): string {
 const supabaseUrl = getEnvVar('EXPO_PUBLIC_SUPABASE_URL', 'https://placeholder.supabase.co');
 const supabaseAnonKey = getEnvVar('EXPO_PUBLIC_SUPABASE_ANON_KEY', 'placeholder-key');
 
+/** True when real project URL/key are loaded (not Expo defaults). */
+export function isSupabaseConfigured(): boolean {
+  return (
+    supabaseUrl !== 'https://placeholder.supabase.co' &&
+    supabaseAnonKey !== 'placeholder-key' &&
+    supabaseUrl.length > 0 &&
+    supabaseAnonKey.length > 0
+  );
+}
+
 // Safe logging - handle potential undefined Constants
 const extra = Constants?.expoConfig?.extra || {};
 const appEnv = extra.EXPO_PUBLIC_APP_ENV || 'unknown';

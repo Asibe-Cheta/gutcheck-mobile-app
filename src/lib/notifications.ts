@@ -315,6 +315,8 @@ export class NotificationService {
   private static instance: NotificationService;
   private notificationListener: any;
   private responseListener: any;
+  private static readonly RECOMMEND_PUSH_OPT_IN_KEY = 'recommend_protect_push_opt_in';
+  private static readonly RECOMMEND_PUSH_FIRED_KEY = 'recommend_protect_push_fired';
 
   private constructor() {}
 
@@ -323,6 +325,131 @@ export class NotificationService {
       NotificationService.instance = new NotificationService();
     }
     return NotificationService.instance;
+  }
+
+  /**
+   * Schedule one daily Awareness Hub reminder (opt-in feature).
+   */
+  async scheduleAwarenessHubDailyReminder(hour: number = 18, minute: number = 0): Promise<void> {
+    try {
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) return;
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('awareness-hub', {
+          name: 'Awareness Hub',
+          importance: Notifications.AndroidImportance.DEFAULT,
+          vibrationPattern: [0, 200, 120, 200],
+          lightColor: '#4FD1C7',
+          sound: 'default',
+        });
+      }
+
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const existingHub = scheduled.filter(
+        (n) => (n.content.data as any)?.type === 'awareness-hub-reminder'
+      );
+      await Promise.all(existingHub.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Awareness Hub check-in',
+          body: 'Take 2 minutes to strengthen your red-flag awareness today.',
+          data: { type: 'awareness-hub-reminder' },
+          sound: 'default',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+          hour,
+          minute,
+          repeats: true,
+        },
+      });
+      await AsyncStorage.setItem('awareness_hub_reminders_enabled', 'true');
+    } catch (error) {
+      console.error('Error scheduling Awareness Hub reminders:', error);
+    }
+  }
+
+  /**
+   * Cancel Awareness Hub reminders only.
+   */
+  async cancelAwarenessHubReminders(): Promise<void> {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const existingHub = scheduled.filter(
+        (n) => (n.content.data as any)?.type === 'awareness-hub-reminder'
+      );
+      await Promise.all(existingHub.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+      await AsyncStorage.setItem('awareness_hub_reminders_enabled', 'false');
+    } catch (error) {
+      console.error('Error cancelling Awareness Hub reminders:', error);
+    }
+  }
+
+  /**
+   * Schedule one-time Recommend & Protect push notification (opt-in).
+   * Fires once per install and never repeats.
+   */
+  async scheduleRecommendProtectOneTimePrompt(delayHours: number = 24): Promise<boolean> {
+    try {
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) return false;
+
+      const alreadyFired = (await AsyncStorage.getItem(NotificationService.RECOMMEND_PUSH_FIRED_KEY)) === 'true';
+      if (alreadyFired) return false;
+
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const existingRecommend = scheduled.filter(
+        (n) => (n.content.data as any)?.type === 'recommend-protect-once'
+      );
+      if (existingRecommend.length > 0) {
+        await AsyncStorage.setItem(NotificationService.RECOMMEND_PUSH_OPT_IN_KEY, 'true');
+        return true;
+      }
+
+      const seconds = Math.max(60, Math.floor(delayHours * 60 * 60));
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Recommend & Protect',
+          body: 'GutChecks is not just for you. If someone could use this, you can share it safely.',
+          data: { type: 'recommend-protect-once' },
+          sound: 'default',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds,
+          repeats: false,
+        },
+      });
+
+      await AsyncStorage.multiSet([
+        [NotificationService.RECOMMEND_PUSH_OPT_IN_KEY, 'true'],
+        [NotificationService.RECOMMEND_PUSH_FIRED_KEY, 'true'],
+      ]);
+      return true;
+    } catch (error) {
+      console.error('Error scheduling Recommend & Protect push:', error);
+      return false;
+    }
+  }
+
+  async cancelRecommendProtectOneTimePrompt(): Promise<void> {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const existingRecommend = scheduled.filter(
+        (n) => (n.content.data as any)?.type === 'recommend-protect-once'
+      );
+      await Promise.all(existingRecommend.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+      await AsyncStorage.setItem(NotificationService.RECOMMEND_PUSH_OPT_IN_KEY, 'false');
+    } catch (error) {
+      console.error('Error cancelling Recommend & Protect push:', error);
+    }
+  }
+
+  async isRecommendProtectPushOptedIn(): Promise<boolean> {
+    const raw = await AsyncStorage.getItem(NotificationService.RECOMMEND_PUSH_OPT_IN_KEY);
+    return raw === 'true';
   }
 
   /**

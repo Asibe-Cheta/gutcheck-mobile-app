@@ -10,38 +10,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
-import { revenueCatService } from '@/lib/revenueCatService';
-import { getLifetimeProService } from '@/lib/lifetimeProService';
 import { biometricAuthService } from '@/lib/biometricAuth';
+import { userHasPremiumAccess } from '@/lib/subscriptionAccess';
 
-// Helper function to check subscription status
 async function checkSubscriptionStatus(userId: string): Promise<boolean> {
-  try {
-    // Check lifetime pro status first
-    const lifetimeProService = getLifetimeProService();
-    const isLifetimePro = await lifetimeProService.checkUserLifetimeProStatus(userId);
-
-    if (isLifetimePro) {
-      console.log('[SPLASH] User has lifetime pro access');
-      return true;
-    }
-
-    // Check RevenueCat subscription
-    const hasActiveSubscription = await revenueCatService.hasActiveSubscription();
-
-    if (hasActiveSubscription) {
-      console.log('[SPLASH] User has active RevenueCat subscription');
-      return true;
-    }
-
-    console.log('[SPLASH] No active subscription found');
-    return false;
-  } catch (error) {
-    console.error('[SPLASH] Error checking subscription:', error);
-    // On error, allow access to prevent locking users out
-    // They'll be checked again on home screen
-    return true;
-  }
+  const allowed = await userHasPremiumAccess(userId);
+  console.log('[SPLASH] Premium access:', allowed);
+  return allowed;
 }
 
 export default function IndexPage() {
@@ -213,9 +188,9 @@ export default function IndexPage() {
             }]} />
           </Animated.View>
           
-          {/* Large logo with gc-dark.png */}
+          {/* Large app logo */}
           <Image 
-            source={require('../../assets/gc-dark.png')} 
+            source={require('../../assets/new-gut-logo.jpeg')} 
             style={styles.logo}
             resizeMode="contain"
           />
@@ -224,7 +199,7 @@ export default function IndexPage() {
         {/* Welcome Text */}
         <View style={styles.welcomeTextContainer}>
           <Text style={styles.welcomeTitle}>
-            <Text style={styles.boldText}>Welcome back to GutCheck!</Text>
+            <Text style={styles.boldText}>Welcome back to GutChecks: Red Flags & Safety!</Text>
           </Text>
           
           <Text style={styles.welcomeBody}>

@@ -4,12 +4,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '@/lib/theme';
+import { externalUrls } from '@/lib/externalUrls';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { actionStepTrackerService, type ActionStepLocalAggregateSummary } from '@/lib/actionStepTrackerService';
 
 interface PrivacySettings {
   dataSharing: boolean;
@@ -24,9 +26,11 @@ export default function PrivacyScreen() {
     analytics: true,
     crashReports: true,
   });
+  const [actionStepSummary, setActionStepSummary] = useState<ActionStepLocalAggregateSummary | null>(null);
 
   useEffect(() => {
     loadPrivacySettings();
+    loadActionStepSummary();
   }, []);
 
   const loadPrivacySettings = async () => {
@@ -47,6 +51,16 @@ export default function PrivacyScreen() {
     } catch (error) {
       console.error('Error saving privacy settings:', error);
       Alert.alert('Error', 'Failed to save privacy settings');
+    }
+  };
+
+  const loadActionStepSummary = async () => {
+    try {
+      await actionStepTrackerService.pruneStoredEventsNow();
+      const summary = await actionStepTrackerService.getLocalAggregateSummary();
+      setActionStepSummary(summary);
+    } catch (error) {
+      console.error('Error loading action step summary:', error);
     }
   };
 
@@ -83,6 +97,20 @@ export default function PrivacyScreen() {
       'Data export feature coming soon! You\'ll be able to download your conversation history and analysis data.',
       [{ text: 'OK', style: 'default' }]
     );
+  };
+
+  const openExternalUrl = async (url: string, label: string) => {
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Unable to Open Link', `Please visit ${url} manually.`);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error(`Error opening ${label}:`, error);
+      Alert.alert('Unable to Open Link', `Could not open ${label}. Please visit ${url} manually.`);
+    }
   };
 
   const PrivacyItem = ({ 
@@ -195,13 +223,55 @@ export default function PrivacyScreen() {
           <View style={styles.privacyPolicyText}>
             <Text style={styles.privacyPolicyTitle}>Your Privacy Matters</Text>
             <Text style={styles.privacyPolicyDescription}>
-              We are committed to protecting your privacy. All data is encrypted and stored securely. 
+              We are committed to protecting your privacy. Safeguarding event logs are minimized and do not store full message text. 
+              Recommendation tracking is used only for slot status and aggregate feature analytics, never for re-marketing or profiling.
               We never sell your personal information to third parties.
             </Text>
-            <TouchableOpacity style={styles.privacyPolicyLink}>
+            <TouchableOpacity
+              style={styles.privacyPolicyLink}
+              onPress={() => openExternalUrl(externalUrls.privacyPolicy, 'Privacy Policy')}
+            >
               <Text style={styles.privacyPolicyLinkText}>Read our Privacy Policy</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.privacyPolicyLink, styles.termsLink]}
+              onPress={() => openExternalUrl(externalUrls.termsOfUse, 'Terms of Use')}
+            >
+              <Text style={styles.privacyPolicyLinkText}>Read our Terms of Use (EULA)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.privacyPolicyLink, styles.termsLink]}
+              onPress={() => openExternalUrl(externalUrls.accountDeletion, 'Account deletion')}
+            >
+              <Text style={styles.privacyPolicyLinkText}>Account deletion (web)</Text>
+            </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Local Follow-Up Metrics */}
+        <View style={styles.metricsCard}>
+          <View style={styles.metricsHeader}>
+            <Ionicons name="stats-chart" size={20} color={theme.colors.primary} />
+            <Text style={styles.metricsTitle}>Action Step Feedback (Local Summary)</Text>
+          </View>
+          <Text style={styles.metricsDescription}>
+            This device-only summary helps verify effectiveness tracking before server analytics rollout.
+          </Text>
+          <View style={styles.metricsGrid}>
+            <Text style={styles.metricRow}>Responses: {actionStepSummary?.totalResponses ?? 0}</Text>
+            <Text style={styles.metricRow}>Acted upon: {actionStepSummary?.actedUponCount ?? 0}</Text>
+            <Text style={styles.metricRow}>Not acted: {actionStepSummary?.notActedUponCount ?? 0}</Text>
+            <Text style={styles.metricRow}>Skipped: {actionStepSummary?.skippedCount ?? 0}</Text>
+            <Text style={styles.metricRow}>
+              Acted rate: {Math.round((actionStepSummary?.actedUponRate ?? 0) * 100)}%
+            </Text>
+            <Text style={styles.metricRow}>
+              Skip rate: {Math.round((actionStepSummary?.skipRate ?? 0) * 100)}%
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.metricsRefreshBtn} onPress={loadActionStepSummary}>
+            <Text style={styles.metricsRefreshText}>Refresh Summary</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -317,8 +387,62 @@ const styles = StyleSheet.create({
   privacyPolicyLink: {
     alignSelf: 'flex-start',
   },
+  termsLink: {
+    marginTop: 8,
+  },
   privacyPolicyLinkText: {
     fontSize: 14,
+    color: theme.colors.primary,
+    fontWeight: '600',
+    fontFamily: 'Inter',
+  },
+  metricsCard: {
+    marginTop: 20,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(79, 209, 199, 0.3)',
+    backgroundColor: 'rgba(79, 209, 199, 0.08)',
+  },
+  metricsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  metricsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+    fontFamily: 'Inter',
+  },
+  metricsDescription: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 10,
+    fontFamily: 'Inter',
+  },
+  metricsGrid: {
+    gap: 4,
+    marginBottom: 10,
+  },
+  metricRow: {
+    fontSize: 13,
+    color: theme.colors.textPrimary,
+    fontFamily: 'Inter',
+  },
+  metricsRefreshBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(79, 209, 199, 0.35)',
+  },
+  metricsRefreshText: {
+    fontSize: 13,
     color: theme.colors.primary,
     fontWeight: '600',
     fontFamily: 'Inter',

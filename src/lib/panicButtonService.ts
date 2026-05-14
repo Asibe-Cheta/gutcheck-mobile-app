@@ -13,7 +13,8 @@ const TAP_TIME_WINDOW = 800; // ms - time window for 3 taps
 const MAX_TAPS = 3; // Number of taps required
 
 class PanicButtonService {
-  private isEnabled: boolean = false;
+  /** In-memory flag; persisted key is AsyncStorage. Named to avoid clashing with method `isEnabled()`. */
+  private enabledFlag: boolean = false;
   private tapTimes: number[] = [];
   private tapHandler: ((event: any) => void) | null = null;
 
@@ -23,7 +24,9 @@ class PanicButtonService {
   async isEnabled(): Promise<boolean> {
     try {
       const enabled = await AsyncStorage.getItem(PANIC_BUTTON_ENABLED_KEY);
-      return enabled === 'true';
+      const result = enabled === 'true';
+      this.enabledFlag = result;
+      return result;
     } catch (error) {
       console.error('[PANIC] Error checking if enabled:', error);
       return false;
@@ -36,7 +39,7 @@ class PanicButtonService {
   async enable(): Promise<void> {
     try {
       await AsyncStorage.setItem(PANIC_BUTTON_ENABLED_KEY, 'true');
-      this.isEnabled = true;
+      this.enabledFlag = true;
       console.log('[PANIC] Panic button enabled');
     } catch (error) {
       console.error('[PANIC] Error enabling:', error);
@@ -49,7 +52,7 @@ class PanicButtonService {
   async disable(): Promise<void> {
     try {
       await AsyncStorage.setItem(PANIC_BUTTON_ENABLED_KEY, 'false');
-      this.isEnabled = false;
+      this.enabledFlag = false;
       console.log('[PANIC] Panic button disabled');
     } catch (error) {
       console.error('[PANIC] Error disabling:', error);
@@ -60,7 +63,7 @@ class PanicButtonService {
    * Handle tap event
    */
   handleTap(): void {
-    if (!this.isEnabled) {
+    if (!this.enabledFlag) {
       return;
     }
 

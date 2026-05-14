@@ -9,56 +9,69 @@ const envVars = {
   EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV || 'development',
   EXPO_PUBLIC_REVENUECAT_IOS_API_KEY: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
   EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
+  EXPO_PUBLIC_ENABLE_REFERRAL_VERIFY: process.env.EXPO_PUBLIC_ENABLE_REFERRAL_VERIFY,
+  EXPO_PUBLIC_REFERRAL_VERIFY_BASE_URL: process.env.EXPO_PUBLIC_REFERRAL_VERIFY_BASE_URL,
+  EXPO_PUBLIC_ACTION_STEP_INGEST_SECRET: process.env.EXPO_PUBLIC_ACTION_STEP_INGEST_SECRET,
 };
 
 module.exports = {
   expo: {
-    name: 'GutCheck',
+    name: 'GutChecks: Red Flags & Safety',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '2.0.7',
-    orientation: 'portrait',
-    icon: './assets/gc-main.png',
+    version: '2.2.2',
+    orientation: 'default',
+    icon: './assets/new-gut-logo.jpeg',
     userInterfaceStyle: 'dark',
-    newArchEnabled: true,
     splash: {
-      image: './assets/gc-main.png',
+      image: './assets/new-gut-logo.jpeg',
       resizeMode: 'contain',
       backgroundColor: '#1a1d29',
     },
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.gutcheck.app',
-      buildNumber: '197',
+      buildNumber: '202',
       infoPlist: {
         // NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
         NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
         NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
+        NSSpeechRecognitionUsageDescription:
+          'GutChecks uses speech recognition only to turn what you say into text in the chat on your device, so you can review and send it. Audio is processed by Apple’s speech services, not stored by GutChecks as a voice recording.',
         NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
-        NSFaceIDUsageDescription: 'GutCheck uses Face ID to securely log you in and protect your privacy.',
+        NSFaceIDUsageDescription: 'GutChecks: Red Flags & Safety uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
-        CFBundleDisplayName: 'GutCheck',
-        CFBundleShortVersionString: '2.0.7',
+        CFBundleDisplayName: 'GutChecks: Red Flags & Safety',
+        CFBundleShortVersionString: '2.2.2',
       },
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/gc-main.png',
+        foregroundImage: './assets/new-gut-logo.jpeg',
         backgroundColor: '#1a1d29',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'org.mygutcheck.app',
+      versionCode: 202,
     },
     plugins: [
-      'expo-router',
-      'expo-local-authentication',
-      'expo-secure-store',
-      // expo-in-app-purchases auto-links in Expo SDK 54+ (no plugin needed)
-      // Adding it explicitly causes errors because it doesn't have a config plugin
+      ['expo-local-authentication', {}],
+      ['expo-secure-store', {}],
+      /** Embeds EAS Update URL / runtime; required for reliable OTA on store builds */
+      'expo-updates',
     ],
     scheme: 'gutcheck',
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
+    updates: {
+      url: 'https://u.expo.dev/8e8f5512-18b9-489d-9b05-ee5c0379ea29',
+      enabled: true,
+      checkAutomatically: 'ON_LOAD',
+      fallbackToCacheTimeout: 30000,
+    },
     experiments: {
       typedRoutes: true,
     },

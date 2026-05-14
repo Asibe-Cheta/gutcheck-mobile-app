@@ -1,9 +1,9 @@
 /**
  * Share Nudge Modal
- * Beautiful bottom sheet that encourages users to share GutCheck
+ * Beautiful bottom sheet that encourages users to share GutChecks: Red Flags & Safety
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,15 @@ import {
   Dimensions,
   Platform,
   Share,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shareNudgeService } from '@/lib/shareNudgeService';
+import { recommendProtectService, isSupabaseReferralBackendActive } from '@/lib/recommendProtectService';
+import { isReferralVerificationEnabled } from '@/lib/externalUrls';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = 320;
@@ -34,8 +37,14 @@ export default function ShareNudgeModal({ visible, onClose }: ShareNudgeModalPro
   const colors = getThemeColors(isDark);
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [slotSummary, setSlotSummary] = useState({ total: 5, used: 0, remaining: 5 });
 
   useEffect(() => {
+    if (visible) {
+      recommendProtectService.getSummary().then(setSlotSummary).catch(() => {
+        setSlotSummary({ total: 5, used: 0, remaining: 5 });
+      });
+    }
     if (visible) {
       // Slide up and fade in
       Animated.parallel([
@@ -70,28 +79,58 @@ export default function ShareNudgeModal({ visible, onClose }: ShareNudgeModalPro
 
   const handleShare = async () => {
     try {
+      const hasSlot = await recommendProtectService.hasAvailableSlot();
+      if (!hasSlot) {
+        Alert.alert('All recommendations used', 'You have used all 5 recommendation slots.');
+        onClose();
+        return;
+      }
+
       // Get user ID for tracking
       const userId = await AsyncStorage.getItem('user_id');
 
       // Platform-specific share links
       const appStoreLink = 'https://apps.apple.com/app/gutcheck/id6738287794';
       const playStoreLink = 'https://play.google.com/store/apps/details?id=com.gutcheck.app';
-
-      const shareMessage = Platform.OS === 'ios'
-        ? `Check out GutCheck - your confidential ally for difficult situations. Get clarity and perspective when you need it most.\n\n${appStoreLink}`
-        : `Check out GutCheck - your confidential ally for difficult situations. Get clarity and perspective when you need it most.\n\n${playStoreLink}`;
+      const referral = await recommendProtectService.previewNextReferral();
+      const referralLink = referral?.link;
+      const sharePayload = await recommendProtectService.buildSharePayload(
+        'other',
+        referralLink || (Platform.OS === 'ios' ? appStoreLink : playStoreLink)
+      );
 
       const result = await Share.share({
-        message: shareMessage,
-        title: 'Share GutCheck',
+        message: sharePayload.message,
+        subject: sharePayload.subject,
+        title: 'Share GutChecks: Red Flags & Safety',
       });
 
       if (result.action === Share.sharedAction) {
         console.log('[ShareNudge] User shared the app');
+        const shareMethod = result.activityType || 'native_share';
+        const consumed = await recommendProtectService.consumeNextSlot(shareMethod, referral?.token);
+        if (consumed) {
+          const consumedReferralLink = await recommendProtectService.getReferralLinkForSlot(consumed.slotNumber);
+          console.log('[RecommendProtect] Slot used:', {
+            slotNumber: consumed.slotNumber,
+            referralToken: consumed.referralToken,
+            referralLink: consumedReferralLink,
+          });
+          const updated = await recommendProtectService.getSummary();
+          setSlotSummary(updated);
+        } else {
+          Alert.alert(
+            'Share not counted yet',
+            isReferralVerificationEnabled()
+              ? isSupabaseReferralBackendActive()
+                ? 'Could not confirm with Supabase. Apply database/migration_referral_slots.sql in the SQL editor, then try again.'
+                : 'Server-side slot verification could not be confirmed for this share.'
+              : 'We could not verify this share yet. Please try again shortly.'
+          );
+        }
 
         // Track share event in Supabase
         if (userId) {
-          const shareMethod = result.activityType || 'unknown';
           await shareNudgeService.trackShare(userId, shareMethod);
         }
       } else if (result.action === Share.dismissedAction) {
@@ -152,10 +191,13 @@ export default function ShareNudgeModal({ visible, onClose }: ShareNudgeModalPro
         {/* Content */}
         <View style={styles.content}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
-            GutCheck helped you find clarity? 💡
+            GutChecks: Red Flags & Safety helped you find clarity? 💡
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Pass it forward.
+          </Text>
+          <Text style={[styles.counterText, { color: colors.textSecondary }]}>
+            {slotSummary.used} of {slotSummary.total} recommendations sent
           </Text>
         </View>
 
@@ -164,10 +206,13 @@ export default function ShareNudgeModal({ visible, onClose }: ShareNudgeModalPro
           <TouchableOpacity
             style={[styles.shareButton, { backgroundColor: colors.primary }]}
             onPress={handleShare}
+            disabled={slotSummary.remaining <= 0}
             activeOpacity={0.8}
           >
             <Ionicons name="share-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.shareButtonText}>Share GutCheck</Text>
+            <Text style={styles.shareButtonText}>
+              {slotSummary.remaining <= 0 ? 'All 5 Recommendations Used' : 'Share GutChecks: Red Flags & Safety'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -245,6 +290,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  counterText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '500',
   },
   buttonContainer: {
     gap: 12,

@@ -37,7 +37,7 @@ export default function OnboardingWelcomeScreen() {
         
         {/* Welcome content */}
         <View style={styles.welcomeContent}>
-          <Text style={styles.title}>Welcome to GutCheck!</Text>
+          <Text style={styles.title}>Welcome to GutChecks: Red Flags & Safety!</Text>
           <Text style={styles.description}>
             We're here to help you navigate relationships with confidence. Let's get started!
           </Text>
