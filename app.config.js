@@ -31,7 +31,8 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.gutcheck.app',
-      buildNumber: '202',
+      // Bump each App Store / TestFlight upload (cannot use eas.json autoIncrement with app.config.js).
+      buildNumber: '216',
       infoPlist: {
         // NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
@@ -54,7 +55,7 @@ module.exports = {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'org.mygutcheck.app',
-      versionCode: 202,
+      versionCode: 50,
     },
     plugins: [
       ['expo-local-authentication', {}],
