@@ -37,8 +37,9 @@ module.exports = {
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
         NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
         NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
+        /** Also set via expo-speech-recognition plugin (required for App Store ITMS-90683). */
         NSSpeechRecognitionUsageDescription:
-          'GutChecks uses speech recognition only to turn what you say into text in the chat on your device, so you can review and send it. Audio is processed by Apple’s speech services, not stored by GutChecks as a voice recording.',
+          'GutChecks uses speech recognition only to turn what you say into text in the chat on your device, so you can review and send it. Audio is processed by Apple speech services. GutChecks does not store your voice as a recording.',
         NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
         NSFaceIDUsageDescription: 'GutChecks: Red Flags & Safety uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
@@ -59,6 +60,15 @@ module.exports = {
     plugins: [
       ['expo-local-authentication', {}],
       ['expo-secure-store', {}],
+      /** Required for ITMS-90683: writes NSSpeechRecognitionUsageDescription + mic string into native projects. */
+      [
+        'expo-speech-recognition',
+        {
+          speechRecognitionPermission:
+            'GutChecks uses speech recognition only to turn what you say into text in the chat on your device, so you can review and send it. Audio is processed by Apple speech services. GutChecks does not store your voice as a recording.',
+          microphonePermission: 'This app may use the microphone for voice-based interactions.',
+        },
+      ],
       /** Embeds EAS Update URL / runtime; required for reliable OTA on store builds */
       'expo-updates',
     ],
