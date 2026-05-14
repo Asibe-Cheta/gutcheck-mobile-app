@@ -38,6 +38,9 @@ yarn-error.*
 *.env
 !.env.example
 
+# Supabase CLI cache (not part of the app)
+supabase/.temp/
+
 # Typescript
 *.tsbuildinfo
 

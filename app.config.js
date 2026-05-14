@@ -37,7 +37,6 @@ module.exports = {
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
         NSPhotoLibraryUsageDescription: 'This app allows you to select images from your photo library for AI analysis.',
         NSMicrophoneUsageDescription: 'This app may use the microphone for voice-based interactions.',
-        /** Also set via expo-speech-recognition plugin (required for App Store ITMS-90683). */
         NSSpeechRecognitionUsageDescription:
           'GutChecks uses speech recognition only to turn what you say into text in the chat on your device, so you can review and send it. Audio is processed by Apple speech services. GutChecks does not store your voice as a recording.',
         NSLocationWhenInUseUsageDescription: 'This app may use location to provide region-specific mental health resources.',
@@ -60,7 +59,6 @@ module.exports = {
     plugins: [
       ['expo-local-authentication', {}],
       ['expo-secure-store', {}],
-      /** Required for ITMS-90683: writes NSSpeechRecognitionUsageDescription + mic string into native projects. */
       [
         'expo-speech-recognition',
         {
@@ -69,7 +67,6 @@ module.exports = {
           microphonePermission: 'This app may use the microphone for voice-based interactions.',
         },
       ],
-      /** Embeds EAS Update URL / runtime; required for reliable OTA on store builds */
       'expo-updates',
     ],
     scheme: 'gutcheck',
