@@ -8,8 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "ota:production:android": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p android --non-interactive",
-    "ota:production:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p ios --non-interactive",
+    "ota:production:android": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p android --non-interactive --message \"Production OTA (Android)\"",
+    "ota:production:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p ios --non-interactive --message \"Production OTA (iOS)\"",
     "ota:production:all": "npm run ota:production:android && npm run ota:production:ios",
     "build:production": "EAS_BUILD_NO_EXPO_GO_WARNING=1 eas build --profile production --platform all --non-interactive --no-wait"
   },
