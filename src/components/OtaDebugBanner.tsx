@@ -26,7 +26,7 @@ export default function OtaDebugBanner({ textSecondary, primary, surface, border
 
   return (
     <View style={[styles.box, { backgroundColor: surface, borderColor: border }]}>
-      <Text style={[styles.title, { color: primary }]}>Update diagnostics (v4)</Text>
+      <Text style={[styles.title, { color: primary }]}>Update diagnostics · app 2.2.3</Text>
       <Text style={[styles.line, { color: textSecondary }]}>
         enabled={String(Updates.isEnabled)} · channel={Updates.channel ?? 'none'} · runtime=
         {Updates.runtimeVersion ?? '?'}

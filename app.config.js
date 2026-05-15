@@ -19,7 +19,7 @@ module.exports = {
     name: 'GutChecks: Red Flags & Safety',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '2.2.2',
+    version: '2.2.3',
     orientation: 'default',
     icon: './assets/new-gut-logo.jpeg',
     userInterfaceStyle: 'dark',
@@ -42,7 +42,7 @@ module.exports = {
         NSFaceIDUsageDescription: 'GutChecks: Red Flags & Safety uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutChecks: Red Flags & Safety',
-        CFBundleShortVersionString: '2.2.2',
+        CFBundleShortVersionString: '2.2.3',
       },
     },
     android: {

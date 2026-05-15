@@ -509,7 +509,7 @@ export default function HomeScreen() {
             <View style={styles.textAreaWrapper}>
               <TextInput
                 style={styles.textArea}
-                placeholder="Describe what happened or how someone made you feel… (OTA v4)"
+                placeholder="Describe what happened or how someone made you feel…"
                 placeholderTextColor={currentTheme.textSecondary}
                 value={analysisText}
                 onChangeText={setAnalysisText}
