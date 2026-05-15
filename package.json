@@ -8,9 +8,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "ota:production:android": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p android --non-interactive --message \"OTA: home screen mic + AI chat fix\"",
-    "ota:production:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p ios --non-interactive --message \"OTA: home screen mic + AI chat fix\"",
-    "ota:production:all": "npm run ota:production:android && npm run ota:production:ios",
+    "ota:production": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production --non-interactive --message \"Production OTA\"",
+    "ota:production:android": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p android --non-interactive --message \"Production OTA (Android only)\"",
+    "ota:production:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 CI=1 NODE_OPTIONS=--max-old-space-size=8192 eas update --channel production -p ios --non-interactive --message \"Production OTA (iOS only)\"",
+    "ota:production:all": "npm run ota:production",
     "build:production": "EAS_BUILD_NO_EXPO_GO_WARNING=1 eas build --profile production --platform all --non-interactive --no-wait"
   },
   "dependencies": {
