@@ -4,7 +4,7 @@
  * Core feature for relationship analysis
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Keyboard, TouchableWithoutFeedback, ActivityIndicator, Image, Modal, Dimensions, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +30,9 @@ import { shareNudgeService } from '@/lib/shareNudgeService';
 import { SubscriptionGateModal } from '@/components/SubscriptionGateModal';
 import ActionStepFollowUpModal from '@/components/ActionStepFollowUpModal';
 import { actionStepTrackerService, type PendingActionStepFollowUp } from '@/lib/actionStepTrackerService';
-import { useVoiceTextInput } from '@/hooks/useVoiceTextInput';
+import OtaDebugBanner from '@/components/OtaDebugBanner';
+
+const HomeVoiceMicButton = React.lazy(() => import('@/components/HomeVoiceMicButton'));
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -438,12 +440,6 @@ export default function HomeScreen() {
 
   const styles = createStyles(currentTheme);
 
-  const { isRecordingVoice, startVoiceInput, stopVoiceInput } = useVoiceTextInput(
-    setAnalysisText,
-    () => analysisText,
-    { disabled: isAnalyzing }
-  );
-  
   // Show lock screen if app is locked (when returning from background)
   // Only show if user is authenticated and biometrics are enabled (handled by AppLockContext)
   if (isLocked && shouldShowLock) {
@@ -500,13 +496,20 @@ export default function HomeScreen() {
           <Text style={[styles.subGreeting, { color: currentTheme.textSecondary }]}>
             Share what happened or upload a screenshot for analysis
           </Text>
+
+          <OtaDebugBanner
+            textSecondary={currentTheme.textSecondary}
+            primary={currentTheme.primary}
+            surface={currentTheme.surface}
+            border={currentTheme.border}
+          />
           
           {/* Analysis Input */}
           <View style={styles.inputContainer}>
             <View style={styles.textAreaWrapper}>
               <TextInput
                 style={styles.textArea}
-                placeholder="Describe what happened or how someone made you feel..."
+                placeholder="Describe what happened or how someone made you feel… (OTA v4)"
                 placeholderTextColor={currentTheme.textSecondary}
                 value={analysisText}
                 onChangeText={setAnalysisText}
@@ -517,19 +520,15 @@ export default function HomeScreen() {
                 blurOnSubmit={true}
                 onSubmitEditing={Keyboard.dismiss}
               />
-              <TouchableOpacity
-                style={styles.textAreaMicButton}
-                onPress={isRecordingVoice ? stopVoiceInput : startVoiceInput}
-                disabled={isAnalyzing}
-                accessibilityLabel="Voice input"
-                accessibilityRole="button"
-              >
-                <Ionicons
-                  name={isRecordingVoice ? 'mic' : 'mic-outline'}
-                  size={22}
-                  color={isAnalyzing ? currentTheme.textSecondary : currentTheme.primary}
+              <Suspense fallback={null}>
+                <HomeVoiceMicButton
+                  value={analysisText}
+                  onChangeText={setAnalysisText}
+                  disabled={isAnalyzing}
+                  color={currentTheme.primary}
+                  mutedColor={currentTheme.textSecondary}
                 />
-              </TouchableOpacity>
+              </Suspense>
             </View>
             
             {/* Image Preview */}
@@ -805,16 +804,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
-  },
-  textAreaMicButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   promptsContainer: {
     flexDirection: 'row',
