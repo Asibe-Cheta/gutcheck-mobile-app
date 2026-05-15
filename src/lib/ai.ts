@@ -15,7 +15,16 @@ import {
 } from './helplineService';
 import { profileService } from './profileService';
 import * as Crypto from 'expo-crypto';
-import { isSupabaseConfigured } from './supabase';
+import { isSupabaseConfigured, readPublicEnv } from './supabase';
+
+function getClaudeTransportConfig() {
+  const supabaseUrl = readPublicEnv('EXPO_PUBLIC_SUPABASE_URL');
+  const supabaseAnonKey = readPublicEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
+  const apiKey = readPublicEnv('EXPO_PUBLIC_ANTHROPIC_API_KEY');
+  const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
+  const directEnabled = !!apiKey;
+  return { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled };
+}
 
 export interface AIAnalysisResult {
   analysis: {
@@ -360,12 +369,8 @@ IMPORTANT:
 
   // Anthropic Claude analysis (for JSON responses)
   private async analyzeWithAnthropic(prompt: string): Promise<any> {
-    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
-
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    const directEnabled = !!apiKey;
+    const { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled } =
+      getClaudeTransportConfig();
 
     const url = edgeProxyEnabled
       ? `${supabaseUrl}/functions/v1/claude-proxy`
@@ -446,12 +451,8 @@ IMPORTANT:
 
   // Anthropic Claude conversational response (for plain text responses)
   private async getConversationalResponse(prompt: string): Promise<string> {
-    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
-
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    const directEnabled = !!apiKey;
+    const { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled } =
+      getClaudeTransportConfig();
 
     const url = edgeProxyEnabled
       ? `${supabaseUrl}/functions/v1/claude-proxy`
@@ -1729,7 +1730,8 @@ Always respond naturally and conversationally. Build on previous messages to mai
         message: errorMessage,
         fullError: JSON.stringify(error),
         model: this.config.model,
-        apiKeyPresent: !!Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY
+        apiKeyPresent: !!readPublicEnv('EXPO_PUBLIC_ANTHROPIC_API_KEY'),
+        transport: getClaudeTransportConfig().edgeProxyEnabled ? 'supabase-edge' : 'direct',
       });
       
       // User-friendly error message
@@ -1803,56 +1805,107 @@ Always respond naturally and conversationally. Build on previous messages to mai
     }
   }
 
+  private appendAnthropicSseBlocks(
+    carry: string,
+    onDelta: (accumulated: string) => void,
+    fullText: string
+  ): { carry: string; fullText: string } {
+    let nextCarry = carry;
+    let nextFull = fullText;
+    let sep: number;
+    while ((sep = nextCarry.indexOf('\n\n')) !== -1) {
+      const block = nextCarry.slice(0, sep);
+      nextCarry = nextCarry.slice(sep + 2);
+      for (const line of block.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const raw = trimmed.slice(5).trim();
+        if (!raw || raw === '[DONE]') continue;
+        let evt: {
+          type?: string;
+          error?: { message?: string };
+          delta?: { type?: string; text?: string };
+        };
+        try {
+          evt = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        if (evt.type === 'error') {
+          throw new Error(evt.error?.message || 'Anthropic stream error');
+        }
+        if (
+          evt.type === 'content_block_delta' &&
+          evt.delta?.type === 'text_delta' &&
+          typeof evt.delta.text === 'string'
+        ) {
+          nextFull += evt.delta.text;
+          onDelta(nextFull);
+        }
+      }
+    }
+    return { carry: nextCarry, fullText: nextFull };
+  }
+
+  private parseAnthropicSseText(sseText: string, onDelta: (accumulated: string) => void): string {
+    const normalized = sseText.replace(/\r\n/g, '\n');
+    const trimmed = normalized.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const data = JSON.parse(trimmed) as { content?: Array<{ text?: string }> };
+        const full = data.content?.[0]?.text;
+        if (typeof full === 'string' && full.length > 0) {
+          onDelta(full);
+          return full;
+        }
+      } catch {
+        /* fall through to SSE parse */
+      }
+    }
+    let { carry, fullText } = this.appendAnthropicSseBlocks(normalized, onDelta, '');
+    if (carry.trim()) {
+      ({ fullText } = this.appendAnthropicSseBlocks(`${carry}\n\n`, onDelta, fullText));
+    }
+    return fullText;
+  }
+
   private async parseAnthropicMessageStream(
     response: Response,
     onDelta: (accumulated: string) => void
   ): Promise<string> {
-    if (!response.body) {
-      const t = await response.text();
-      throw new Error(t || 'Empty response body');
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let carry = '';
-    let fullText = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      carry += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = carry.indexOf('\n\n')) !== -1) {
-        const block = carry.slice(0, sep);
-        carry = carry.slice(sep + 2);
-        for (const line of block.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const raw = trimmed.slice(5).trim();
-          if (!raw || raw === '[DONE]') continue;
-          let evt: {
-            type?: string;
-            error?: { message?: string };
-            delta?: { type?: string; text?: string };
-          };
-          try {
-            evt = JSON.parse(raw);
-          } catch {
-            continue;
-          }
-          if (evt.type === 'error') {
-            throw new Error(evt.error?.message || 'Anthropic stream error');
-          }
-          if (
-            evt.type === 'content_block_delta' &&
-            evt.delta?.type === 'text_delta' &&
-            typeof evt.delta.text === 'string'
-          ) {
-            fullText += evt.delta.text;
-            onDelta(fullText);
-          }
+    const body = response.body;
+    if (body && typeof body.getReader === 'function') {
+      try {
+        const reader = body.getReader();
+        const decoder = new TextDecoder();
+        let carry = '';
+        let fullText = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          carry += decoder.decode(value, { stream: true });
+          ({ carry, fullText } = this.appendAnthropicSseBlocks(carry, onDelta, fullText));
         }
+        if (carry.trim()) {
+          ({ fullText } = this.appendAnthropicSseBlocks(`${carry}\n\n`, onDelta, fullText));
+        }
+        if (fullText.trim().length > 0) {
+          return fullText;
+        }
+      } catch (streamError) {
+        console.warn('[AI] SSE reader failed, falling back to buffered parse:', streamError);
       }
     }
-    return fullText;
+
+    const buffered = await response.text();
+    if (!buffered) {
+      throw new Error('Empty response body');
+    }
+    const parsed = this.parseAnthropicSseText(buffered, onDelta);
+    if (!parsed.trim()) {
+      throw new Error('No text in streamed Claude response');
+    }
+    return parsed;
   }
 
   /**
@@ -1867,11 +1920,8 @@ Always respond naturally and conversationally. Build on previous messages to mai
     imageData?: string,
     onStreamChunk?: (accumulated: string) => void
   ): Promise<string> {
-    const supabaseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-    const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
-    const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_ANTHROPIC_API_KEY;
-    const directEnabled = !!apiKey;
+    const { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled } =
+      getClaudeTransportConfig();
 
     const isWeb =
       typeof window !== 'undefined' &&
@@ -2073,10 +2123,22 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
         throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 300)}`);
       }
 
-      const contentType = response.headers.get('content-type') || '';
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
 
-      if (useStreaming && (contentType.includes('text/event-stream') || contentType.includes('event-stream'))) {
+      if (
+        useStreaming &&
+        (contentType.includes('text/event-stream') || contentType.includes('event-stream'))
+      ) {
         return await this.parseAnthropicMessageStream(response, onStreamChunk!);
+      }
+
+      if (useStreaming) {
+        const buffered = await response.text();
+        const parsed = this.parseAnthropicSseText(buffered, onStreamChunk!);
+        if (parsed.trim().length > 0) {
+          return parsed;
+        }
+        throw new Error('Unexpected Claude streaming response shape');
       }
 
       const data = await response.json();

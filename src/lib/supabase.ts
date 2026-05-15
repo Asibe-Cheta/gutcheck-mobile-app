@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 
 // SAFE: Get environment variables with comprehensive null checks
 // This prevents crashes if Constants.expoConfig is undefined/null
-function getEnvVar(key: string, defaultValue: string = ''): string {
+export function readPublicEnv(key: string, defaultValue: string = ''): string {
   try {
     // First try process.env (works in development and EAS builds)
     if (process.env[key]) {
@@ -28,8 +28,8 @@ function getEnvVar(key: string, defaultValue: string = ''): string {
   }
 }
 
-const supabaseUrl = getEnvVar('EXPO_PUBLIC_SUPABASE_URL', 'https://placeholder.supabase.co');
-const supabaseAnonKey = getEnvVar('EXPO_PUBLIC_SUPABASE_ANON_KEY', 'placeholder-key');
+const supabaseUrl = readPublicEnv('EXPO_PUBLIC_SUPABASE_URL', 'https://placeholder.supabase.co');
+const supabaseAnonKey = readPublicEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY', 'placeholder-key');
 
 /** True when real project URL/key are loaded (not Expo defaults). */
 export function isSupabaseConfigured(): boolean {
