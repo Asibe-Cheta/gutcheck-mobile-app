@@ -30,6 +30,7 @@ import { shareNudgeService } from '@/lib/shareNudgeService';
 import { SubscriptionGateModal } from '@/components/SubscriptionGateModal';
 import ActionStepFollowUpModal from '@/components/ActionStepFollowUpModal';
 import { actionStepTrackerService, type PendingActionStepFollowUp } from '@/lib/actionStepTrackerService';
+import { useVoiceTextInput } from '@/hooks/useVoiceTextInput';
 
 export default function HomeScreen() {
   const [analysisText, setAnalysisText] = useState('');
@@ -436,6 +437,12 @@ export default function HomeScreen() {
   };
 
   const styles = createStyles(currentTheme);
+
+  const { isRecordingVoice, startVoiceInput, stopVoiceInput } = useVoiceTextInput(
+    setAnalysisText,
+    () => analysisText,
+    { disabled: isAnalyzing }
+  );
   
   // Show lock screen if app is locked (when returning from background)
   // Only show if user is authenticated and biometrics are enabled (handled by AppLockContext)
@@ -496,19 +503,34 @@ export default function HomeScreen() {
           
           {/* Analysis Input */}
           <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.textArea}
-              placeholder="Describe what happened or how someone made you feel..."
-              placeholderTextColor={currentTheme.textSecondary}
-              value={analysisText}
-              onChangeText={setAnalysisText}
-              multiline
-              textAlignVertical="top"
-              maxLength={1000}
-              returnKeyType="done"
-              blurOnSubmit={true}
-              onSubmitEditing={Keyboard.dismiss}
-            />
+            <View style={styles.textAreaWrapper}>
+              <TextInput
+                style={styles.textArea}
+                placeholder="Describe what happened or how someone made you feel..."
+                placeholderTextColor={currentTheme.textSecondary}
+                value={analysisText}
+                onChangeText={setAnalysisText}
+                multiline
+                textAlignVertical="top"
+                maxLength={1000}
+                returnKeyType="done"
+                blurOnSubmit={true}
+                onSubmitEditing={Keyboard.dismiss}
+              />
+              <TouchableOpacity
+                style={styles.textAreaMicButton}
+                onPress={isRecordingVoice ? stopVoiceInput : startVoiceInput}
+                disabled={isAnalyzing}
+                accessibilityLabel="Voice input"
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={isRecordingVoice ? 'mic' : 'mic-outline'}
+                  size={22}
+                  color={isAnalyzing ? currentTheme.textSecondary : currentTheme.primary}
+                />
+              </TouchableOpacity>
+            </View>
             
             {/* Image Preview */}
             {uploadedImage && (
@@ -762,10 +784,16 @@ const createStyles = (colors: any) => StyleSheet.create({
   inputContainer: {
     marginBottom: 16,
   },
+  textAreaWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
   textArea: {
     width: '100%',
     height: 148,
     padding: 16,
+    paddingRight: 48,
+    paddingBottom: 44,
     borderRadius: 20,
     backgroundColor: colors.surface,
     color: colors.textPrimary,
@@ -777,6 +805,16 @@ const createStyles = (colors: any) => StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
+  },
+  textAreaMicButton: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   promptsContainer: {
     flexDirection: 'row',
