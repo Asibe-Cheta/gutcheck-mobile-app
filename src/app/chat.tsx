@@ -37,7 +37,9 @@ import { useTheme } from '@/lib/themeContext';
 import { useConversationStore } from '@/lib/stores/conversationStore';
 import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
-import { aiService, SAFEGUARD_READBACK_TEMPLATES } from '@/lib/ai';
+import { aiService, SAFEGUARD_READBACK_TEMPLATES, type ConversationResponse } from '@/lib/ai';
+import CrisisHelplineCards from '@/components/CrisisHelplineCards';
+import type { ConversationMessage } from '@/lib/stores/conversationStore';
 import { shareNudgeService } from '@/lib/shareNudgeService';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { getLifetimeProService } from '@/lib/lifetimeProService';
@@ -149,6 +151,7 @@ export default function ChatScreen() {
   const [curatedVoices, setCuratedVoices] = useState<Voice[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceDisabledForSession, setVoiceDisabledForSession] = useState(false);
+  const [crisisSessionActive, setCrisisSessionActive] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceBaseTextRef = useRef('');
@@ -169,10 +172,35 @@ export default function ChatScreen() {
   } = useConversationStore();
   
   const { handleConversation, isLoading, error } = useAnalysisStore();
-  const { saveChat, getChatById } = useChatHistoryStore();
+  const { upsertChat, loadChats, getChatById } = useChatHistoryStore();
+  const [activeSavedChatId, setActiveSavedChatId] = useState<string | null>(
+    typeof chatId === 'string' ? chatId : null
+  );
   const VOICE_SETTINGS_KEY = '@voice_settings_v1';
   const VOICE_INPUT_RATIONALE_KEY = '@chat_voice_input_rationale_v1';
   const HUB_AGE_BAND_KEY = '@awareness_hub_age_band_v1';
+
+  const applyAssistantFromResponse = (response: ConversationResponse) => {
+    addAssistantResponse(response.response, {
+      crisisCard: response.crisisCard,
+      safeguardCategory: response.safeguardCategory,
+    });
+    if (response.safeguardCategory === 'A') {
+      setCrisisSessionActive(true);
+    }
+    if (response.safeguardCategory && response.safeguardCategory !== 'D') {
+      setVoiceDisabledForSession(true);
+    }
+    if (autoReadBackEnabled) {
+      startReadback(response.response, {
+        safeguardCategory:
+          response.safeguardCategory && response.safeguardCategory !== 'D'
+            ? response.safeguardCategory
+            : undefined,
+      });
+    }
+    updateConversationState({ stage: response.nextStage });
+  };
 
   const resetVoiceSilenceTimer = () => {
     if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
@@ -344,32 +372,73 @@ export default function ChatScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    void loadChats();
+  }, [loadChats]);
+
+  const buildPersistPayload = () => {
+    const firstUserMessage = conversationHistory.find((msg) => msg.role === 'user');
+    let title = 'Untitled Conversation';
+    if (firstUserMessage?.content) {
+      title =
+        firstUserMessage.content.substring(0, 30) +
+        (firstUserMessage.content.length > 30 ? '...' : '');
+    }
+
+    return {
+      id: activeSavedChatId ?? (typeof chatId === 'string' ? chatId : undefined),
+      title,
+      messages: conversationHistory.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(),
+      })),
+      hasImage: conversationState.hasImage || false,
+      analysisData: {
+        patterns: [] as string[],
+        severity: 'unknown',
+        riskLevel: 'unknown',
+      },
+    };
+  };
+
+  const persistConversationToHistory = async (): Promise<string | null> => {
+    if (conversationHistory.length === 0) return null;
+    const savedId = await upsertChat(buildPersistPayload());
+    setActiveSavedChatId(savedId);
+    return savedId;
+  };
+
   // Handle loading saved chat or initial message
   useEffect(() => {
-    if (isFromHistory === 'true' && chatId) {
-      // Load saved chat
-      const savedChat = getChatById(chatId as string);
-      if (savedChat) {
-        console.log('Loading saved chat:', {
-          chatId,
-          messageCount: savedChat.messages.length,
-          messages: savedChat.messages.map(m => ({ role: m.role, contentLength: m.content.length }))
-        });
-        
-        // Load the saved conversation by setting the entire history at once
-        const { conversationHistory: _, ...rest } = useConversationStore.getState();
-        useConversationStore.setState({
-          conversationHistory: savedChat.messages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
-          conversationState: {
-            ...rest.conversationState,
-            stage: 'support'
-          }
-        });
+    void (async () => {
+      await loadChats();
+
+      if (isFromHistory === 'true' && chatId) {
+        setActiveSavedChatId(chatId as string);
+        const savedChat = getChatById(chatId as string);
+        if (savedChat) {
+          console.log('Loading saved chat:', {
+            chatId,
+            messageCount: savedChat.messages.length,
+          });
+
+          const { conversationHistory: _, ...rest } = useConversationStore.getState();
+          useConversationStore.setState({
+            conversationHistory: savedChat.messages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+            conversationState: {
+              ...rest.conversationState,
+              stage: 'support',
+            },
+          });
+        }
+        return;
       }
-    } else if (fromNotification === 'true' && notificationTitle && notificationBody) {
+
+    if (fromNotification === 'true' && notificationTitle && notificationBody) {
       // Handle notification-triggered conversation
       console.log('Starting conversation from notification:', {
         title: notificationTitle,
@@ -389,6 +458,7 @@ export default function ChatScreen() {
       });
       sendInitialMessage(initialMessage, imageFlag, imageUri);
     }
+    })();
   }, [initialMessage, hasImage, chatId, isFromHistory]);
 
   // Auto-scroll to bottom when new messages arrive
@@ -497,23 +567,7 @@ export default function ChatScreen() {
         chatPrompt
       );
 
-      // Add assistant response
-      addAssistantResponse(response.response);
-
-      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
-        setVoiceDisabledForSession(true);
-      }
-      if (autoReadBackEnabled) {
-        startReadback(response.response, {
-          safeguardCategory:
-            response.safeguardCategory && response.safeguardCategory !== 'D'
-              ? response.safeguardCategory
-              : undefined,
-        });
-      }
-
-      // Update conversation state
-      updateConversationState({ stage: response.nextStage });
+      applyAssistantFromResponse(response);
 
     } catch (error) {
       console.error('Notification response error:', error);
@@ -720,23 +774,7 @@ export default function ChatScreen() {
         imageData
       );
 
-      // Add assistant response
-      addAssistantResponse(response.response);
-
-      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
-        setVoiceDisabledForSession(true);
-      }
-      if (autoReadBackEnabled) {
-        startReadback(response.response, {
-          safeguardCategory:
-            response.safeguardCategory && response.safeguardCategory !== 'D'
-              ? response.safeguardCategory
-              : undefined,
-        });
-      }
-
-      // Update conversation state
-      updateConversationState({ stage: response.nextStage });
+      applyAssistantFromResponse(response);
 
       // Update context based on user message (basic extraction)
       updateContextFromMessage(message);
@@ -838,24 +876,9 @@ export default function ChatScreen() {
 
       setIsStreaming(false);
       setStreamingMessage('');
-      addAssistantResponse(response.response);
-
-      if (response.safeguardCategory && response.safeguardCategory !== 'D') {
-        setVoiceDisabledForSession(true);
-      }
-      if (autoReadBackEnabled) {
-        startReadback(response.response, {
-          safeguardCategory:
-            response.safeguardCategory && response.safeguardCategory !== 'D'
-              ? response.safeguardCategory
-              : undefined,
-        });
-      }
+      applyAssistantFromResponse(response);
       
       console.log('Added complete response to conversation history');
-
-      // Update conversation state
-      updateConversationState({ stage: response.nextStage });
 
       // Update context based on user message (basic extraction)
       updateContextFromMessage(userMessage);
@@ -916,6 +939,7 @@ export default function ChatScreen() {
     // Start a fresh conversation, clear image, and navigate to home
     startNewConversation();
     setUploadedImage(null);
+    setCrisisSessionActive(false);
     setVoiceDisabledForSession(false);
     voiceSessionStartRef.current = null;
     voiceBreakPromptShownRef.current = false;
@@ -960,38 +984,21 @@ export default function ChatScreen() {
       return;
     }
 
-    // Don't save if this is a loaded conversation from history
-    if (isFromHistory === 'true') {
-      Alert.alert('Already Saved', 'This conversation is already saved in your history.');
-      return;
-    }
-
-    // Generate a title from the first user message
-    const firstUserMessage = conversationHistory.find(msg => msg.role === 'user');
-    const title = firstUserMessage?.content.substring(0, 30) + (firstUserMessage?.content.length > 30 ? '...' : '') || 'Untitled Conversation';
-
     try {
-      await saveChat({
-        title,
-        messages: conversationHistory.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          timestamp: new Date()
-        })),
-        hasImage: conversationState.hasImage || false,
-        analysisData: {
-          patterns: [], // Will be populated when analysis is done
-          severity: 'unknown',
-          riskLevel: 'unknown'
-        }
-      });
+      await persistConversationToHistory();
 
-      // Increment chat session count for share nudge tracking
-      await shareNudgeService.incrementChatCount();
-      await shareNudgeService.requestDeferredTrigger('chat-session-complete');
-      console.log('[CHAT] Chat saved and session count incremented for share nudge');
+      if (isFromHistory !== 'true') {
+        await shareNudgeService.incrementChatCount();
+        await shareNudgeService.requestDeferredTrigger('chat-session-complete');
+      }
+      console.log('[CHAT] Chat saved to history');
 
-      Alert.alert('Chat Saved', 'Your conversation has been saved to history.');
+      Alert.alert(
+        'Chat Saved',
+        isFromHistory === 'true'
+          ? 'Your conversation has been updated in history.'
+          : 'Your conversation has been saved to history.'
+      );
     } catch (error) {
       Alert.alert('Error', 'Failed to save conversation. Please try again.');
     }
@@ -1205,7 +1212,7 @@ export default function ChatScreen() {
     );
   };
 
-  const renderMessage = (msg: {role: 'user' | 'assistant', content: string, imageUri?: string}, index: number) => {
+  const renderMessage = (msg: ConversationMessage, index: number) => {
     const isUser = msg.role === 'user';
     
     // Check if message contains analysis link
@@ -1223,6 +1230,19 @@ export default function ChatScreen() {
         styles.messageContainer,
         isUser ? styles.userMessage : styles.assistantMessage
       ]}>
+        {!isUser && msg.crisisCard ? (
+          <CrisisHelplineCards
+            payload={msg.crisisCard}
+            colors={{
+              primary: colors.primary,
+              textPrimary: colors.textPrimary,
+              textSecondary: colors.textSecondary,
+              surface: colors.surface,
+              border: colors.border,
+              error: colors.error,
+            }}
+          />
+        ) : null}
         <View style={[
           styles.messageBubble,
           isUser ? styles.userBubble : styles.assistantBubble
@@ -1277,7 +1297,7 @@ export default function ChatScreen() {
     headerTitle: {
       fontSize: 18,
       fontWeight: '600',
-      color: colors.text,
+      color: colors.textPrimary,
     },
     newChatButton: {
       padding: 8,
@@ -1289,7 +1309,7 @@ export default function ChatScreen() {
     title: {
       fontSize: 18,
       fontWeight: '600',
-      color: colors.text,
+      color: colors.textPrimary,
     },
     subtitle: {
       fontSize: 13,
@@ -1564,6 +1584,21 @@ export default function ChatScreen() {
       fontSize: 13,
       fontWeight: '600',
     },
+    crisisHelpBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginHorizontal: 12,
+      marginBottom: 8,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    crisisHelpBarText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+    },
     voiceSettingsContent: {
       padding: 16,
       gap: 12,
@@ -1745,36 +1780,18 @@ export default function ChatScreen() {
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={async () => {
-            // Only save if this is a new conversation (not loaded from history)
-            if (conversationHistory.length > 0 && isFromHistory !== 'true') {
+            if (conversationHistory.length > 0) {
               try {
-                const firstUserMessage = conversationHistory.find(msg => msg.role === 'user');
-                const title = firstUserMessage?.content.substring(0, 30) + (firstUserMessage?.content.length > 30 ? '...' : '') || 'Untitled Conversation';
-
-                await saveChat({
-                  title,
-                  messages: conversationHistory.map(msg => ({
-                    role: msg.role,
-                    content: msg.content,
-                    timestamp: new Date()
-                  })),
-                  hasImage: conversationState.hasImage || false,
-                  analysisData: {
-                    patterns: [],
-                    severity: 'unknown',
-                    riskLevel: 'unknown'
-                  }
-                });
+                await persistConversationToHistory();
                 console.log('[CHAT] Conversation auto-saved successfully');
               } catch (error) {
                 console.error('[CHAT] Error auto-saving conversation:', error);
-                // Don't block navigation if save fails - user can manually save if needed
               }
             }
             router.back();
           }}
         >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>GutChecks: Red Flags & Safety</Text>
@@ -1843,6 +1860,18 @@ export default function ChatScreen() {
             </View>
           )}
         </ScrollView>
+
+        {crisisSessionActive ? (
+          <TouchableOpacity
+            style={[styles.crisisHelpBar, { backgroundColor: colors.error }]}
+            onPress={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+            accessibilityRole="button"
+            accessibilityLabel="Get help now"
+          >
+            <Ionicons name="call" size={20} color="#fff" />
+            <Text style={styles.crisisHelpBarText}>Get help now</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Image Preview */}
         {uploadedImage && (

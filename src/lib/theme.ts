@@ -31,6 +31,8 @@ const darkColors = {
   white: '#ffffff',
   black: '#000000',
   transparent: 'transparent',
+  /** Alias for textPrimary — use in headers and body copy */
+  text: '#f7fafc',
 } as const;
 
 // Light theme colors
@@ -61,6 +63,7 @@ const lightColors = {
   white: '#ffffff',
   black: '#000000',
   transparent: 'transparent',
+  text: '#1a1d29',
 } as const;
 
 // Default to dark theme

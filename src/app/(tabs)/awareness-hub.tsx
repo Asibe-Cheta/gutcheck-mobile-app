@@ -513,7 +513,6 @@ export default function AwarenessHubScreen() {
             Learn to spot harmful patterns and build healthy interactions across everyday environments.
           </Text>
           <Text style={styles.mvpNote}>
-            Radicalisation content is intentionally deferred and excluded from this MVP.
           </Text>
           <View style={styles.metaRow}>
             <Text style={styles.metaText}>Age group: {ageBand || 'Not set'}</Text>

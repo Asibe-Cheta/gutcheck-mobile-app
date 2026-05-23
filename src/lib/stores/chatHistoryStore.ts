@@ -21,13 +21,69 @@ export interface SavedChat {
   };
 }
 
+const LEGACY_STORAGE_KEY = 'gutcheck_saved_chats';
+
+const getStorageKey = async (): Promise<string> => {
+  const userId = await AsyncStorage.getItem('user_id');
+  return userId ? `gutcheck_saved_chats_${userId}` : LEGACY_STORAGE_KEY;
+};
+
+function parseStoredChats(raw: string): SavedChat[] {
+  const parsed = JSON.parse(raw) as SavedChat[];
+  return parsed.map((chat) => ({
+    ...chat,
+    createdAt: new Date(chat.createdAt),
+    updatedAt: new Date(chat.updatedAt),
+    messages: chat.messages.map((msg) => ({
+      ...msg,
+      timestamp: new Date(msg.timestamp),
+    })),
+  }));
+}
+
+/** Always read from disk and merge user + legacy keys so saves never wipe existing history. */
+async function readAllChatsFromDisk(): Promise<SavedChat[]> {
+  const userId = await AsyncStorage.getItem('user_id');
+  const userKey = userId ? `gutcheck_saved_chats_${userId}` : LEGACY_STORAGE_KEY;
+  const keysToRead = userId ? [userKey, LEGACY_STORAGE_KEY] : [LEGACY_STORAGE_KEY];
+
+  const byId = new Map<string, SavedChat>();
+
+  for (const key of keysToRead) {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const chats = parseStoredChats(raw);
+      for (const chat of chats) {
+        const existing = byId.get(chat.id);
+        if (!existing || chat.updatedAt > existing.updatedAt) {
+          byId.set(chat.id, chat);
+        }
+      }
+    } catch (e) {
+      console.warn('[CHAT_HISTORY] Failed to parse storage key', key, e);
+    }
+  }
+
+  return Array.from(byId.values()).sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+  );
+}
+
+async function persistChatsToDisk(chats: SavedChat[]): Promise<void> {
+  const storageKey = await getStorageKey();
+  await AsyncStorage.setItem(storageKey, JSON.stringify(chats));
+}
+
 interface ChatHistoryStoreState {
   savedChats: SavedChat[];
   isLoading: boolean;
   error: string | null;
-  
-  // Actions
-  saveChat: (chat: Omit<SavedChat, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+
+  upsertChat: (
+    chat: Omit<SavedChat, 'createdAt' | 'updatedAt'> & { id?: string }
+  ) => Promise<string>;
+  saveChat: (chat: Omit<SavedChat, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   updateChatTitle: (chatId: string, newTitle: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
   loadChats: () => Promise<void>;
@@ -35,86 +91,103 @@ interface ChatHistoryStoreState {
   clearAllChats: () => Promise<void>;
 }
 
-// Get storage key specific to current user
-const getStorageKey = async (): Promise<string> => {
-  const userId = await AsyncStorage.getItem('user_id');
-  return userId ? `gutcheck_saved_chats_${userId}` : 'gutcheck_saved_chats';
-};
-
 export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => ({
   savedChats: [],
   isLoading: false,
   error: null,
 
-  saveChat: async (chatData) => {
+  upsertChat: async (chatData) => {
     try {
       set({ isLoading: true, error: null });
-      
-      const newChat: SavedChat = {
-        ...chatData,
-        id: `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
 
-      const currentChats = get().savedChats;
-      const updatedChats = [newChat, ...currentChats];
-      
-      const storageKey = await getStorageKey();
-      
-      // Ensure AsyncStorage write completes before updating state
-      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
-      
-      // Verify the save was successful by reading it back
-      const verifySave = await AsyncStorage.getItem(storageKey);
-      if (!verifySave) {
-        throw new Error('Failed to verify chat save - AsyncStorage write may have failed');
+      const persisted = await readAllChatsFromDisk();
+      const now = new Date();
+      let savedId: string;
+
+      if (chatData.id) {
+        const index = persisted.findIndex((c) => c.id === chatData.id);
+        if (index >= 0) {
+          persisted[index] = {
+            ...persisted[index],
+            ...chatData,
+            id: chatData.id,
+            updatedAt: now,
+          };
+          savedId = chatData.id;
+        } else {
+          const newChat: SavedChat = {
+            ...chatData,
+            id: chatData.id,
+            createdAt: now,
+            updatedAt: now,
+          };
+          persisted.unshift(newChat);
+          savedId = chatData.id;
+        }
+      } else {
+        savedId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        const newChat: SavedChat = {
+          ...chatData,
+          id: savedId,
+          createdAt: now,
+          updatedAt: now,
+        };
+        persisted.unshift(newChat);
       }
-      
-      set({ 
-        savedChats: updatedChats,
-        isLoading: false 
+
+      const sorted = persisted.sort(
+        (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+      );
+
+      await persistChatsToDisk(sorted);
+
+      set({
+        savedChats: sorted,
+        isLoading: false,
       });
-      
-      console.log('[CHAT_HISTORY] Chat saved successfully:', {
-        chatId: newChat.id,
-        title: newChat.title,
-        messageCount: newChat.messages.length,
-        totalChats: updatedChats.length
+
+      console.log('[CHAT_HISTORY] Chat upserted:', {
+        chatId: savedId,
+        title: chatData.title,
+        messageCount: chatData.messages.length,
+        totalChats: sorted.length,
       });
+
+      return savedId;
     } catch (error) {
-      console.error('[CHAT_HISTORY] Error saving chat:', error);
-      set({ 
+      console.error('[CHAT_HISTORY] Error upserting chat:', error);
+      set({
         error: 'Failed to save chat',
-        isLoading: false 
+        isLoading: false,
       });
-      throw error; // Re-throw so caller knows save failed
+      throw error;
     }
+  },
+
+  saveChat: async (chatData) => {
+    return get().upsertChat(chatData);
   },
 
   updateChatTitle: async (chatId, newTitle) => {
     try {
       set({ isLoading: true, error: null });
-      
-      const currentChats = get().savedChats;
-      const updatedChats = currentChats.map(chat => 
-        chat.id === chatId 
-          ? { ...chat, title: newTitle, updatedAt: new Date() }
-          : chat
+
+      const persisted = await readAllChatsFromDisk();
+      const updatedChats = persisted.map((chat) =>
+        chat.id === chatId ? { ...chat, title: newTitle, updatedAt: new Date() } : chat
       );
-      
-      const storageKey = await getStorageKey();
-      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
-      
-      set({ 
+
+      await persistChatsToDisk(updatedChats);
+
+      set({
         savedChats: updatedChats,
-        isLoading: false 
+        isLoading: false,
       });
     } catch (error) {
       console.error('Error updating chat title:', error);
-      set({ 
+      set({
         error: 'Failed to update chat title',
-        isLoading: false 
+        isLoading: false,
       });
     }
   },
@@ -122,22 +195,21 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
   deleteChat: async (chatId) => {
     try {
       set({ isLoading: true, error: null });
-      
-      const currentChats = get().savedChats;
-      const updatedChats = currentChats.filter(chat => chat.id !== chatId);
-      
-      const storageKey = await getStorageKey();
-      await AsyncStorage.setItem(storageKey, JSON.stringify(updatedChats));
-      
-      set({ 
+
+      const persisted = await readAllChatsFromDisk();
+      const updatedChats = persisted.filter((chat) => chat.id !== chatId);
+
+      await persistChatsToDisk(updatedChats);
+
+      set({
         savedChats: updatedChats,
-        isLoading: false 
+        isLoading: false,
       });
     } catch (error) {
       console.error('Error deleting chat:', error);
-      set({ 
+      set({
         error: 'Failed to delete chat',
-        isLoading: false 
+        isLoading: false,
       });
     }
   },
@@ -145,60 +217,44 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => (
   loadChats: async () => {
     try {
       set({ isLoading: true, error: null });
-      
-      const storageKey = await getStorageKey();
-      const storedChats = await AsyncStorage.getItem(storageKey);
-      
-      if (storedChats) {
-        const parsedChats = JSON.parse(storedChats).map((chat: any) => ({
-          ...chat,
-          createdAt: new Date(chat.createdAt),
-          updatedAt: new Date(chat.updatedAt),
-          messages: chat.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }))
-        }));
-        
-        set({ 
-          savedChats: parsedChats,
-          isLoading: false 
-        });
-      } else {
-        set({ 
-          savedChats: [],
-          isLoading: false 
-        });
-      }
+
+      const chats = await readAllChatsFromDisk();
+      await persistChatsToDisk(chats);
+
+      set({
+        savedChats: chats,
+        isLoading: false,
+      });
     } catch (error) {
       console.error('Error loading chats:', error);
-      set({ 
+      set({
         error: 'Failed to load chats',
-        isLoading: false 
+        isLoading: false,
       });
     }
   },
 
   getChatById: (chatId) => {
-    return get().savedChats.find(chat => chat.id === chatId);
+    return get().savedChats.find((chat) => chat.id === chatId);
   },
 
   clearAllChats: async () => {
     try {
       set({ isLoading: true, error: null });
-      
+
       const storageKey = await getStorageKey();
       await AsyncStorage.removeItem(storageKey);
-      
-      set({ 
+      await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+
+      set({
         savedChats: [],
-        isLoading: false 
+        isLoading: false,
       });
     } catch (error) {
       console.error('Error clearing chats:', error);
-      set({ 
+      set({
         error: 'Failed to clear chats',
-        isLoading: false 
+        isLoading: false,
       });
     }
   },

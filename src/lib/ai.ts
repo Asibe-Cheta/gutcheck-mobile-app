@@ -66,16 +66,23 @@ export interface ConversationResponse {
   nextStage: ConversationState['stage'];
   shouldAnalyze?: boolean;
   safeguardCategory?: SafeguardCategory;
+  crisisCard?: CrisisCardPayload;
 }
 
 export type SafeguardCategory = 'A' | 'B' | 'C' | 'D';
 
-/** Authoritative A/B/C copy for UI and TTS — must stay in sync with safeguard routing. */
-export const SAFEGUARD_READBACK_TEMPLATES: Record<'A' | 'B' | 'C', string> = {
-  A: 'You may be in immediate danger. Call emergency services now; in the UK call 999. Move to a safer place if possible and contact a trusted adult, friend, or family member right away. If you want, GutChecks can help you list the next safest steps once you are safe.',
-  B: 'GutChecks is a guidance tool and cannot be a friend or companion. What you are feeling matters. Reach out now to a trusted person in your life and talk with them directly. If you want support options, GutChecks can help you find practical next steps and local services.',
-  C: 'Thank you for sharing that. What happened to you matters, and you deserve support. If you are in immediate danger, call emergency services now; in the UK call 999. Consider contacting a trusted adult, safeguarding lead, or specialist support service in your area. If you want, GutChecks can help you plan safe next steps.',
-};
+import {
+  SAFEGUARD_READBACK_TEMPLATES,
+  SAFEGUARD_TEMPLATE_A_TEXT,
+  buildCrisisCardPayload,
+  APPROVED_CLOSERS,
+  FORBIDDEN_CLOSER_PATTERNS,
+  FIRST_PERSON_PATTERNS,
+  type CrisisCardPayload,
+} from './safeguardTemplates';
+
+export { SAFEGUARD_READBACK_TEMPLATES };
+export type { CrisisCardPayload };
 
 class AIAnalysisService {
   private config: AIConfig;
@@ -98,6 +105,24 @@ class AIAnalysisService {
   /**
    * Get user region from profile or AsyncStorage (consistent with getUserProfileContext)
    */
+  private async userLikelyUnder19(): Promise<boolean> {
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const profile = await profileService.getProfile();
+      const ageRange = await AsyncStorage.getItem('user_age_range');
+      const ageStr = (profile?.age?.toString() || profile?.age_range || ageRange || '').toLowerCase();
+      if (!ageStr) return false;
+      if (ageStr.includes('13') || ageStr.includes('14') || ageStr.includes('15') || ageStr.includes('16') || ageStr.includes('17') || ageStr.includes('18')) {
+        return true;
+      }
+      if (ageStr.includes('under') && (ageStr.includes('19') || ageStr.includes('18'))) return true;
+      const num = parseInt(ageStr, 10);
+      return !Number.isNaN(num) && num <= 18;
+    } catch {
+      return false;
+    }
+  }
+
   private async getUserRegion(): Promise<string | null> {
     try {
       const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
@@ -766,10 +791,12 @@ IMPORTANT:
     const text = message.toLowerCase();
 
     const categoryAKeywords = [
-      'kill myself', 'suicide', 'end my life', 'hurt myself', 'self harm',
-      'overdose', 'i want to die', 'i am going to die', 'he will kill me',
+      'kill myself', 'suicide', 'end my life', 'end it all', 'hurt myself', 'self harm',
+      'overdose', 'i want to die', "don't want to live", 'dont want to live',
+      'do not want to live', 'better off without me', 'not want to be here',
+      'i am going to die', 'going to end my life', 'he will kill me',
       'she will kill me', 'they will kill me', 'in immediate danger',
-      'weapon', 'knife', 'gun', 'being followed', 'call police now'
+      'weapon', 'knife', 'gun', 'being followed', 'call police now',
     ];
 
     const categoryBKeywords = [
@@ -843,22 +870,47 @@ IMPORTANT:
     return SAFEGUARD_READBACK_TEMPLATES[category];
   }
 
-  private maybeReturnSafeguardTemplate(
+  private async safeguardPreempt(
     userMessage: string,
     nextStage: ConversationState['stage']
+  ): Promise<ConversationResponse | null> {
+    const region = await this.getUserRegion();
+    const includeChildline = await this.userLikelyUnder19();
+    return this.maybeReturnSafeguardTemplate(userMessage, nextStage, region, includeChildline);
+  }
+
+  private maybeReturnSafeguardTemplate(
+    userMessage: string,
+    nextStage: ConversationState['stage'],
+    region?: string | null,
+    includeChildline?: boolean
   ): ConversationResponse | null {
     const category = this.classifySafeguardCategory(userMessage);
     if (category === 'D') return null;
 
-    const hardcodedResponse = this.getHardcodedSafeguardTemplate(category);
+    const hardcodedResponse =
+      category === 'A'
+        ? SAFEGUARD_TEMPLATE_A_TEXT
+        : this.getHardcodedSafeguardTemplate(category);
     void this.logSafeguardAuditEvent(category, userMessage);
     console.log('[SAFEGUARD] Deterministic hardcoded template used', { category });
+
+    const crisisCard =
+      category === 'A'
+        ? buildCrisisCardPayload(region, {
+            ideationOnly: /don't want to live|dont want to live|end my life|suicide|kill myself/i.test(
+              userMessage
+            ),
+            includeChildline,
+          })
+        : undefined;
 
     return {
       response: hardcodedResponse,
       nextStage,
       shouldAnalyze: false,
       safeguardCategory: category,
+      crisisCard,
     };
   }
 
@@ -918,31 +970,56 @@ IMPORTANT:
    * - Caps response size
    * - Ensures an action-oriented closing prompt
    */
-  private applyOutputSafeguards(response: string): string {
-    let sanitized = response || '';
+  private stripRawMarkdown(text: string): string {
+    let out = text || '';
+    out = out.replace(/^#{1,6}\s+/gm, '');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '$1');
+    out = out.replace(/\*([^*]+)\*/g, '$1');
+    out = out.replace(/^---$/gm, '');
+    out = out.replace(/^\s*[-*]\s+/gm, '• ');
+    return out.trim();
+  }
 
-    const forbiddenReplacements: Array<{ pattern: RegExp; replacement: string }> = [
+  private scrubFirstPersonVoice(text: string): string {
+    let out = text;
+    const replacements: Array<{ pattern: RegExp; replacement: string }> = [
+      { pattern: /\bI'm having a bit of trouble connecting\b/gi, replacement: 'GutChecks is having trouble connecting' },
+      { pattern: /\bI hear you\b/gi, replacement: 'What you shared matters' },
+      { pattern: /\bI'm really glad you reached out\b/gi, replacement: 'Reaching out matters' },
+      { pattern: /\bI'm not equipped\b/gi, replacement: 'GutChecks is not equipped' },
       { pattern: /\bI am your (friend|companion)\b/gi, replacement: 'GutChecks is a guidance tool' },
       { pattern: /\bI'm your (friend|companion)\b/gi, replacement: 'GutChecks is a guidance tool' },
-      { pattern: /\bI'?m here for you\b/gi, replacement: 'Support is available, and practical next steps can help' },
-      { pattern: /\bI love you\b/gi, replacement: 'Your wellbeing matters' },
+      { pattern: /\bI'?m here for you\b/gi, replacement: 'Support is available from trained services' },
+      { pattern: /\bI love you\b/gi, replacement: 'Connection matters' },
     ];
-
-    forbiddenReplacements.forEach(({ pattern, replacement }) => {
-      sanitized = sanitized.replace(pattern, replacement);
+    replacements.forEach(({ pattern, replacement }) => {
+      out = out.replace(pattern, replacement);
     });
+    return out;
+  }
+
+  private applyApprovedCloser(text: string, category: SafeguardCategory = 'D'): string {
+    let sanitized = text.trim();
+    FORBIDDEN_CLOSER_PATTERNS.forEach((pattern) => {
+      sanitized = sanitized.replace(pattern, '').trim();
+    });
+    const closer = APPROVED_CLOSERS[category === 'D' ? 'D' : category];
+    if (!sanitized.endsWith(closer)) {
+      sanitized = `${sanitized}\n\n${closer}`;
+    }
+    return sanitized;
+  }
+
+  private applyOutputSafeguards(response: string, category: SafeguardCategory = 'D'): string {
+    let sanitized = this.stripRawMarkdown(response || '');
+    sanitized = this.scrubFirstPersonVoice(sanitized);
 
     const maxChars = 2200;
     if (sanitized.length > maxChars) {
       sanitized = sanitized.slice(0, maxChars).trim();
     }
 
-    const hasActionPrompt = /next step|what you can do|you could do|is there anything more you want to share/i.test(sanitized);
-    if (!hasActionPrompt) {
-      sanitized = `${sanitized}\n\nWhat is one practical next step you can take today?`;
-    }
-
-    return sanitized;
+    return this.applyApprovedCloser(sanitized, category);
   }
 
   private getDeterministicSignpostSuffix(message: string): string {
@@ -1028,10 +1105,10 @@ IMPORTANT:
 
     if (repeatedSignalCount >= 2) {
       return {
-        response:
-          'It sounds like you need support from real people around you right now. GutChecks is a guidance tool and cannot replace personal support. Please contact a trusted adult, friend, family member, or local support service today.',
+        response: SAFEGUARD_READBACK_TEMPLATES.B,
         nextStage: 'support',
         shouldAnalyze: false,
+        safeguardCategory: 'B',
       };
     }
 
@@ -1046,7 +1123,7 @@ IMPORTANT:
     hasImage: boolean = false,
     imageData?: string
   ): Promise<ConversationResponse> {
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
@@ -1153,7 +1230,7 @@ Always respond naturally, conversationally, and with appropriate language for yo
    * Gets immediate response for clear evidence
    */
   private async getImmediateResponse(userMessage: string, hasImage: boolean): Promise<ConversationResponse> {
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
@@ -1272,7 +1349,7 @@ Output: "I can see you care about her. Here's what I'm seeing: She only shows up
     conversationState: ConversationState,
     conversationHistory: string[]
   ): Promise<ConversationResponse> {
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
@@ -1339,7 +1416,7 @@ Your question should cut to what matters.`;
     conversationState: ConversationState
   ): Promise<ConversationResponse> {
     const sourceText = conversationHistory.join(' ');
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(sourceText, 'support');
+    const safeguardResponse = await this.safeguardPreempt(sourceText, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
@@ -1468,7 +1545,7 @@ AVOID:
     try {
       const combinedSource = [notificationTitle, notificationBody, chatPrompt || ''].join(' ').trim();
 
-      const safeguardResponse = this.maybeReturnSafeguardTemplate(combinedSource, 'support');
+      const safeguardResponse = await this.safeguardPreempt(combinedSource, 'support');
       if (safeguardResponse) {
         return safeguardResponse;
       }
@@ -1556,9 +1633,24 @@ Respond as if you're continuing the conversation from that notification.`;
       conversationHistoryLength: conversationHistory.length
     });
 
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
+    }
+
+    const priorCrisisInSession = (conversationHistory as any[]).some(
+      (m) => m?.role === 'assistant' && m?.safeguardCategory === 'A'
+    );
+    if (priorCrisisInSession) {
+      const region = await this.getUserRegion();
+      const includeChildline = await this.userLikelyUnder19();
+      return {
+        response: SAFEGUARD_TEMPLATE_A_TEXT,
+        nextStage: 'support',
+        shouldAnalyze: false,
+        safeguardCategory: 'A',
+        crisisCard: buildCrisisCardPayload(region, { ideationOnly: true, includeChildline }),
+      };
     }
 
     const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(userMessage, conversationHistory as any[]);
@@ -1618,7 +1710,7 @@ STRUCTURE your responses:
 3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
 4. RECOMMENDED ACTION STEPS (specific steps) - What you might consider doing next. These are suggestions, not requirements - you know your situation best and should choose what feels right for you.
 5. REALITY CHECK (1 sentence) - The hard truth they need to hear
-6. CLOSING: Ask "Is there anything more you want to share about this or something else?" - Do NOT ask specific follow-up questions about the topic you just gave recommendations for.
+6. CLOSING: End with an action-led prompt only, e.g. "Try one of the suggested steps above. When you have, come back and let GutChecks know how it went." Never use first-person voice (no I, me, my). Never invite open-ended emotional disclosure ("anything more you want to share", "want to talk", etc.).
 
 HANDLING OFF-TOPIC QUESTIONS:
 If a user asks questions unrelated to relationships, social dynamics, safety, or personal well-being (e.g., math problems, general knowledge, geography):
@@ -1683,9 +1775,8 @@ Always respond naturally and conversationally. Build on previous messages to mai
         responsePreview: response.substring(0, 100) + '...'
       });
       
-      // Get user's region for region-specific helplines (using consistent method)
       const userRegion = await this.getUserRegion();
-      
+
       // Check if helplines should be recommended based on conversation content
       const fullConversationText = [
         ...conversationHistory.map((msg: any) => msg.content),
@@ -1696,10 +1787,10 @@ Always respond naturally and conversationally. Build on previous messages to mai
       const isDanger = isImmediateDanger(fullConversationText);
       const relevantHelplines = getRelevantHelplines(fullConversationText, userRegion);
       
-      // Add helpline recommendations if appropriate
+      // Crisis uses hardcoded Crisis Card in chat — do not append plain-text helpline blobs
       let enhancedResponse = response;
-      if (isCrisis || isDanger || relevantHelplines.length > 0) {
-        const helplineMessage = getHelplineRecommendationMessage(isCrisis, isDanger, relevantHelplines, userRegion);
+      if (!isCrisis && !isDanger && relevantHelplines.length > 0) {
+        const helplineMessage = getHelplineRecommendationMessage(false, false, relevantHelplines, userRegion);
         enhancedResponse = response + helplineMessage;
       }
       
@@ -1728,18 +1819,27 @@ Always respond naturally and conversationally. Build on previous messages to mai
       const errorMessage = error?.message || String(error);
       console.error('Error details:', {
         message: errorMessage,
-        fullError: JSON.stringify(error),
         model: this.config.model,
         apiKeyPresent: !!readPublicEnv('EXPO_PUBLIC_ANTHROPIC_API_KEY'),
         transport: getClaudeTransportConfig().edgeProxyEnabled ? 'supabase-edge' : 'direct',
       });
-      
-      // User-friendly error message
-      const userMessage = "I'm having a bit of trouble connecting right now. This usually happens when there's a network hiccup. Give it another try in a moment.";
-      
+
+      const crisisCategory = this.classifySafeguardCategory(userMessage);
+      if (crisisCategory === 'A') {
+        const fallback = await this.safeguardPreempt(userMessage, 'support');
+        if (fallback) {
+          return {
+            ...fallback,
+            response:
+              'GutChecks flagged what you wrote as serious. While the connection is being restored, use the helplines below right now.',
+          };
+        }
+      }
+
       return {
-        response: userMessage,
-        nextStage: 'initial'
+        response:
+          'GutChecks is having trouble connecting right now. This usually happens when there is a network hiccup. Give it another try in a moment.',
+        nextStage: 'initial',
       };
     }
   }
@@ -2230,7 +2330,7 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
    * Handles complaints about the AI's behavior
    */
   private async handleAIComplaint(userMessage: string, conversationHistory: string[]): Promise<ConversationResponse> {
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
@@ -2336,7 +2436,7 @@ Keep it under 50 words. Be humble, direct, and focused on fixing YOUR behavior.`
    * Provides direct advice for clear situations
    */
   private async getDirectAdvice(userMessage: string): Promise<ConversationResponse> {
-    const safeguardResponse = this.maybeReturnSafeguardTemplate(userMessage, 'support');
+    const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }

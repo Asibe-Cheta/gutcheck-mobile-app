@@ -4,16 +4,28 @@
  */
 
 import { create } from 'zustand';
-import { ConversationState, ConversationResponse } from '@/lib/ai';
+import { ConversationState } from '@/lib/ai';
+import type { CrisisCardPayload, SafeguardCategory } from '@/lib/ai';
+
+export type ConversationMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  imageUri?: string;
+  crisisCard?: CrisisCardPayload;
+  safeguardCategory?: SafeguardCategory;
+};
 
 interface ConversationStore {
   conversationState: ConversationState;
-  conversationHistory: Array<{role: 'user' | 'assistant', content: string, imageUri?: string}>;
+  conversationHistory: ConversationMessage[];
   
   // Actions
   startNewConversation: () => void;
   addUserMessage: (message: string, imageUri?: string) => void;
-  addAssistantResponse: (response: string) => void;
+  addAssistantResponse: (
+    response: string,
+    meta?: { crisisCard?: CrisisCardPayload; safeguardCategory?: SafeguardCategory }
+  ) => void;
   updateConversationState: (newState: Partial<ConversationState>) => void;
   updateContextGathered: (context: Partial<ConversationState['contextGathered']>) => void;
   reset: () => void;
@@ -73,11 +85,18 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     });
   },
 
-  addAssistantResponse: (response: string) => {
+  addAssistantResponse: (response, meta) => {
     const { conversationHistory } = get();
     
-    // Add assistant response to history
-    const updatedHistory = [...conversationHistory, { role: 'assistant', content: response }];
+    const updatedHistory: ConversationMessage[] = [
+      ...conversationHistory,
+      {
+        role: 'assistant',
+        content: response,
+        crisisCard: meta?.crisisCard,
+        safeguardCategory: meta?.safeguardCategory,
+      },
+    ];
     
     console.log('Adding assistant response:', {
       responseLength: response.length,

@@ -177,8 +177,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       
       // Return fallback response
       return {
-        response: "I'm having trouble processing that right now. Can you try again?",
-        nextStage: conversationState.stage
+        response:
+          'GutChecks is having trouble processing that right now. Please try again in a moment.',
+        nextStage: conversationState.stage,
       };
     }
   },

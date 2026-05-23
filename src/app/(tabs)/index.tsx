@@ -30,7 +30,6 @@ import { shareNudgeService } from '@/lib/shareNudgeService';
 import { SubscriptionGateModal } from '@/components/SubscriptionGateModal';
 import ActionStepFollowUpModal from '@/components/ActionStepFollowUpModal';
 import { actionStepTrackerService, type PendingActionStepFollowUp } from '@/lib/actionStepTrackerService';
-import OtaDebugBanner from '@/components/OtaDebugBanner';
 
 const HomeVoiceMicButton = React.lazy(() => import('@/components/HomeVoiceMicButton'));
 
@@ -497,13 +496,6 @@ export default function HomeScreen() {
             Share what happened or upload a screenshot for analysis
           </Text>
 
-          <OtaDebugBanner
-            textSecondary={currentTheme.textSecondary}
-            primary={currentTheme.primary}
-            surface={currentTheme.surface}
-            border={currentTheme.border}
-          />
-          
           {/* Analysis Input */}
           <View style={styles.inputContainer}>
             <View style={styles.textAreaWrapper}>

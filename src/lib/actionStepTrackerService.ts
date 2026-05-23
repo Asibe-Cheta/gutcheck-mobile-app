@@ -225,6 +225,16 @@ class ActionStepTrackerService {
     const candidate = this.getMostRecentChatWithActionSteps(chats);
     if (!candidate) return null;
 
+    const chatUpdatedMs = new Date(
+      candidate.chat.updatedAt || candidate.chat.createdAt || 0
+    ).getTime();
+    if (Number.isFinite(chatUpdatedMs)) {
+      const elapsedSinceChat = Date.now() - chatUpdatedMs;
+      if (elapsedSinceChat < toMs(effectiveCooldownHours)) {
+        return null;
+      }
+    }
+
     if (lastProcessedChatId && lastProcessedChatId === candidate.chat.id) {
       return null;
     }

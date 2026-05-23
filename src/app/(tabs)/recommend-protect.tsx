@@ -177,25 +177,26 @@ export default function RecommendProtectScreen() {
           </View>
         </View>
 
-        <View style={[styles.pushCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.pushTitle, { color: colors.textPrimary }]}>Referral verification mode</Text>
-          <Text style={[styles.pushHint, { color: colors.textSecondary }]}>
-            Status: {verificationEnabled ? 'enabled' : 'disabled'}{'\n'}
-            Backend: {supabaseReferralBackend ? 'Supabase (referral_reserve_slot / referral_verify_event)' : `HTTP ${verificationBaseUrl}`}{'\n'}
-            Account context: {hasAccountContext ? 'present' : 'missing'}{'\n'}
-            RP-06 server enforcement: {verificationEnabled && hasAccountContext ? 'active' : 'inactive'}
-          </Text>
-          <Text style={[styles.pushHint, { color: colors.textSecondary, marginTop: 8 }]}>
-            Last reservation result: {debugState.lastReservationResult || 'n/a'}{'\n'}
-            Last verification result: {debugState.lastVerificationResult || 'n/a'}
-          </Text>
-          <TouchableOpacity
-            style={[styles.resetDebugBtn, { borderColor: colors.border }]}
-            onPress={handleResetDebugState}
-          >
-            <Text style={[styles.resetDebugText, { color: colors.textPrimary }]}>Reset debug state</Text>
-          </TouchableOpacity>
-        </View>
+        {__DEV__ ? (
+          <View style={[styles.pushCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.pushTitle, { color: colors.textPrimary }]}>Referral verification mode</Text>
+            <Text style={[styles.pushHint, { color: colors.textSecondary }]}>
+              Status: {verificationEnabled ? 'enabled' : 'disabled'}{'\n'}
+              Backend: {supabaseReferralBackend ? 'Supabase' : `HTTP ${verificationBaseUrl}`}{'\n'}
+              Account context: {hasAccountContext ? 'present' : 'missing'}
+            </Text>
+            <Text style={[styles.pushHint, { color: colors.textSecondary, marginTop: 8 }]}>
+              Last reservation result: {debugState.lastReservationResult || 'n/a'}{'\n'}
+              Last verification result: {debugState.lastVerificationResult || 'n/a'}
+            </Text>
+            <TouchableOpacity
+              style={[styles.resetDebugBtn, { borderColor: colors.border }]}
+              onPress={handleResetDebugState}
+            >
+              <Text style={[styles.resetDebugText, { color: colors.textPrimary }]}>Reset debug state</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={[styles.templateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.templateTitle, { color: colors.textPrimary }]}>Share message templates</Text>
