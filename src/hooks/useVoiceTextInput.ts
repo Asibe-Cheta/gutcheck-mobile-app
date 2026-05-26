@@ -13,6 +13,7 @@ export function useVoiceTextInput(
 ) {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const voiceBaseTextRef = useRef('');
+  const sessionStartedRef = useRef(false);
   const disabled = options?.disabled ?? false;
 
   useSpeechRecognitionEvent('start', () => {
@@ -20,6 +21,7 @@ export function useVoiceTextInput(
   });
 
   useSpeechRecognitionEvent('result', (event) => {
+    if (!sessionStartedRef.current) return;
     const transcript = event.results?.[0]?.transcript || '';
     const nextText = [voiceBaseTextRef.current, transcript].filter(Boolean).join(' ').trim();
     onChangeText(nextText);
@@ -27,6 +29,8 @@ export function useVoiceTextInput(
 
   useSpeechRecognitionEvent('error', (event) => {
     setIsRecordingVoice(false);
+    if (!sessionStartedRef.current) return;
+    sessionStartedRef.current = false;
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       Alert.alert(
         'Voice input unavailable',
@@ -39,6 +43,7 @@ export function useVoiceTextInput(
 
   useSpeechRecognitionEvent('end', () => {
     setIsRecordingVoice(false);
+    sessionStartedRef.current = false;
   });
 
   const ensureVoiceInputRationale = async (): Promise<boolean> => {
@@ -79,6 +84,7 @@ export function useVoiceTextInput(
         return;
       }
       voiceBaseTextRef.current = getCurrentText().trim();
+      sessionStartedRef.current = true;
       ExpoSpeechRecognitionModule.start({
         lang: recognitionLangFromTtsLanguage(DEFAULT_VOICE_LOCALE),
         interimResults: true,
