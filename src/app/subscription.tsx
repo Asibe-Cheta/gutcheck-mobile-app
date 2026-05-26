@@ -1380,7 +1380,7 @@ export default function SubscriptionScreen() {
           ) : null;
         })()}
 
-        {/* Primary CTA - START YOUR 7 DAY FREE TRIAL */}
+        {/* Primary CTA — trial days sourced from RevenueCat/App Store Connect */}
         <TouchableOpacity
           style={styles.ctaButtonWrap}
           onPress={() => handleSubscribe(selectedPlanId)}
@@ -1394,18 +1394,28 @@ export default function SubscriptionScreen() {
               end={{ x: 1, y: 0 }}
               style={[styles.ctaButton, styles.ctaButtonGradient]}
             >
-              <Text style={styles.ctaButtonText}>START YOUR 7 DAY FREE TRIAL</Text>
+              <Text style={styles.ctaButtonText}>
+                {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
+                  ? `START YOUR ${selectedPlan.freeTrialDays}-DAY FREE TRIAL`
+                  : 'START YOUR FREE TRIAL'}
+              </Text>
             </LinearGradient>
           ) : (
             <View style={[styles.ctaButton, styles.ctaButtonSolid]}>
-              <Text style={styles.ctaButtonText}>START YOUR 7 DAY FREE TRIAL</Text>
+              <Text style={styles.ctaButtonText}>
+                {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
+                  ? `START YOUR ${selectedPlan.freeTrialDays}-DAY FREE TRIAL`
+                  : 'START YOUR FREE TRIAL'}
+              </Text>
             </View>
           )}
         </TouchableOpacity>
 
         {/* Billing disclaimer */}
         <Text style={styles.billingDisclaimer}>
-          Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after 7-day free trial ends. Renews automatically.
+          {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
+            ? `Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after ${selectedPlan.freeTrialDays}-day free trial ends. Renews automatically.`
+            : 'Billing starts unless cancelled. Renews automatically.'}
         </Text>
 
         {/* Restore Purchases Button - Only show if user is logged in */}
@@ -1604,7 +1614,7 @@ export default function SubscriptionScreen() {
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>What happens after my free trial?</Text>
             <Text style={styles.faqAnswer}>
-              After your 7-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.
+              After your {selectedPlan?.freeTrialDays ?? 3}-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.
             </Text>
           </View>
         </View>
