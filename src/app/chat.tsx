@@ -1095,118 +1095,57 @@ export default function ChatScreen() {
     setUploadedImage(null);
   };
 
-  // Function to render text with bold formatting and clickable phone numbers
+  // Covers: emergency shortcodes (999/112/101/111), 116 XXX (Samaritans/116000),
+  // 4+3+4, 4+4, 3+3+4, 5+6, 2+4+4 digit formats used by UK helplines.
+  // Using a single capturing group so split() puts matches at odd indices — no /g + test() bug.
+  const PHONE_SPLIT_RE = /(\b(?:999|112|101|111)\b|\b116\s?\d{3}\b|\d{3,4}\s\d{3,4}\s\d{3,4}|\d{4}\s?\d{4}|\d{5}\s?\d{6}|\d{2}\s\d{4}\s\d{4})/;
+
+  const dialHelpline = (displayNum: string) => {
+    const clean = displayNum.replace(/[^\d+]/g, '');
+    Alert.alert(
+      'Call Helpline',
+      `This will dial ${displayNum}. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call',
+          onPress: () =>
+            Linking.openURL(`tel:${clean}`).catch(() =>
+              Alert.alert('Error', 'Unable to open phone dialler. Please call manually.')
+            ),
+        },
+      ]
+    );
+  };
+
   const renderFormattedText = (text: string, textStyle: any) => {
-    // First split by bold markers, then check each part for phone numbers
     const boldParts = text.split(/(\*\*.*?\*\*)/g);
-    
+
     return (
       <Text style={textStyle}>
-        {boldParts.map((part, index) => {
-          // Handle bold text
-          if (part.startsWith('**') && part.endsWith('**')) {
-            const boldText = part.slice(2, -2);
-            
-            // Check if bold text contains a phone number - improved regex
-            const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4}|\d{5}\s?\d{6})/g;
-            const phoneParts = boldText.split(phoneRegex);
-            
-            return (
-              <Text key={index} style={[textStyle, { fontWeight: 'bold' }]}>
-                {phoneParts.map((phonePart, phoneIndex) => {
-                  // Test if this part matches the phone regex
-                  if (phoneRegex.test(phonePart)) {
-                    // Make phone number clickable
-                    const phoneNumber = phonePart.replace(/\s/g, '');
-                    return (
-                      <Text
-                        key={phoneIndex}
-                        style={[textStyle, { fontWeight: 'bold', color: '#4A90E2', textDecorationLine: 'underline' }]}
-                        onPress={() => {
-                          try {
-                            // Clean and format the phone number for dialing
-                            const dialNumber = phoneNumber.replace(/[^\d]/g, '');
-                            Alert.alert(
-                              'Call Helpline',
-                              `This will dial ${phonePart}. Continue?`,
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                { 
-                                  text: 'Call', 
-                                  onPress: () => {
-                                    try {
-                                      Linking.openURL(`tel:${dialNumber}`);
-                                    } catch (error) {
-                                      console.error('Error opening phone dialer:', error);
-                                      Alert.alert('Error', 'Unable to open phone dialer. Please try calling manually.');
-                                    }
-                                  }
-                                }
-                              ]
-                            );
-                          } catch (error) {
-                            console.error('Error handling phone number:', error);
-                            Alert.alert('Error', 'Unable to process phone number. Please try calling manually.');
-                          }
-                        }}
-                      >
-                        {phonePart}
-                      </Text>
-                    );
-                  }
-                  return phonePart;
-                })}
-              </Text>
-            );
-          }
-          
-          // Check regular text for phone numbers - improved regex for UK numbers
-          const phoneRegex = /(\d{3,4}\s?\d{3,4}\s?\d{3,4}|\d{4}\s?\d{4}|\d{5}\s?\d{6}|\d{3}\s?\d{3}\s?\d{4}|\d{2}\s?\d{4}\s?\d{4})/g;
-          const phoneParts = part.split(phoneRegex);
-          
-          return phoneParts.map((phonePart, phoneIndex) => {
-            // Test if this part matches the phone regex
-            if (phoneRegex.test(phonePart)) {
-              // Make phone number clickable
-              const phoneNumber = phonePart.replace(/\s/g, '');
-              return (
-                <Text
-                  key={`${index}-${phoneIndex}`}
-                  style={[textStyle, { color: '#4A90E2', textDecorationLine: 'underline' }]}
-                  onPress={() => {
-                    try {
-                      // Clean and format the phone number for dialing
-                      const dialNumber = phoneNumber.replace(/[^\d]/g, '');
-                      Alert.alert(
-                        'Call Helpline',
-                        `This will dial ${phonePart}. Continue?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { 
-                            text: 'Call', 
-                            onPress: () => {
-                              try {
-                                Linking.openURL(`tel:${dialNumber}`);
-                              } catch (error) {
-                                console.error('Error opening phone dialer:', error);
-                                Alert.alert('Error', 'Unable to open phone dialer. Please try calling manually.');
-                              }
-                            }
-                          }
-                        ]
-                      );
-                    } catch (error) {
-                      console.error('Error handling phone number:', error);
-                      Alert.alert('Error', 'Unable to process phone number. Please try calling manually.');
-                    }
-                  }}
-                >
-                  {phonePart}
-                </Text>
-              );
-            }
-            return phonePart;
-          });
+        {boldParts.map((part, boldIdx) => {
+          const isBold = part.startsWith('**') && part.endsWith('**');
+          const inner = isBold ? part.slice(2, -2) : part;
+          const chunks = inner.split(PHONE_SPLIT_RE);
+          const baseStyle = isBold ? [textStyle, { fontWeight: 'bold' as const }] : textStyle;
+
+          return (
+            <Text key={boldIdx} style={baseStyle}>
+              {chunks.map((chunk, chunkIdx) =>
+                chunkIdx % 2 === 1 ? (
+                  <Text
+                    key={chunkIdx}
+                    style={[baseStyle, { color: colors.primary, textDecorationLine: 'underline' as const }]}
+                    onPress={() => dialHelpline(chunk)}
+                  >
+                    {chunk}
+                  </Text>
+                ) : (
+                  chunk
+                )
+              )}
+            </Text>
+          );
         })}
       </Text>
     );
