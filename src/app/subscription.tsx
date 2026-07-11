@@ -19,6 +19,11 @@ import Constants from 'expo-constants';
 import * as Clipboard from 'expo-clipboard';
 import { getLogs, exportLogsAsText } from '@/lib/logCapture';
 import { externalUrls } from '@/lib/externalUrls';
+import {
+  trialBadgeLabel,
+  trialBillingDisclaimer,
+  trialCtaLabel,
+} from '@/lib/subscriptionTrialUtils';
 
 console.log('[SUB_FILE] ✅ All basic imports completed successfully');
 
@@ -150,7 +155,7 @@ export default function SubscriptionScreen() {
   const [mountError, setMountError] = useState<string | null>(null);
   const [hasUserId, setHasUserId] = useState<boolean>(false);
   // Selected tier for the primary CTA (default to yearly / best value)
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('yearly');
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('monthly');
   
   // Check if user is logged in (has user_id)
   // Use useFocusEffect to refresh when screen comes into focus (e.g., after login)
@@ -667,7 +672,7 @@ export default function SubscriptionScreen() {
             <View style={styles.freeTrialBadge}>
               <Ionicons name="gift" size={16} color={colors.primary} />
               <Text style={styles.freeTrialText}>
-                {plan.freeTrialDays}-day free trial
+                {trialBadgeLabel(plan.freeTrialDays)}
               </Text>
             </View>
           )}
@@ -840,6 +845,16 @@ export default function SubscriptionScreen() {
       marginTop: 2,
     },
     tierCardPeriodSelected: {
+      color: colors.primary,
+    },
+    tierCardTrial: {
+      marginTop: 6,
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    tierCardTrialSelected: {
       color: colors.primary,
     },
     subscriptionFeaturesSection: {
@@ -1347,6 +1362,11 @@ export default function SubscriptionScreen() {
                 <Text style={[styles.tierCardName, isSelected && styles.tierCardNameSelected]}>{label}</Text>
                 <Text style={[styles.tierCardPrice, isSelected && styles.tierCardPriceSelected]}>{currencySymbol}{plan.price.toFixed(2)}</Text>
                 <Text style={[styles.tierCardPeriod, isSelected && styles.tierCardPeriodSelected]}>{periodLabel}</Text>
+                {plan.hasFreeTrial && plan.freeTrialDays ? (
+                  <Text style={[styles.tierCardTrial, isSelected && styles.tierCardTrialSelected]}>
+                    {trialBadgeLabel(plan.freeTrialDays)}
+                  </Text>
+                ) : null}
               </TouchableOpacity>
             );
           })}
@@ -1395,17 +1415,17 @@ export default function SubscriptionScreen() {
               style={[styles.ctaButton, styles.ctaButtonGradient]}
             >
               <Text style={styles.ctaButtonText}>
-                {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
-                  ? `START YOUR ${selectedPlan.freeTrialDays}-DAY FREE TRIAL`
-                  : 'START YOUR FREE TRIAL'}
+                {trialCtaLabel(
+                  selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
+                )}
               </Text>
             </LinearGradient>
           ) : (
             <View style={[styles.ctaButton, styles.ctaButtonSolid]}>
               <Text style={styles.ctaButtonText}>
-                {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
-                  ? `START YOUR ${selectedPlan.freeTrialDays}-DAY FREE TRIAL`
-                  : 'START YOUR FREE TRIAL'}
+                {trialCtaLabel(
+                  selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
+                )}
               </Text>
             </View>
           )}
@@ -1413,9 +1433,9 @@ export default function SubscriptionScreen() {
 
         {/* Billing disclaimer */}
         <Text style={styles.billingDisclaimer}>
-          {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
-            ? `Billing starts unless cancelled before the trial ends. No payment is due now, billing starts after ${selectedPlan.freeTrialDays}-day free trial ends. Renews automatically.`
-            : 'Billing starts unless cancelled. Renews automatically.'}
+          {trialBillingDisclaimer(
+            selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
+          )}
         </Text>
 
         {/* Restore Purchases Button - Only show if user is logged in */}
@@ -1614,7 +1634,9 @@ export default function SubscriptionScreen() {
           <View style={styles.faqItem}>
             <Text style={styles.faqQuestion}>What happens after my free trial?</Text>
             <Text style={styles.faqAnswer}>
-              After your {selectedPlan?.freeTrialDays ?? 3}-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.
+              {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
+                ? `After your ${selectedPlan.freeTrialDays}-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.`
+                : "If a free trial is offered for your plan, you'll be charged when it ends unless you cancel first. You can cancel anytime in your Apple ID Subscriptions settings."}
             </Text>
           </View>
         </View>

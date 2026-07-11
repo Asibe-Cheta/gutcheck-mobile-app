@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand';
+import { sanitizeSubscriptionDescription } from '@/lib/subscriptionTrialUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Lazy import lifetimeProService to prevent crash if module fails
@@ -213,7 +214,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           currency: monthlyProduct?.currency || 'GBP',
           interval: 'month',
           productId: productIds.PREMIUM_MONTHLY,
-          description: monthlyProduct?.description || 'Full access to all features',
+          description: sanitizeSubscriptionDescription(
+            monthlyProduct?.description,
+            'Full access to all features'
+          ),
           hasFreeTrial: monthlyProduct?.hasFreeTrial || false,
           freeTrialDays: monthlyProduct?.freeTrialDays || null,
           features: [
@@ -232,7 +236,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           currency: yearlyProduct?.currency || 'GBP',
           interval: 'year',
           productId: productIds.PREMIUM_YEARLY,
-          description: yearlyProduct?.description || 'Full access to all features - Save 28%',
+          description: sanitizeSubscriptionDescription(
+            yearlyProduct?.description,
+            'Full access to all features — Save 28%'
+          ),
           hasFreeTrial: yearlyProduct?.hasFreeTrial || false,
           freeTrialDays: yearlyProduct?.freeTrialDays || null,
           features: [
@@ -247,6 +254,19 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         },
       ];
       
+      const monthlyTrial = plans.find((p) => p.id === 'monthly')?.freeTrialDays;
+      const yearlyTrial = plans.find((p) => p.id === 'yearly')?.freeTrialDays;
+      if (
+        monthlyTrial != null &&
+        yearlyTrial != null &&
+        monthlyTrial !== yearlyTrial
+      ) {
+        console.warn(
+          '[IAP] Trial length mismatch between monthly and yearly — update App Store Connect so both match:',
+          { monthlyTrial, yearlyTrial }
+        );
+      }
+
       console.log('[IAP] Plans loaded. Products queried:', appStoreProducts.length);
       set({ plans, isLoading: false });
     } catch (error) {
@@ -496,7 +516,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         // Record trial start for tracking (if this was a trial)
         const userId = await AsyncStorage.getItem('user_id');
         if (userId && getTrialTrackingService()) {
-          await getTrialTrackingService().recordTrialStart(userId, planId, plan.productId);
+          await getTrialTrackingService().recordTrialStart(
+            userId,
+            planId,
+            plan.productId,
+            plan.freeTrialDays ?? 3
+          );
         }
         
         // Mark as converted if this was a trial conversion

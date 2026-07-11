@@ -5,13 +5,14 @@
 
 import { create } from 'zustand';
 import { ConversationState } from '@/lib/ai';
-import type { CrisisCardPayload, SafeguardCategory } from '@/lib/ai';
+import type { CrisisCardPayload, SafeguardCategory, PatternResponsePayload } from '@/lib/ai';
 
 export type ConversationMessage = {
   role: 'user' | 'assistant';
   content: string;
   imageUri?: string;
   crisisCard?: CrisisCardPayload;
+  patternCard?: PatternResponsePayload;
   safeguardCategory?: SafeguardCategory;
 };
 
@@ -24,7 +25,11 @@ interface ConversationStore {
   addUserMessage: (message: string, imageUri?: string) => void;
   addAssistantResponse: (
     response: string,
-    meta?: { crisisCard?: CrisisCardPayload; safeguardCategory?: SafeguardCategory }
+    meta?: {
+      crisisCard?: CrisisCardPayload;
+      patternCard?: PatternResponsePayload;
+      safeguardCategory?: SafeguardCategory;
+    }
   ) => void;
   updateConversationState: (newState: Partial<ConversationState>) => void;
   updateContextGathered: (context: Partial<ConversationState['contextGathered']>) => void;
@@ -94,6 +99,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         role: 'assistant',
         content: response,
         crisisCard: meta?.crisisCard,
+        patternCard: meta?.patternCard,
         safeguardCategory: meta?.safeguardCategory,
       },
     ];

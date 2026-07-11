@@ -1,11 +1,16 @@
 // Environment variables are provided by EAS Build in production
 // EAS will inject variables from the EAS dashboard or eas.json build profile
 // These fallback to process.env for local development
+const APP_VERSION = '2.2.6';
+const IOS_BUILD_NUMBER = '220';
+const ANDROID_VERSION_CODE = 54;
+
 const envVars = {
   // These will be overridden by EAS build env vars if set
   EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
   EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
   EXPO_PUBLIC_ANTHROPIC_API_KEY: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY,
+  EXPO_PUBLIC_GEMINI_API_KEY: process.env.EXPO_PUBLIC_GEMINI_API_KEY,
   EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV || 'development',
   EXPO_PUBLIC_REVENUECAT_IOS_API_KEY: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
   EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
@@ -14,12 +19,16 @@ const envVars = {
   EXPO_PUBLIC_ACTION_STEP_INGEST_SECRET: process.env.EXPO_PUBLIC_ACTION_STEP_INGEST_SECRET,
 };
 
+// Explicit string runtime (matches Global Ready). Override only when publishing OTA for an
+// older store binary, e.g. OTA_RUNTIME_VERSION=2.2.3 npm run ota:production:legacy
+const runtimeVersion = process.env.OTA_RUNTIME_VERSION || APP_VERSION;
+
 module.exports = {
   expo: {
     name: 'GutChecks: Red Flags & Safety',
     slug: 'gutcheck',
     // owner: 'bervic-digital',
-    version: '2.2.4',
+    version: APP_VERSION,
     orientation: 'default',
     icon: './assets/new-gut-logo.jpeg',
     userInterfaceStyle: 'dark',
@@ -31,6 +40,8 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.gutcheck.app',
+      buildNumber: IOS_BUILD_NUMBER,
+      runtimeVersion,
       infoPlist: {
         // NSUserTrackingUsageDescription: 'This app uses data to provide personalized mental health guidance and support.',
         NSCameraUsageDescription: 'This app allows you to upload images for AI analysis and guidance.',
@@ -42,7 +53,7 @@ module.exports = {
         NSFaceIDUsageDescription: 'GutChecks: Red Flags & Safety uses Face ID to securely log you in and protect your privacy.',
         ITSAppUsesNonExemptEncryption: false,
         CFBundleDisplayName: 'GutChecks: Red Flags & Safety',
-        CFBundleShortVersionString: '2.2.4',
+        CFBundleShortVersionString: APP_VERSION,
       },
     },
     android: {
@@ -53,6 +64,8 @@ module.exports = {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'org.mygutcheck.app',
+      versionCode: ANDROID_VERSION_CODE,
+      runtimeVersion,
     },
     plugins: [
       ['expo-local-authentication', {}],
@@ -68,14 +81,16 @@ module.exports = {
       'expo-updates',
     ],
     scheme: 'gutcheck',
-    runtimeVersion: {
-      policy: 'appVersion',
-    },
+    runtimeVersion,
     updates: {
       url: 'https://u.expo.dev/8e8f5512-18b9-489d-9b05-ee5c0379ea29',
-      enabled: true,
-      checkAutomatically: 'ON_LOAD',
-      fallbackToCacheTimeout: 30000,
+      requestHeaders: {
+        'expo-channel-name': 'production',
+      },
+      // Never block launch on OTA. A bad update previously crashed via
+      // expo.controller.errorRecoveryQueue; JS applies updates only after a successful boot.
+      checkAutomatically: 'NEVER',
+      fallbackToCacheTimeout: 0,
     },
     experiments: {
       typedRoutes: true,
@@ -93,4 +108,3 @@ module.exports = {
     },
   },
 };
-

@@ -22,11 +22,16 @@ class TrialTrackingService {
   /**
    * Record when a user starts a trial
    */
-  async recordTrialStart(userId: string, planId: string, productId: string): Promise<void> {
+  async recordTrialStart(
+    userId: string,
+    planId: string,
+    productId: string,
+    trialDays: number = 3
+  ): Promise<void> {
     try {
       const trialStartDate = new Date();
       const trialEndDate = new Date(trialStartDate);
-      trialEndDate.setDate(trialEndDate.getDate() + 3); // 3-day trial (Apple-approved)
+      trialEndDate.setDate(trialEndDate.getDate() + Math.max(1, trialDays));
 
       const trialData: TrialData = {
         userId,

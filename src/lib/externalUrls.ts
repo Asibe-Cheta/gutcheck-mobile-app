@@ -36,7 +36,7 @@ export function isReferralVerificationEnabled(): boolean {
 
 export function getAiDataUseConsentMessage(): string {
   return (
-    'To provide guidance, your messages and any images you send are processed by Anthropic (Claude), a third-party AI service. We do not use your content to train AI models. Your data is used only to generate responses and is handled according to our Privacy Policy.\n\n' +
+    'To provide guidance, your messages and any images you send are processed by Google Gemini, a third-party AI service. We do not use your content to train AI models. Your data is used only to generate responses and is handled according to our Privacy Policy.\n\n' +
     'By tapping Accept, you agree to this use. See our Privacy Policy for full details: ' +
     externalUrls.privacyPolicy
   );

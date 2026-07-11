@@ -48,13 +48,8 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'missing_anthropic_api_key' }), {
-      status: 500,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-    });
-  }
+  const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 
   let body: AnthropicMessagesRequest;
   try {
@@ -74,6 +69,59 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Live store builds still call claude-proxy. Route to Gemini when configured so chat
+  // works without waiting for OTA (Anthropic credits may be exhausted).
+  if (geminiApiKey) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const authHeader = req.headers.get('authorization') ?? '';
+    const apikeyHeader = req.headers.get('apikey') ?? '';
+
+    if (!supabaseUrl || (!authHeader && !apikeyHeader)) {
+      return new Response(JSON.stringify({ error: 'missing_supabase_auth_for_gemini_delegate' }), {
+        status: 500,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const geminiRes = await fetch(`${supabaseUrl}/functions/v1/gemini-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader ? { Authorization: authHeader } : {}),
+        ...(apikeyHeader ? { apikey: apikeyHeader } : {}),
+      },
+      body: JSON.stringify({
+        ...body,
+        model: 'gemini-2.5-flash',
+        stream: false,
+      }),
+    });
+
+    const geminiText = await geminiRes.text();
+
+    if (!geminiRes.ok) {
+      return new Response(geminiText, {
+        status: geminiRes.status,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Return JSON even when stream:true. React Native often fails to parse SSE bodies;
+    // the app already handles buffered JSON in parseAnthropicSseText when stream is set.
+    return new Response(geminiText, {
+      status: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!anthropicApiKey) {
+    return new Response(JSON.stringify({ error: 'missing_gemini_or_anthropic_api_key' }), {
+      status: 500,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const apiKey = anthropicApiKey;
   const upstream = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {

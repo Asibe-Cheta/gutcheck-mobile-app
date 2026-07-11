@@ -1,6 +1,6 @@
 /**
  * Onboarding Flow
- * 3-screen psychological onboarding to lead users to 7-day free trial
+ * 3-screen psychological onboarding to lead users to the subscription free trial
  */
 
 import React, { useState } from 'react';
@@ -83,7 +83,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         console.error('Error saving onboarding data:', error);
       }
 
-      // Navigate to subscription screen to start 7-day free trial
+      // Navigate to subscription screen to start the store-configured free trial
       router.push('/subscription');
     } else {
       setCurrentScreen(currentScreen + 1);

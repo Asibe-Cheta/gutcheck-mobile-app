@@ -1,7 +1,7 @@
 /**
  * AI Analysis Service
  * Handles AI-powered analysis of relationship interactions
- * Supports both OpenAI and Anthropic Claude
+ * Supports OpenAI and Google Gemini (via Supabase edge proxy).
  */
 
 import { db } from './supabase';
@@ -20,9 +20,12 @@ import { isSupabaseConfigured, readPublicEnv } from './supabase';
 function getClaudeTransportConfig() {
   const supabaseUrl = readPublicEnv('EXPO_PUBLIC_SUPABASE_URL');
   const supabaseAnonKey = readPublicEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
-  const apiKey = readPublicEnv('EXPO_PUBLIC_ANTHROPIC_API_KEY');
+  // Gemini key should be kept server-side inside the Supabase edge function secret.
+  // We keep this only for optional debug / direct fallback.
+  const apiKey = readPublicEnv('EXPO_PUBLIC_GEMINI_API_KEY');
   const edgeProxyEnabled = isSupabaseConfigured() && !!supabaseUrl && !!supabaseAnonKey;
-  const directEnabled = !!apiKey;
+  // Default to edge proxy so OTA doesn't require embedding the Gemini key in the binary.
+  const directEnabled = false;
   return { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled };
 }
 
@@ -41,7 +44,7 @@ export interface AIAnalysisResult {
 }
 
 export interface AIConfig {
-  provider: 'openai' | 'anthropic';
+  provider: 'openai' | 'gemini';
   model: string;
   max_tokens: number;
   temperature: number;
@@ -67,31 +70,45 @@ export interface ConversationResponse {
   shouldAnalyze?: boolean;
   safeguardCategory?: SafeguardCategory;
   crisisCard?: CrisisCardPayload;
+  patternCard?: PatternResponsePayload;
 }
 
 export type SafeguardCategory = 'A' | 'B' | 'C' | 'D';
 
 import {
   SAFEGUARD_READBACK_TEMPLATES,
-  SAFEGUARD_TEMPLATE_A_TEXT,
   buildCrisisCardPayload,
   APPROVED_CLOSERS,
   FORBIDDEN_CLOSER_PATTERNS,
   FIRST_PERSON_PATTERNS,
+  CRISIS_ACKNOWLEDGEMENT,
+  CRISIS_BOUNDARY,
   type CrisisCardPayload,
 } from './safeguardTemplates';
+import {
+  runLayerAClassifier,
+  parseLayerBVerdict,
+  shouldRouteToCrisisFromLayerB,
+  LAYER_B_CLASSIFIER_SYSTEM_PROMPT,
+  PATTERN_RESPONSE_SYSTEM_PROMPT,
+  parseAndValidatePatternResponse,
+  formatPatternResponseText,
+  formatCrisisResponseText,
+  RISK_CLASSIFIER_VERSION,
+  type PatternResponsePayload,
+} from './responsePipeline';
 
 export { SAFEGUARD_READBACK_TEMPLATES };
-export type { CrisisCardPayload };
+export type { CrisisCardPayload, PatternResponsePayload };
 
 class AIAnalysisService {
   private config: AIConfig;
 
   constructor() {
-    // Using Claude Sonnet 4.5 (latest model - confirmed by Anthropic)
     this.config = {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-5-20250929',
+      // Cheaper + generally strong for safety-style guidance.
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
       max_tokens: 2000,
       temperature: 0.3,
     };
@@ -294,11 +311,9 @@ class AIAnalysisService {
 
     const prompt = this.buildAnalysisPrompt(content, context);
 
-    if (this.config.provider === 'openai') {
-      return await this.analyzeWithOpenAI(prompt);
-    } else {
-      return await this.analyzeWithAnthropic(prompt);
-    }
+    if (this.config.provider === 'openai') return await this.analyzeWithOpenAI(prompt);
+    if (this.config.provider === 'gemini') return await this.analyzeWithGemini(prompt);
+    throw new Error(`Unsupported AI provider: ${(this.config as any)?.provider}`);
   }
 
 
@@ -392,36 +407,23 @@ IMPORTANT:
     }
   }
 
-  // Anthropic Claude analysis (for JSON responses)
-  private async analyzeWithAnthropic(prompt: string): Promise<any> {
-    const { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled } =
-      getClaudeTransportConfig();
+  // Gemini analysis (for JSON responses)
+  private async analyzeWithGemini(prompt: string): Promise<any> {
+    const { supabaseUrl, supabaseAnonKey, edgeProxyEnabled } = getClaudeTransportConfig();
 
-    const url = edgeProxyEnabled
-      ? `${supabaseUrl}/functions/v1/claude-proxy`
-      : 'https://api.anthropic.com/v1/messages';
+    if (!edgeProxyEnabled || !supabaseUrl) {
+      throw new Error(
+        'AI is not configured. Deploy Supabase Edge Function `gemini-proxy` and set Supabase secret `GEMINI_API_KEY`.'
+      );
+    }
+
+    const url = `${supabaseUrl}/functions/v1/gemini-proxy`;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      apikey: supabaseAnonKey,
     };
-
-    if (edgeProxyEnabled) {
-      headers.Authorization = `Bearer ${supabaseAnonKey}`;
-      headers.apikey = supabaseAnonKey;
-    } else if (directEnabled) {
-      headers['x-api-key'] = apiKey;
-    } else {
-      console.error('[AI] Anthropic key missing and Supabase proxy not available', {
-        hasSupabaseUrl: !!supabaseUrl,
-        hasSupabaseAnonKey: !!supabaseAnonKey,
-        expoConfigPresent: !!Constants.expoConfig,
-        extraPresent: !!Constants.expoConfig?.extra,
-      });
-      throw new Error(
-        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
-      );
-    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -441,16 +443,14 @@ IMPORTANT:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[AI] Anthropic API error in analyzeWithAnthropic:', {
+      console.error('[AI] Gemini API error in analyzeWithGemini:', {
         status: response.status,
         statusText: response.statusText,
         body: errorText,
-        transport: edgeProxyEnabled ? 'supabase-edge' : 'direct',
-        apiKeyLength: apiKey ? apiKey.length : 0,
-        apiKeyStart: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
+        transport: 'supabase-edge',
         model: this.config.model,
       });
-      throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 200)}`);
+      throw new Error(`Gemini API ${response.status}: ${errorText.substring(0, 200)}`);
     }
 
     const data = await response.json();
@@ -469,41 +469,28 @@ IMPORTANT:
       
       return JSON.parse(jsonContent);
     } catch (error) {
-      console.error('Failed to parse Anthropic response:', content);
+      console.error('Failed to parse Gemini response:', content);
       throw new Error('Invalid response from AI service');
     }
   }
 
-  // Anthropic Claude conversational response (for plain text responses)
+  // Gemini conversational response (for plain text responses)
   private async getConversationalResponse(prompt: string): Promise<string> {
-    const { supabaseUrl, supabaseAnonKey, apiKey, edgeProxyEnabled, directEnabled } =
-      getClaudeTransportConfig();
+    const { supabaseUrl, supabaseAnonKey, edgeProxyEnabled } = getClaudeTransportConfig();
 
-    const url = edgeProxyEnabled
-      ? `${supabaseUrl}/functions/v1/claude-proxy`
-      : 'https://api.anthropic.com/v1/messages';
+    if (!edgeProxyEnabled || !supabaseUrl) {
+      throw new Error(
+        'AI is not configured. Deploy Supabase Edge Function `gemini-proxy` and set Supabase secret `GEMINI_API_KEY`.'
+      );
+    }
+
+    const url = `${supabaseUrl}/functions/v1/gemini-proxy`;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      apikey: supabaseAnonKey,
     };
-
-    if (edgeProxyEnabled) {
-      headers.Authorization = `Bearer ${supabaseAnonKey}`;
-      headers.apikey = supabaseAnonKey;
-    } else if (directEnabled) {
-      headers['x-api-key'] = apiKey;
-    } else {
-      console.error('[AI] Anthropic key missing and Supabase proxy not available', {
-        hasSupabaseUrl: !!supabaseUrl,
-        hasSupabaseAnonKey: !!supabaseAnonKey,
-        expoConfigPresent: !!Constants.expoConfig,
-        extraPresent: !!Constants.expoConfig?.extra,
-      });
-      throw new Error(
-        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
-      );
-    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -523,16 +510,14 @@ IMPORTANT:
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error('[AI] Anthropic API error:', {
+        console.error('[AI] Gemini API error in getConversationalResponse:', {
           status: response.status,
           statusText: response.statusText,
           body: errorBody,
-          transport: edgeProxyEnabled ? 'supabase-edge' : 'direct',
-          apiKeyLength: apiKey ? apiKey.length : 0,
-          apiKeyStart: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
+          transport: 'supabase-edge',
           model: this.config.model,
         });
-        throw new Error(`Anthropic API ${response.status}: ${errorBody.substring(0, 200)}`);
+        throw new Error(`Gemini API ${response.status}: ${errorBody.substring(0, 200)}`);
       }
 
     const data = await response.json();
@@ -782,7 +767,7 @@ IMPORTANT:
 
   /**
    * Deterministic safeguard classifier for A/B/C/D routing.
-   * A: crisis/immediate danger
+   * A: crisis/immediate danger (pipeline Stage 1 Layer A)
    * B: attachment/dependency framing toward the app
    * C: personal disclosure requiring direct support signposting
    * D: standard path
@@ -790,14 +775,8 @@ IMPORTANT:
   private classifySafeguardCategory(message: string): SafeguardCategory {
     const text = message.toLowerCase();
 
-    const categoryAKeywords = [
-      'kill myself', 'suicide', 'end my life', 'end it all', 'hurt myself', 'self harm',
-      'overdose', 'i want to die', "don't want to live", 'dont want to live',
-      'do not want to live', 'better off without me', 'not want to be here',
-      'i am going to die', 'going to end my life', 'he will kill me',
-      'she will kill me', 'they will kill me', 'in immediate danger',
-      'weapon', 'knife', 'gun', 'being followed', 'call police now',
-    ];
+    // Stage 1 Layer A — crisis interrupt (versioned phrase list)
+    if (runLayerAClassifier(message).matched) return 'A';
 
     const categoryBKeywords = [
       'you are my only friend', 'don\'t leave me', 'stay with me',
@@ -812,10 +791,111 @@ IMPORTANT:
       'blackmail', 'sextorted', 'forced me', 'coerced me', 'molested'
     ];
 
-    if (categoryAKeywords.some((keyword) => text.includes(keyword))) return 'A';
     if (this.isLikelyAttachmentToApp(text) && categoryBKeywords.some((keyword) => text.includes(keyword))) return 'B';
     if (categoryCKeywords.some((keyword) => text.includes(keyword))) return 'C';
     return 'D';
+  }
+
+  /** Stage 2 — static crisis template; never model-generated body. */
+  private async buildStage2CrisisResponse(
+    userMessage: string,
+    nextStage: ConversationState['stage'] = 'support'
+  ): Promise<ConversationResponse> {
+    const region = await this.getUserRegion();
+    const includeChildline = await this.userLikelyUnder19();
+    const crisisCard = buildCrisisCardPayload(region, {
+      ideationOnly: true,
+      includeChildline,
+    });
+
+    const primary = crisisCard.helplines[0];
+    const primaryLabel = primary
+      ? `Call ${primary.name} now — ${primary.displayNumber}`
+      : 'Call Samaritans now — 116 123';
+    const secondary = crisisCard.helplines.find((h) => h.smsNumber);
+    const secondaryLine = secondary
+      ? `You can also text ${secondary.smsBody || 'SHOUT'} to ${secondary.smsNumber} for free, 24/7 confidential support.`
+      : 'You can also text SHOUT to 85258 for free, 24/7 confidential support.';
+
+    void this.logSafeguardAuditEvent('A', userMessage);
+    void this.logPipelineRiskEvent('crisis', userMessage);
+
+    return {
+      response: formatCrisisResponseText({
+        acknowledgement: CRISIS_ACKNOWLEDGEMENT,
+        primaryLabel,
+        secondaryLine,
+        groundingLine: crisisCard.groundingLine,
+        boundary: CRISIS_BOUNDARY,
+      }),
+      nextStage,
+      shouldAnalyze: false,
+      safeguardCategory: 'A',
+      crisisCard,
+    };
+  }
+
+  /** Stage 1 Layer B — narrow classification call only (no user-facing draft). */
+  private async runLayerBRiskClassifier(userMessage: string): Promise<boolean> {
+    try {
+      const raw = await this.getDirectClaudeResponse(
+        [{ role: 'user', content: userMessage.trim() }],
+        LAYER_B_CLASSIFIER_SYSTEM_PROMPT,
+        false,
+        undefined,
+        undefined
+      );
+      const verdict = parseLayerBVerdict(raw);
+      if (!verdict) return false;
+      console.log('[PIPELINE] Layer B verdict', {
+        version: RISK_CLASSIFIER_VERSION,
+        risk_level: verdict.risk_level,
+        confidence: verdict.confidence,
+        categories: verdict.categories,
+      });
+      if (shouldRouteToCrisisFromLayerB(verdict)) {
+        void this.logPipelineRiskEvent(verdict.risk_level, userMessage);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.warn('[PIPELINE] Layer B classifier failed; continuing standard path:', error);
+      return false;
+    }
+  }
+
+  private async logPipelineRiskEvent(
+    riskLevel: string,
+    message: string
+  ): Promise<void> {
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const key = '@pipeline_risk_events_v1';
+      const raw = await AsyncStorage.getItem(key);
+      const parsed: Array<{
+        risk_level: string;
+        timestamp: string;
+        classifier_version: string;
+        messageLength: number;
+        messageFingerprint: string;
+      }> = raw ? JSON.parse(raw) : [];
+
+      const fingerprint = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        message.trim().toLowerCase().slice(0, 400)
+      );
+
+      parsed.push({
+        risk_level: riskLevel,
+        timestamp: new Date().toISOString(),
+        classifier_version: RISK_CLASSIFIER_VERSION,
+        messageLength: message.length,
+        messageFingerprint: fingerprint,
+      });
+      await AsyncStorage.setItem(key, JSON.stringify(parsed.slice(-200)));
+    } catch (error) {
+      console.warn('[PIPELINE] Failed to persist risk audit event:', error);
+    }
   }
 
   private isLikelyAttachmentToApp(text: string): boolean {
@@ -845,11 +925,16 @@ IMPORTANT:
   } {
     const fixtures: Array<{ input: string; expected: SafeguardCategory }> = [
       { input: 'I want to kill myself tonight', expected: 'A' },
+      { input: "I don't feel like I want to live anymore", expected: 'A' },
       { input: 'He said he will kill me if I leave', expected: 'A' },
       { input: 'GutChecks please do not leave me, you are all I have', expected: 'B' },
       { input: 'My boyfriend said you are my only friend', expected: 'D' },
       { input: 'I was assaulted and forced last week', expected: 'C' },
       { input: 'Can you help me understand this argument with my friend?', expected: 'D' },
+      {
+        input: 'someone asked me to keep a secret about something they done',
+        expected: 'D',
+      },
     ];
 
     const failed = fixtures
@@ -874,6 +959,14 @@ IMPORTANT:
     userMessage: string,
     nextStage: ConversationState['stage']
   ): Promise<ConversationResponse | null> {
+    const category = this.classifySafeguardCategory(userMessage);
+    if (category === 'D') return null;
+
+    // Stage 1 Layer A → Stage 2 crisis (static template only)
+    if (category === 'A') {
+      return this.buildStage2CrisisResponse(userMessage, nextStage);
+    }
+
     const region = await this.getUserRegion();
     const includeChildline = await this.userLikelyUnder19();
     return this.maybeReturnSafeguardTemplate(userMessage, nextStage, region, includeChildline);
@@ -886,31 +979,18 @@ IMPORTANT:
     includeChildline?: boolean
   ): ConversationResponse | null {
     const category = this.classifySafeguardCategory(userMessage);
-    if (category === 'D') return null;
+    if (category === 'D' || category === 'A') return null;
 
-    const hardcodedResponse =
-      category === 'A'
-        ? SAFEGUARD_TEMPLATE_A_TEXT
-        : this.getHardcodedSafeguardTemplate(category);
+    const hardcodedResponse = this.getHardcodedSafeguardTemplate(category);
     void this.logSafeguardAuditEvent(category, userMessage);
     console.log('[SAFEGUARD] Deterministic hardcoded template used', { category });
-
-    const crisisCard =
-      category === 'A'
-        ? buildCrisisCardPayload(region, {
-            ideationOnly: /don't want to live|dont want to live|end my life|suicide|kill myself/i.test(
-              userMessage
-            ),
-            includeChildline,
-          })
-        : undefined;
 
     return {
       response: hardcodedResponse,
       nextStage,
       shouldAnalyze: false,
       safeguardCategory: category,
-      crisisCard,
+      crisisCard: undefined,
     };
   }
 
@@ -1004,7 +1084,8 @@ IMPORTANT:
       sanitized = sanitized.replace(pattern, '').trim();
     });
     const closer = APPROVED_CLOSERS[category === 'D' ? 'D' : category];
-    if (!sanitized.endsWith(closer)) {
+    // Empty closer for crisis/standard pattern responses (pipeline Stages 2–4).
+    if (closer && !sanitized.endsWith(closer)) {
       sanitized = `${sanitized}\n\n${closer}`;
     }
     return sanitized;
@@ -1624,216 +1705,149 @@ Respond as if you're continuing the conversation from that notification.`;
     imageData?: string,
     onStreamChunk?: (accumulated: string) => void
   ): Promise<ConversationResponse> {
-    
     console.log('handleConversation called with:', {
       userMessage: userMessage.substring(0, 50) + '...',
       hasImage,
       imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
       imageDataType: typeof imageData,
-      conversationHistoryLength: conversationHistory.length
+      conversationHistoryLength: conversationHistory.length,
+      pipeline: RISK_CLASSIFIER_VERSION,
     });
 
+    // ── Stage 1 Layer A + existing B/C interrupts (before any response model call)
     const safeguardResponse = await this.safeguardPreempt(userMessage, 'support');
     if (safeguardResponse) {
       return safeguardResponse;
     }
 
+    // Prior crisis in session: keep showing Stage 2 only (no Stage 3 append)
     const priorCrisisInSession = (conversationHistory as any[]).some(
       (m) => m?.role === 'assistant' && m?.safeguardCategory === 'A'
     );
     if (priorCrisisInSession) {
-      const region = await this.getUserRegion();
-      const includeChildline = await this.userLikelyUnder19();
-      return {
-        response: SAFEGUARD_TEMPLATE_A_TEXT,
-        nextStage: 'support',
-        shouldAnalyze: false,
-        safeguardCategory: 'A',
-        crisisCard: buildCrisisCardPayload(region, { ideationOnly: true, includeChildline }),
-      };
+      return this.buildStage2CrisisResponse(userMessage, 'support');
     }
 
-    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(userMessage, conversationHistory as any[]);
+    const sessionSafeguardResponse = this.maybeApplySessionLevelSafeguards(
+      userMessage,
+      conversationHistory as any[]
+    );
     if (sessionSafeguardResponse) {
       return sessionSafeguardResponse;
     }
-    
-    // Get user profile context
+
+    // ── Stage 1 Layer B — model-assisted classification when Layer A is inconclusive
+    const layerBCrisis = await this.runLayerBRiskClassifier(userMessage);
+    if (layerBCrisis) {
+      return this.buildStage2CrisisResponse(userMessage, 'support');
+    }
+
+    // ── Stage 3 — pattern-recognition model call (JSON schema only)
     const fullConversationText = [
       ...conversationHistory.map((msg: any) => msg.content),
-      userMessage
+      userMessage,
     ].join(' ');
-    
+
     const includePersonalContext = this.shouldIncludePersonalContext(fullConversationText);
     const profileContext = await this.getUserProfileContext(includePersonalContext);
-    
-    // Build conversation context for Claude
-        const systemPrompt = `You are GutChecks, a sharp and insightful safety guidance tool that helps users cut through the noise and understand their situations clearly.${profileContext}
+
+    const systemPrompt = `${PATTERN_RESPONSE_SYSTEM_PROMPT}${profileContext}
 
 CRITICAL: USER INFORMATION RULES:
-- If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information
-- NEVER ask the user for their age if it's already in the USER PROFILE CONTEXT
-- NEVER ask the user for their location/region if it's already in the USER PROFILE CONTEXT
-- Use the age and region information from the context to provide age-appropriate and region-specific advice
-- Only ask for age or region if they are NOT present in the USER PROFILE CONTEXT above
-- When you have the user's age, adapt your language and safety advice to be appropriate for that age group
-- When you have the user's region, provide region-specific resources and helplines when relevant
+- If the USER PROFILE CONTEXT above includes Age or Location/Region, you ALREADY HAVE this information.
+- NEVER ask for age or region when already present.
+- Use age-appropriate language when age is known.`;
 
-HELPLINE RULES - CRITICAL:
-- ALWAYS provide helplines that are specific to the user's region from the USER PROFILE CONTEXT
-- If the USER PROFILE CONTEXT shows a region (e.g., "UK", "US", "Canada", "Australia"), only recommend helplines for that region
-- NEVER provide helplines from a different region than the user's location
-- The system will automatically provide region-specific helplines based on the user's region - you don't need to list them manually
-- If you mention helplines, acknowledge that they are specific to the user's region
-
-Your approach:
-- Be DIRECT and ANALYTICAL - don't beat around the bush
-- Identify red flags and manipulation patterns immediately
-- Give specific, actionable advice with clear next steps
-- Use real-world examples and scenarios
-- Challenge people when they're rationalizing bad behavior
-- Be empathetic but firm - you care enough to tell the truth
-
-TONE: Direct, clear, and practical. Use plain language and stay conversational but professional. ALWAYS keep language appropriate for young teens and adults.
-
-LANGUAGE RESTRICTIONS - CRITICAL:
-- NEVER use harsh language, profanity, or slang terms like "BS", "bullshit", "cut the BS", or any similar expressions
-- NEVER use dismissive or crude language, even when being direct
-- Maintain a respectful, professional tone at all times
-- You can be direct and honest without using harsh language
-- If you need to call out something clearly, use professional alternatives like "that's not accurate", "let's be clear", "that doesn't add up", etc.
-- Remember: being direct does NOT mean being harsh or using inappropriate language
-
-STRUCTURE your responses:
-1. IMMEDIATE ASSESSMENT (1-2 sentences) - What's really happening here?
-2. RED FLAGS (bullet points) - Specific concerning behaviors
-3. LIKELY SCENARIOS (2-3 possibilities) - What this probably is
-4. RECOMMENDED ACTION STEPS (specific steps) - What you might consider doing next. These are suggestions, not requirements - you know your situation best and should choose what feels right for you.
-5. REALITY CHECK (1 sentence) - The hard truth they need to hear
-6. CLOSING: End with an action-led prompt only, e.g. "Try one of the suggested steps above. When you have, come back and let GutChecks know how it went." Never use first-person voice (no I, me, my). Never invite open-ended emotional disclosure ("anything more you want to share", "want to talk", etc.).
-
-HANDLING OFF-TOPIC QUESTIONS:
-If a user asks questions unrelated to relationships, social dynamics, safety, or personal well-being (e.g., math problems, general knowledge, geography):
-- Be kind and professional - never dismissive or rude
-- Briefly provide a helpful answer if you can
-- Gently redirect them to your core purpose: "While I can help with that, I'm really here to support you with relationships and navigating tricky social situations. Is there anything going on in your life where you could use some insight or support?"
-- If this is the 2nd or 3rd off-topic question in the conversation, politely explain: "I appreciate your curiosity, but my expertise is specifically in helping people navigate relationships, recognize red flags, and stay safe. For general questions like this, you might want to try a general-purpose AI assistant. Is there anything relationship-related I can help you with instead?"
-
-Always respond naturally and conversationally. Build on previous messages to maintain context.`;
-
-    // Build the full conversation for Claude, filtering out empty messages
-    // Limit conversation history to last 50 messages to prevent hitting API limits
-    // Keep recent messages for context, but truncate very long conversations
     const MAX_CONVERSATION_HISTORY = 50;
     const filteredHistory = conversationHistory
       .filter((msg: any) => msg.content && msg.content.trim().length > 0)
       .map((msg: any) => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content.trim()
+        content: msg.content.trim(),
       }));
-    
-    // Keep the most recent messages if conversation is too long
-    const recentHistory = filteredHistory.length > MAX_CONVERSATION_HISTORY
-      ? filteredHistory.slice(-MAX_CONVERSATION_HISTORY)
-      : filteredHistory;
-    
+
+    const recentHistory =
+      filteredHistory.length > MAX_CONVERSATION_HISTORY
+        ? filteredHistory.slice(-MAX_CONVERSATION_HISTORY)
+        : filteredHistory;
+
     const messages = [
       ...recentHistory,
-      { role: 'user', content: userMessage.trim() }
-    ].filter(msg => msg.content && msg.content.length > 0);
-    
-    // Log if we truncated the conversation
-    if (filteredHistory.length > MAX_CONVERSATION_HISTORY) {
-      console.log(`[AI] Conversation truncated: ${filteredHistory.length} messages -> ${recentHistory.length} messages (keeping most recent)`);
-    }
+      { role: 'user', content: userMessage.trim() },
+    ].filter((msg) => msg.content && msg.content.length > 0);
 
-    // Ensure we have at least the current user message
     if (messages.length === 0) {
       messages.push({ role: 'user', content: userMessage.trim() });
     }
 
     try {
-      // Debug logging
-      console.log('Sending to Claude:', {
-        messageCount: messages.length,
-        messages: messages.map(m => ({ role: m.role, contentLength: m.content.length })),
-        hasImage,
-        imageData: imageData ? imageData.substring(0, 50) + '...' : 'none',
-        imageDataType: typeof imageData
-      });
-
       const response = await this.getDirectClaudeResponse(
         messages,
         systemPrompt,
         hasImage,
         imageData,
-        onStreamChunk && !hasImage ? onStreamChunk : undefined
+        undefined
       );
-      
-      console.log('Claude response received:', {
-        responseLength: response.length,
-        responsePreview: response.substring(0, 100) + '...'
-      });
-      
-      const userRegion = await this.getUserRegion();
 
-      // Check if helplines should be recommended based on conversation content
-      const fullConversationText = [
-        ...conversationHistory.map((msg: any) => msg.content),
-        userMessage
-      ].join(' ');
-      
-      const isCrisis = isCrisisSituation(fullConversationText);
-      const isDanger = isImmediateDanger(fullConversationText);
-      const relevantHelplines = getRelevantHelplines(fullConversationText, userRegion);
-      
-      // Crisis uses hardcoded Crisis Card in chat — do not append plain-text helpline blobs
-      let enhancedResponse = response;
-      if (!isCrisis && !isDanger && relevantHelplines.length > 0) {
-        const helplineMessage = getHelplineRecommendationMessage(false, false, relevantHelplines, userRegion);
-        enhancedResponse = response + helplineMessage;
+      // ── Stage 4 — validate schema and format (frontend owns visual structure)
+      const patternCard = parseAndValidatePatternResponse(response, userMessage);
+      if (!patternCard) {
+        console.warn('[PIPELINE] Stage 3 JSON invalid; using safe fallback pattern card');
+        const fallbackCard: PatternResponsePayload = {
+          validation:
+            'This situation is worth checking carefully with someone you trust in real life.',
+          red_flags: ['Pressure to keep something private', 'Unclear motives'],
+          why_it_matters:
+            'Secrets and pressure can be used to control or isolate someone. A trusted adult can help you work out what is safe.',
+          recommended_actions: [
+            {
+              action:
+                'Talk to a trusted adult (parent, teacher, school counsellor, or another adult you trust)',
+              priority: 'primary',
+            },
+            {
+              action: 'Write down what happened and when, if it feels safe to do so',
+              priority: 'secondary',
+            },
+          ],
+          reality_check:
+            'You do not have to handle this alone, and you are allowed to ask for help.',
+        };
+        const finalText = formatPatternResponseText(fallbackCard);
+        if (onStreamChunk && !hasImage) onStreamChunk(finalText);
+        return {
+          response: finalText,
+          nextStage: 'gathering',
+          patternCard: fallbackCard,
+        };
       }
-      
-      // Determine next stage based on conversation flow
+
+      const finalText = formatPatternResponseText(patternCard);
+      if (onStreamChunk && !hasImage) onStreamChunk(finalText);
+
       let nextStage: ConversationState['stage'] = 'gathering';
-      
-      // If user seems to want analysis or we have enough context, move to analysis
       if (this.shouldProvideAnalysis(userMessage, conversationHistory.length)) {
         nextStage = 'analysis';
       } else if (conversationHistory.length > 5) {
-        // After several exchanges, offer analysis
         nextStage = 'support';
       }
 
-      const baseConversation = this.applyOutputSafeguards(enhancedResponse);
-      const finalText = this.enforceDeterministicSignposting(baseConversation, fullConversationText);
-      if (onStreamChunk && !hasImage) {
-        onStreamChunk(finalText);
-      }
       return {
         response: finalText,
-        nextStage
+        nextStage,
+        patternCard,
       };
     } catch (error: any) {
-      console.error('Claude conversation error:', error);
+      console.error('Pipeline Stage 3 error:', error);
       const errorMessage = error?.message || String(error);
       console.error('Error details:', {
         message: errorMessage,
         model: this.config.model,
-        apiKeyPresent: !!readPublicEnv('EXPO_PUBLIC_ANTHROPIC_API_KEY'),
         transport: getClaudeTransportConfig().edgeProxyEnabled ? 'supabase-edge' : 'direct',
       });
 
-      const crisisCategory = this.classifySafeguardCategory(userMessage);
-      if (crisisCategory === 'A') {
-        const fallback = await this.safeguardPreempt(userMessage, 'support');
-        if (fallback) {
-          return {
-            ...fallback,
-            response:
-              'GutChecks flagged what you wrote as serious. While the connection is being restored, use the helplines below right now.',
-          };
-        }
+      if (this.classifySafeguardCategory(userMessage) === 'A') {
+        return this.buildStage2CrisisResponse(userMessage, 'support');
       }
 
       return {
@@ -2030,11 +2044,12 @@ Always respond naturally and conversationally. Build on previous messages to mai
 
     if (!isWeb && !edgeProxyEnabled && !directEnabled) {
       throw new Error(
-        'AI is not configured. Either (1) deploy Supabase Edge Function `claude-proxy` and set Supabase secret `ANTHROPIC_API_KEY`, or (2) set `EXPO_PUBLIC_ANTHROPIC_API_KEY` in the app build.'
+        'AI is not configured. Deploy Supabase Edge Function `gemini-proxy` and set Supabase secret `GEMINI_API_KEY`.'
       );
     }
 
-    const useStreaming = typeof onStreamChunk === 'function' && !hasImage;
+    // Gemini/Supabase proxy path is non-streaming for reliability.
+    const useStreaming = false;
 
     // If there's an image or document, add context to the system prompt
     let enhancedSystemPrompt = systemPrompt;
@@ -2168,25 +2183,6 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       console.log('No image data provided:', { hasImage, imageData: imageData, imageDataType: typeof imageData });
     }
 
-    const apiUrl = isWeb
-      ? 'http://localhost:3001/api/v1/messages'
-      : edgeProxyEnabled
-        ? `${supabaseUrl}/functions/v1/claude-proxy`
-        : 'https://api.anthropic.com/v1/messages';
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01',
-    };
-    if (isWeb) {
-      // Local dev proxy supplies the key
-    } else if (edgeProxyEnabled && supabaseAnonKey) {
-      headers.Authorization = `Bearer ${supabaseAnonKey}`;
-      headers.apikey = supabaseAnonKey;
-    } else if (directEnabled && apiKey) {
-      headers['x-api-key'] = apiKey;
-    }
-
     const requestBody: Record<string, unknown> = {
       model: this.config.model,
       max_tokens: 1000,
@@ -2198,62 +2194,121 @@ IMPORTANT: The user has shared an image/screenshot or document. Please:
       requestBody.stream = true;
     }
 
-    const controller = new AbortController();
-    const timeoutMs = useStreaming ? 120000 : 15000;
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
+    const attemptOrder: Array<{ url: string; headers: Record<string, string>; label: string }> = [];
+    if (edgeProxyEnabled && supabaseUrl && supabaseAnonKey) {
+      attemptOrder.push({
+        url: `${supabaseUrl}/functions/v1/gemini-proxy`,
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          apikey: supabaseAnonKey,
+        },
+        label: 'supabase-edge',
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[AI] Claude API Error (getDirectClaudeResponse):', {
-          status: response.status,
-          errorText: errorText.substring(0, 400),
-          transport: edgeProxyEnabled ? 'supabase-edge' : isWeb ? 'web-proxy' : 'direct',
-          streaming: useStreaming,
-        });
-        throw new Error(`Anthropic API ${response.status}: ${errorText.substring(0, 300)}`);
-      }
-
-      const contentType = (response.headers.get('content-type') || '').toLowerCase();
-
-      if (
-        useStreaming &&
-        (contentType.includes('text/event-stream') || contentType.includes('event-stream'))
-      ) {
-        return await this.parseAnthropicMessageStream(response, onStreamChunk!);
-      }
-
-      if (useStreaming) {
-        const buffered = await response.text();
-        const parsed = this.parseAnthropicSseText(buffered, onStreamChunk!);
-        if (parsed.trim().length > 0) {
-          return parsed;
-        }
-        throw new Error('Unexpected Claude streaming response shape');
-      }
-
-      const data = await response.json();
-      const fullResponse = data.content?.[0]?.text;
-      if (typeof fullResponse !== 'string') {
-        throw new Error('Unexpected Claude response shape');
-      }
-      return fullResponse;
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      if (error?.name === 'AbortError') {
-        throw new Error('Request timeout - please try again');
-      }
-      throw error;
     }
+    if (directEnabled && apiKey) {
+      attemptOrder.push({
+        url: 'https://api.anthropic.com/v1/messages',
+        headers: {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'x-api-key': apiKey,
+        },
+        label: 'direct',
+      });
+    }
+    if (isWeb) {
+      attemptOrder.unshift({
+        url: 'http://localhost:3001/api/v1/messages',
+        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01' },
+        label: 'web-proxy',
+      });
+    }
+
+    if (attemptOrder.length === 0) {
+      throw new Error(
+        'AI is not configured. Deploy Supabase Edge Function `gemini-proxy` and set Supabase secret `GEMINI_API_KEY`.'
+      );
+    }
+
+    let lastError: Error | null = null;
+    const streamModes = useStreaming ? [true, false] : [false];
+
+    for (const transport of attemptOrder) {
+      for (const stream of streamModes) {
+        const body = { ...requestBody, ...(stream ? { stream: true } : { stream: undefined }) };
+        if (!stream) {
+          delete body.stream;
+        }
+
+        const controller = new AbortController();
+        const timeoutMs = stream ? 120000 : 90000;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const response = await fetch(transport.url, {
+            method: 'POST',
+            headers: transport.headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[AI] Gemini API Error (getDirectClaudeResponse):', {
+              status: response.status,
+              errorText: errorText.substring(0, 400),
+              transport: transport.label,
+              streaming: stream,
+            });
+            throw new Error(`Gemini API ${response.status}: ${errorText.substring(0, 300)}`);
+          }
+
+          const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+          if (
+            stream &&
+            onStreamChunk &&
+            (contentType.includes('text/event-stream') || contentType.includes('event-stream'))
+          ) {
+            // Geminis proxy doesn't implement streaming yet; fall through to non-stream parsing.
+            return await response.text();
+          }
+
+          if (stream && onStreamChunk) {
+            const buffered = await response.text();
+            const parsed = this.parseAnthropicSseText(buffered, onStreamChunk);
+            if (parsed.trim().length > 0) {
+              return parsed;
+            }
+            throw new Error('Unexpected Gemini response shape');
+          }
+
+          const data = await response.json();
+          const fullResponse = data.content?.[0]?.text;
+          if (typeof fullResponse !== 'string' || !fullResponse.trim()) {
+            throw new Error('Unexpected Gemini response shape');
+          }
+          return fullResponse;
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error?.name === 'AbortError') {
+            lastError = new Error('Request timeout - please try again');
+          } else {
+            lastError = error instanceof Error ? error : new Error(String(error));
+          }
+          console.warn(
+            `[AI] ${transport.label} stream=${stream} failed:`,
+            lastError.message
+          );
+        }
+      }
+    }
+
+    throw lastError ?? new Error('AI request failed');
   }
 
   /**

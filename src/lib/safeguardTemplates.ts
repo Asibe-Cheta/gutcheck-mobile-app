@@ -16,17 +16,38 @@ export type CrisisCardHelpline = {
 };
 
 export type CrisisCardPayload = {
-  bannerTitle: string;
-  summary: string;
+  /** Stage 2 acknowledgement — fixed, warm, non-clinical */
+  acknowledgement: string;
+  /** Immediate danger grounding line */
+  groundingLine: string;
+  /** GutChecks boundary — every crisis response */
   disclaimer: string;
-  closer: string;
+  /** Primary helpline first (Samaritans / Childline / regional), then secondary, then emergency */
   helplines: CrisisCardHelpline[];
+  /** @deprecated use acknowledgement — kept for older message payloads */
+  bannerTitle?: string;
+  /** @deprecated use acknowledgement */
+  summary?: string;
+  /** @deprecated crisis responses must not use task-style closers */
+  closer?: string;
 };
 
-/** Spec §7.1 — plain text for read-back / fallback; UI uses buildCrisisCardPayload. */
-export const SAFEGUARD_TEMPLATE_A_TEXT = `GutChecks has flagged what you wrote as serious. The right support for what you're describing comes from people trained for exactly this. Please use one of the lines below right now.
+export const CRISIS_ACKNOWLEDGEMENT =
+  "What you've just shared matters, and it's important you don't sit with this alone.";
 
-GutChecks is a guidance tool, not a crisis service. The people on these lines are trained for this.`;
+export const CRISIS_BOUNDARY =
+  "GutChecks is a guidance tool, not a counsellor, therapist, or crisis service. The people on the lines above are trained to help with exactly what you're going through.";
+
+/** Spec Stage 2 — plain text for read-back / fallback; UI uses buildCrisisCardPayload. */
+export const SAFEGUARD_TEMPLATE_A_TEXT = `${CRISIS_ACKNOWLEDGEMENT}
+
+Call Samaritans now — 116 123 (or Childline 0800 1111 if you are under 19).
+
+You can also text SHOUT to 85258 for free, 24/7 confidential support.
+
+If you are in immediate danger, please call 999 now.
+
+${CRISIS_BOUNDARY}`;
 
 export const SAFEGUARD_TEMPLATE_B_TEXT = `What you've shared matters, and asking for connection is a normal human thing, not a weakness.
 
@@ -175,34 +196,66 @@ export function getCrisisHelplinesForRegion(region: string | null | undefined): 
   return UK_CRISIS_HELPLINES;
 }
 
+function emergencyGroundingLine(region: string | null | undefined): string {
+  const key = normalizeRegionKey(region);
+  if (key === 'US' || key === 'Canada') {
+    return 'If you are in immediate danger, please call 911 now.';
+  }
+  if (key === 'Australia') {
+    return 'If you are in immediate danger, please call 000 now.';
+  }
+  return 'If you are in immediate danger, please call 999 now.';
+}
+
+function orderCrisisHelplines(
+  region: string | null | undefined,
+  includeChildline: boolean
+): CrisisCardHelpline[] {
+  const key = normalizeRegionKey(region);
+  const all = getCrisisHelplinesForRegion(region);
+
+  if (key === 'UK') {
+    const primaryName = includeChildline ? 'Childline' : 'Samaritans';
+    const primary = all.find((h) => h.name === primaryName) ?? all.find((h) => h.name === 'Samaritans');
+    const shout = all.find((h) => h.name === 'Shout');
+    const emergency = all.find((h) => h.name === 'Emergency Services');
+    return [primary, shout, emergency].filter(Boolean) as CrisisCardHelpline[];
+  }
+
+  // Non-UK: primary crisis line, text line if any, then emergency.
+  const emergency = all.find((h) => /emergency/i.test(h.name));
+  const textLine = all.find((h) => h.smsNumber);
+  const primary = all.find((h) => h !== emergency && h !== textLine && h.dialNumber);
+  return [primary, textLine, emergency].filter(Boolean) as CrisisCardHelpline[];
+}
+
 export function buildCrisisCardPayload(
   region: string | null | undefined,
   opts?: { ideationOnly?: boolean; includeChildline?: boolean }
 ): CrisisCardPayload {
-  let helplines = getCrisisHelplinesForRegion(region);
-  if (opts?.includeChildline === false) {
-    helplines = helplines.filter((h) => h.name !== 'Childline');
-  }
+  const includeChildline = opts?.includeChildline !== false;
+  const helplines = orderCrisisHelplines(region, includeChildline);
+  const groundingLine = emergencyGroundingLine(region);
 
   return {
+    acknowledgement: CRISIS_ACKNOWLEDGEMENT,
+    groundingLine,
+    disclaimer: CRISIS_BOUNDARY,
+    helplines,
+    // Legacy fields for any older UI paths
     bannerTitle: opts?.ideationOnly
       ? 'This has been flagged as a mental health emergency'
       : 'This has been flagged as a crisis',
-    summary:
-      'What you shared suggests immediate risk of harm. GutChecks cannot provide crisis support; trained services below can help right now.',
-    disclaimer:
-      'GutChecks is a guidance tool, not a crisis service. The people on these lines are trained for exactly this.',
-    closer: 'Tap a number above to speak with someone trained for this.',
-    helplines,
+    summary: CRISIS_ACKNOWLEDGEMENT,
   };
 }
 
-/** Approved closers — Part A Layer 3 / DEVELOPER_RECOMMENDATIONS Issue 2 */
+/** Approved closers — never use task-style "come back" framing (pipeline Stage 2/3). */
 export const APPROVED_CLOSERS: Record<'A' | 'B' | 'C' | 'D', string> = {
-  A: 'Tap a number above to speak with someone trained for this.',
+  A: '',
   B: 'Type the situation you want to check, or use the questions above.',
   C: 'If it feels safe to, please contact one of the services listed. If anyone is in immediate danger, call 999.',
-  D: 'Try one of the suggested steps above. When you have, come back and let GutChecks know how it went.',
+  D: '',
 };
 
 export const FORBIDDEN_CLOSER_PATTERNS = [
@@ -210,6 +263,9 @@ export const FORBIDDEN_CLOSER_PATTERNS = [
   /anything else you want to share/i,
   /want to talk about anything else/i,
   /want to share about this or something else/i,
+  /come back and let GutChecks know how it went\.?/gi,
+  /come back and tell (us|GutChecks) how it went\.?/gi,
+  /Try one of the suggested steps above\.\s*/gi,
 ];
 
 export const FIRST_PERSON_PATTERNS = [

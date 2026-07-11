@@ -13,6 +13,7 @@ import Purchases, {
 } from 'react-native-purchases';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { hasFreeTrialIntro, parseFreeTrialDays } from './subscriptionTrialUtils';
 
 // Product IDs (same as before - matches App Store Connect)
 export const PRODUCT_IDS = {
@@ -192,25 +193,16 @@ class RevenueCatService {
           currency: pkg.product.currencyCode,
         });
 
-        // Extract introductory pricing (free trial) information
         const introPrice = pkg.product.introPrice;
-        const hasFreeTrial = introPrice && introPrice.price === 0 && introPrice.periodUnit && introPrice.periodNumberOfUnits;
-        
-        // Calculate free trial period in days
-        let freeTrialDays: number | null = null;
-        if (hasFreeTrial && introPrice) {
-          const periodUnit = introPrice.periodUnit; // 'DAY', 'WEEK', 'MONTH', 'YEAR'
-          const periodCount = introPrice.periodNumberOfUnits || 0;
-          
-          if (periodUnit === 'DAY') {
-            freeTrialDays = periodCount;
-          } else if (periodUnit === 'WEEK') {
-            freeTrialDays = periodCount * 7;
-          } else if (periodUnit === 'MONTH') {
-            freeTrialDays = periodCount * 30; // Approximate
-          } else if (periodUnit === 'YEAR') {
-            freeTrialDays = periodCount * 365; // Approximate
-          }
+        const freeTrialDays = parseFreeTrialDays(introPrice);
+        const hasFreeTrial = hasFreeTrialIntro(introPrice);
+
+        if (hasFreeTrial) {
+          console.log('[RevenueCat] Intro offer for', pkg.product.identifier, {
+            freeTrialDays,
+            periodUnit: introPrice?.periodUnit,
+            periodNumberOfUnits: introPrice?.periodNumberOfUnits,
+          });
         }
         
         // Fix: Ensure correct title based on product ID (not App Store Connect metadata)

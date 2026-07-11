@@ -39,6 +39,7 @@ import { useAnalysisStore } from '@/lib/stores/analysisStore';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { aiService, SAFEGUARD_READBACK_TEMPLATES, type ConversationResponse } from '@/lib/ai';
 import CrisisHelplineCards from '@/components/CrisisHelplineCards';
+import PatternResponseCard from '@/components/PatternResponseCard';
 import type { ConversationMessage } from '@/lib/stores/conversationStore';
 import { shareNudgeService } from '@/lib/shareNudgeService';
 import { revenueCatService } from '@/lib/revenueCatService';
@@ -183,6 +184,7 @@ export default function ChatScreen() {
   const applyAssistantFromResponse = (response: ConversationResponse) => {
     addAssistantResponse(response.response, {
       crisisCard: response.crisisCard,
+      patternCard: response.patternCard,
       safeguardCategory: response.safeguardCategory,
     });
     if (response.safeguardCategory === 'A') {
@@ -840,7 +842,8 @@ export default function ChatScreen() {
       // Get the updated conversation history after adding the user message
       const updatedHistory = useConversationStore.getState().conversationHistory;
 
-      const useLiveStream = !imageToSend;
+      // Non-streaming is more reliable on React Native (avoids SSE reader issues on device).
+      const useLiveStream = false;
       let streamedAny = false;
 
       if (useLiveStream) {
@@ -1170,44 +1173,58 @@ export default function ChatScreen() {
         isUser ? styles.userMessage : styles.assistantMessage
       ]}>
         {!isUser && msg.crisisCard ? (
-          <CrisisHelplineCards
-            payload={msg.crisisCard}
-            colors={{
-              primary: colors.primary,
-              textPrimary: colors.textPrimary,
-              textSecondary: colors.textSecondary,
-              surface: colors.surface,
-              border: colors.border,
-              error: colors.error,
-            }}
-          />
-        ) : null}
-        <View style={[
-          styles.messageBubble,
-          isUser ? styles.userBubble : styles.assistantBubble
-        ]}>
-          {/* Display image if present */}
-          {msg.imageUri && isUser && (
-            <View style={styles.messageImageContainer}>
-              <Image source={{ uri: msg.imageUri }} style={styles.messageImage} />
-            </View>
-          )}
-          
-          {renderFormattedText(displayContent, [
-            styles.messageText,
-            isUser ? styles.userText : styles.assistantText
-          ])}
-          
-          {/* Analysis Link Button */}
-          {hasAnalysisLink && !isUser && (
-            <TouchableOpacity 
-              style={styles.analysisLinkButton}
-              onPress={() => router.push('/analysis-results')}
-            >
-              <Text style={styles.analysisLinkText}>📊 View Analysis</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+          <View style={[styles.messageBubble, styles.assistantBubble]}>
+            <CrisisHelplineCards
+              payload={msg.crisisCard}
+              colors={{
+                primary: colors.primary,
+                textPrimary: colors.textPrimary,
+                textSecondary: colors.textSecondary,
+                surface: colors.surface,
+                border: colors.border,
+                error: colors.error,
+              }}
+            />
+          </View>
+        ) : (
+          <View style={[
+            styles.messageBubble,
+            isUser ? styles.userBubble : styles.assistantBubble
+          ]}>
+            {msg.imageUri && isUser && (
+              <View style={styles.messageImageContainer}>
+                <Image source={{ uri: msg.imageUri }} style={styles.messageImage} />
+              </View>
+            )}
+
+            {!isUser && msg.patternCard ? (
+              <PatternResponseCard
+                payload={msg.patternCard}
+                colors={{
+                  primary: colors.primary,
+                  textPrimary: colors.textPrimary,
+                  textSecondary: colors.textSecondary,
+                  surface: colors.surface,
+                  border: colors.border,
+                }}
+              />
+            ) : (
+              renderFormattedText(displayContent, [
+                styles.messageText,
+                isUser ? styles.userText : styles.assistantText
+              ])
+            )}
+
+            {hasAnalysisLink && !isUser && (
+              <TouchableOpacity
+                style={styles.analysisLinkButton}
+                onPress={() => router.push('/analysis-results')}
+              >
+                <Text style={styles.analysisLinkText}>📊 View Analysis</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
