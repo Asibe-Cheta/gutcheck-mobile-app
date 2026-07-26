@@ -1243,6 +1243,8 @@ export default function SubscriptionScreen() {
     );
   }
 
+  const selectedPlan = plans.find((p: SubscriptionPlan) => p.id === selectedPlanId);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -1390,7 +1392,6 @@ export default function SubscriptionScreen() {
 
         {/* No payment due now - when selected plan has free trial */}
         {(() => {
-          const selectedPlan = plans.find((p: SubscriptionPlan) => p.id === selectedPlanId);
           const hasTrial = selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays;
           return hasTrial ? (
             <View style={styles.trialInfoRow}>

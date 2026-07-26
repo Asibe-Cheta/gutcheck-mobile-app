@@ -1,9 +1,9 @@
 // Environment variables are provided by EAS Build in production
 // EAS will inject variables from the EAS dashboard or eas.json build profile
 // These fallback to process.env for local development
-const APP_VERSION = '2.2.6';
-const IOS_BUILD_NUMBER = '220';
-const ANDROID_VERSION_CODE = 54;
+const APP_VERSION = '2.2.7';
+const IOS_BUILD_NUMBER = '221';
+const ANDROID_VERSION_CODE = 55;
 
 const envVars = {
   // These will be overridden by EAS build env vars if set
