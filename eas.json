@@ -1,7 +1,8 @@
 {
   "cli": {
     "version": ">= 16.24.1",
-    "appVersionSource": "local"
+    "appVersionSource": "local",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
@@ -26,7 +27,10 @@
       },
       "env": {
         "EAS_ENABLE_EXPO_DOCTOR": "0",
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qxodyqgtpbykcuvscfew.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4b2R5cWd0cGJ5a2N1dnNjZmV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg4MzkwMjMsImV4cCI6MjA3NDQxNTAyM30.pqd4-MnjWrLloPtxL4S6RgnOR-AOm8wI4YNUR-zgB4E",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_51SJCQePYI2p6vDpg1iyG1Q5Fz2ImxLkafsGFjB9zicRk4P1ltS8njpOmry8XOf10ZbZxjKKS8fy6JBXingFyvG6T00lacswCek"
       },
       "ios": {
         "simulator": false,

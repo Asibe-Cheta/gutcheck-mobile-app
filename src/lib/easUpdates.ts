@@ -11,8 +11,8 @@ import * as Updates from 'expo-updates';
 
 const LEGACY_OTA_DEBUG_KEY = '@ota_debug_v1';
 
-/** Set true only when publishing a verified OTA with Hermes bytecode. */
-const APPLY_OTA_ON_LAUNCH = false;
+/** Applies production-channel OTA updates after launch; a failed check keeps the current bundle. */
+const APPLY_OTA_ON_LAUNCH = true;
 
 export async function runLaunchOtaApply(): Promise<void> {
   if (__DEV__ || !Updates.isEnabled || !APPLY_OTA_ON_LAUNCH) return;

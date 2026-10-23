@@ -2,8 +2,12 @@
 // EAS will inject variables from the EAS dashboard or eas.json build profile
 // These fallback to process.env for local development
 const APP_VERSION = '2.2.7';
-const IOS_BUILD_NUMBER = '221';
+const IOS_BUILD_NUMBER = '222';
 const ANDROID_VERSION_CODE = 55;
+
+// EAS project @bervic-digital/gutcheck. The previous project (@justice_asibe/gutcheck,
+// 8e8f5512-18b9-489d-9b05-ee5c0379ea29) is unusable while that account is disabled.
+const EAS_PROJECT_ID = '17b7de67-e1ec-4648-8a0c-74e8f2394332';
 
 const envVars = {
   // These will be overridden by EAS build env vars if set
@@ -27,7 +31,7 @@ module.exports = {
   expo: {
     name: 'GutChecks: Red Flags & Safety',
     slug: 'gutcheck',
-    // owner: 'bervic-digital',
+    owner: 'bervic-digital',
     version: APP_VERSION,
     orientation: 'default',
     icon: './assets/new-gut-logo.jpeg',
@@ -83,7 +87,7 @@ module.exports = {
     scheme: 'gutcheck',
     runtimeVersion,
     updates: {
-      url: 'https://u.expo.dev/8e8f5512-18b9-489d-9b05-ee5c0379ea29',
+      ...(EAS_PROJECT_ID ? { url: `https://u.expo.dev/${EAS_PROJECT_ID}` } : {}),
       requestHeaders: {
         'expo-channel-name': 'production',
       },
@@ -100,10 +104,10 @@ module.exports = {
       ...envVars,
       // App metadata
       websiteUrl: 'https://mygutcheck.org',
-      supportEmail: 'support@mygutcheck.org',
+      supportEmail: 'contact@mygutcheck.org',
       eas: {
         // Set by EAS init output so CLI can link the project
-        projectId: '8e8f5512-18b9-489d-9b05-ee5c0379ea29',
+        ...(EAS_PROJECT_ID ? { projectId: EAS_PROJECT_ID } : {}),
       },
     },
   },
