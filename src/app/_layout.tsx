@@ -7,7 +7,7 @@
 import '@/lib/logCapture';
 
 import React, { useEffect, useRef } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, AppStateStatus, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -37,11 +37,20 @@ if (typeof ErrorUtils !== 'undefined') {
 }
 
 // Inner component that uses theme context
+const FREE_ROUTES = ['/free-support', '/crisis-resources', '/onboarding', '/subscription'];
+
 function AppContent() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
   const lastSubscriptionCheck = useRef<number>(0);
+  // Screens that must stay reachable without a plan: help is never behind the paywall, and
+  // someone coming back from a helpline call must not land on the paywall.
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     void runLaunchOtaApply();
@@ -64,6 +73,7 @@ function AppContent() {
 
         // Only enforce for authenticated users
         if (!userId || isLoggedIn !== 'true') return;
+        if (FREE_ROUTES.some((route) => pathnameRef.current?.startsWith(route))) return;
 
         const allowed = await userHasPremiumAccess(userId);
         if (!allowed) {
@@ -202,6 +212,7 @@ function AppContent() {
           <Stack.Screen name="subscription-test" options={{ headerShown: false }} />
           <Stack.Screen name="privacy" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding-route" options={{ headerShown: false }} />
+          <Stack.Screen name="free-support" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="notification-detail" options={{ headerShown: false }} />
           <Stack.Screen name="contact" options={{ headerShown: false }} />

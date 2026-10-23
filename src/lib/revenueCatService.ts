@@ -234,6 +234,27 @@ class RevenueCatService {
       });
 
       console.log('[RevenueCat] Ô£à Loaded', products.length, 'products from RevenueCat');
+      // People who already used a trial in this subscription group must not see trial wording (PRD 10).
+      // Google Play only offers a trial to eligible users, so this check is iOS only.
+      if (Platform.OS === 'ios' && products.some((p: { hasFreeTrial: boolean }) => p.hasFreeTrial)) {
+        try {
+          const eligibility = await Purchases.checkTrialOrIntroductoryPriceEligibility(
+            products.map((p: { productId: string }) => p.productId)
+          );
+          for (const product of products) {
+            if (
+              eligibility[product.productId]?.status ===
+              Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_INELIGIBLE
+            ) {
+              product.hasFreeTrial = false;
+              product.freeTrialDays = null;
+            }
+          }
+        } catch (eligibilityError) {
+          console.warn('[RevenueCat] Trial eligibility check failed:', eligibilityError);
+        }
+      }
+
       return { success: true, products };
     } catch (error: any) {
       console.error('[RevenueCat] Failed to get products:', error);

@@ -20,10 +20,15 @@ import * as Clipboard from 'expo-clipboard';
 import { getLogs, exportLogsAsText } from '@/lib/logCapture';
 import { externalUrls } from '@/lib/externalUrls';
 import {
+  paywallCopy,
+  PaywallPlanInput,
+  planOfferLine,
+  planPriceLine,
+  planSubLine,
   trialBadgeLabel,
-  trialBillingDisclaimer,
-  trialCtaLabel,
+  yearlySavingPercent,
 } from '@/lib/subscriptionTrialUtils';
+import { isUnder18Band } from '@/lib/supportDirectory';
 
 console.log('[SUB_FILE] ✅ All basic imports completed successfully');
 
@@ -154,8 +159,16 @@ export default function SubscriptionScreen() {
   
   const [mountError, setMountError] = useState<string | null>(null);
   const [hasUserId, setHasUserId] = useState<boolean>(false);
-  // Selected tier for the primary CTA (default to yearly / best value)
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('monthly');
+  // Selected plan. Yearly is preselected for adults only; under-18s and unknown ages choose
+  // for themselves (PRD 9.2).
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [ageBand, setAgeBand] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    AsyncStorage.getItem('user_age_range')
+      .then(setAgeBand)
+      .catch(() => setAgeBand(null));
+  }, []);
   
   // Check if user is logged in (has user_id)
   // Use useFocusEffect to refresh when screen comes into focus (e.g., after login)
@@ -250,12 +263,13 @@ export default function SubscriptionScreen() {
     }
   }, [isLifetimePro]);
 
-  // Sync selected plan when plans load (default to yearly if available)
+  // Preselect yearly for adults once plans and the age band are known
   useEffect(() => {
-    if (plans.length === 0) return;
+    if (plans.length === 0 || ageBand === undefined) return;
+    if (isUnder18Band(ageBand)) return;
     const hasYearly = plans.some((p: SubscriptionPlan) => p.id === 'yearly');
-    setSelectedPlanId((prev) => (hasYearly ? 'yearly' : (plans[0]?.id ?? prev)));
-  }, [plans.length]);
+    setSelectedPlanId((prev) => prev || (hasYearly ? 'yearly' : ''));
+  }, [plans.length, ageBand]);
 
   // Load plans and subscription on mount
   useEffect(() => {
@@ -906,10 +920,9 @@ export default function SubscriptionScreen() {
       backgroundColor: '#4ccaba',
     },
     ctaButtonText: {
-      color: colors.textPrimary,
-      fontSize: 16,
+      color: '#1a1d29',
+      fontSize: 17,
       fontWeight: '800',
-      letterSpacing: 0.5,
     },
     billingDisclaimer: {
       fontSize: 13,
@@ -1284,23 +1297,28 @@ export default function SubscriptionScreen() {
               return;
             }
             
-            // User doesn't have subscription and didn't come from settings
-            // This means they're in the registration flow - block back button
-            console.log('[SUB] ❌ Back button blocked - subscription required to continue');
-            Alert.alert(
-              'Subscription Required',
-              'To access GutChecks: Red Flags & Safety, you need an active subscription. You can restore previous purchases if you already subscribed, or choose a plan.',
-              [
-                { text: 'OK' }
-              ]
-            );
-            isNavigatingRef.current = false;
+            // No plan yet: declining leads to free support, never a dead end (PRD 7.2)
+            router.replace('/free-support');
+            setTimeout(() => {
+              isNavigatingRef.current = false;
+            }, 500);
           }}
         >
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Subscription</Text>
-        <View style={{ width: 24 }} />
+        <Text style={styles.title}>{subscription || isLifetimePro ? 'Subscription' : 'Choose a plan'}</Text>
+        {!(subscription || isLifetimePro) && cameFromScreen !== 'settings' ? (
+          <TouchableOpacity
+            onPress={() => router.replace('/free-support')}
+            style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }}
+            accessibilityRole="button"
+            accessibilityLabel="Not now"
+          >
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.primary }}>Not now</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 24 }} />
+        )}
       </View>
 
       {/* Content */}
@@ -1341,103 +1359,151 @@ export default function SubscriptionScreen() {
           </View>
         )}
 
-        {/* Horizontal tier cards - selectable */}
-        <View style={styles.tierCardsRow}>
-          {plans.map((plan) => {
-            const isSelected = selectedPlanId === plan.id;
-            const isPopular = plan.popular;
-            const currencySymbol = plan.currency === 'GBP' ? '£' : plan.currency === 'USD' ? '$' : plan.currency;
-            const label = plan.interval === 'month' ? 'Monthly' : 'Annual';
-            const periodLabel = plan.interval === 'month' ? '/mo' : '/yr';
-            return (
-              <TouchableOpacity
-                key={plan.id}
-                style={[styles.tierCard, isSelected && styles.tierCardSelected]}
-                onPress={() => setSelectedPlanId(plan.id)}
-                activeOpacity={0.8}
-              >
-                {isPopular && (
-                  <View style={styles.tierCardBadge}>
-                    <Text style={styles.tierCardBadgeText}>Best Value</Text>
-                  </View>
-                )}
-                <Text style={[styles.tierCardName, isSelected && styles.tierCardNameSelected]}>{label}</Text>
-                <Text style={[styles.tierCardPrice, isSelected && styles.tierCardPriceSelected]}>{currencySymbol}{plan.price.toFixed(2)}</Text>
-                <Text style={[styles.tierCardPeriod, isSelected && styles.tierCardPeriodSelected]}>{periodLabel}</Text>
-                {plan.hasFreeTrial && plan.freeTrialDays ? (
-                  <Text style={[styles.tierCardTrial, isSelected && styles.tierCardTrialSelected]}>
-                    {trialBadgeLabel(plan.freeTrialDays)}
+        {/* Plan choice (PRD 9.1 to 9.4). Prices and trials come only from the store. */}
+        {!(subscription || isLifetimePro) && (
+          <View style={{ gap: 16, marginTop: 8 }}>
+            <Text style={{ fontSize: 26, fontWeight: '800', lineHeight: 33, color: colors.textPrimary }} accessibilityRole="header">
+              Get clear on what feels off, whenever you need to
+            </Text>
+
+            <View style={{ gap: 10 }} accessibilityRole="list">
+              {(plans[0]?.features ?? [
+                'Unlimited checks',
+                'Screenshot and document checks',
+                'Your full History of past checks',
+                'Clear next steps after every check',
+              ]).map((feature: string) => (
+                <View key={feature} style={styles.subscriptionFeatureItem}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                  <Text style={styles.subscriptionFeatureText}>{feature}</Text>
+                </View>
+              ))}
+            </View>
+
+            {plans.length === 0 && isLoading && (
+              <View style={{ gap: 12 }} accessibilityLabel="Loading prices">
+                {[0, 1].map((i) => (
+                  <View key={i} style={{ height: 96, borderRadius: 14, backgroundColor: colors.surface, opacity: 0.6 }} />
+                ))}
+              </View>
+            )}
+
+            {plans.length === 0 && !isLoading && (
+              <View style={{ gap: 12, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ fontSize: 16, lineHeight: 22, color: colors.textPrimary }}>
+                  We couldn't load prices. Check your connection and try again.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => loadPlans?.()}
+                  style={{ minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.primary }}>Try again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {(() => {
+              const isAdult = ageBand !== undefined && !isUnder18Band(ageBand);
+              const monthly = plans.find((p: SubscriptionPlan) => p.id === 'monthly');
+              const yearly = plans.find((p: SubscriptionPlan) => p.id === 'yearly');
+              const saving = yearly && monthly ? yearlySavingPercent(yearly.price, monthly.price) : null;
+              const ordered = [yearly, monthly].filter(Boolean) as SubscriptionPlan[];
+              return ordered.map((plan) => {
+                const input: PaywallPlanInput = {
+                  price: plan.price,
+                  currency: plan.currency,
+                  interval: plan.interval,
+                  trialDays: plan.hasFreeTrial && plan.freeTrialDays ? plan.freeTrialDays : null,
+                };
+                const isSelected = selectedPlanId === plan.id;
+                const showBadge = plan.id === 'yearly' && isAdult && saving;
+                return (
+                  <TouchableOpacity
+                    key={plan.id}
+                    onPress={() => setSelectedPlanId(plan.id)}
+                    activeOpacity={0.85}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isSelected }}
+                    style={{
+                      borderRadius: 14,
+                      borderWidth: isSelected ? 2 : 1,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                      backgroundColor: isSelected ? colors.primary + '14' : colors.surface,
+                      padding: 16,
+                      gap: 4,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={22}
+                          color={isSelected ? colors.primary : colors.textSecondary}
+                        />
+                        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>
+                          {plan.interval === 'year' ? 'Yearly' : 'Monthly'}
+                        </Text>
+                      </View>
+                      {showBadge ? (
+                        <View style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: colors.background }}>Save {saving}%</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginLeft: 30 }}>
+                      {planPriceLine(input)}
+                    </Text>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: 30 }}>{planSubLine(input)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: input.trialDays ? colors.primary : colors.textSecondary, marginLeft: 30 }}>
+                      {planOfferLine(input)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              });
+            })()}
+
+            {(() => {
+              if (plans.length === 0) return null;
+              const copy = selectedPlan
+                ? paywallCopy({
+                    price: selectedPlan.price,
+                    currency: selectedPlan.currency,
+                    interval: selectedPlan.interval,
+                    trialDays: selectedPlan.hasFreeTrial && selectedPlan.freeTrialDays ? selectedPlan.freeTrialDays : null,
+                  })
+                : { cta: 'Choose a plan', summary: 'Pick the plan that suits you.', disclosure: '' };
+              return (
+                <>
+                  <Text style={{ fontSize: 15, lineHeight: 21, color: colors.textPrimary, textAlign: 'center' }}>
+                    {copy.summary}
                   </Text>
-                ) : null}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.ctaButton,
+                      styles.ctaButtonSolid,
+                      (!selectedPlan || isLoading) && { opacity: 0.45 },
+                    ]}
+                    onPress={() => selectedPlan && handleSubscribe(selectedPlan.id)}
+                    disabled={!selectedPlan || isLoading}
+                    activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !selectedPlan || isLoading }}
+                  >
+                    <Text style={styles.ctaButtonText}>{isLoading && selectedPlan ? 'Processing…' : copy.cta}</Text>
+                  </TouchableOpacity>
+                  {copy.disclosure ? (
+                    <Text style={[styles.billingDisclaimer, { color: colors.textSecondary }]}>{copy.disclosure}</Text>
+                  ) : null}
+                </>
+              );
+            })()}
 
-        {/* Subscription features - listed once beneath pricing cards */}
-        <View style={styles.subscriptionFeaturesSection}>
-          {(plans[0]?.features ?? [
-            'Unlimited AI conversations',
-            'Image and document analysis',
-            'Personalized guidance',
-            'Priority support',
-            'Advanced insights',
-          ]).map((feature: string, index: number) => (
-            <View key={index} style={styles.subscriptionFeatureItem}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-              <Text style={styles.subscriptionFeatureText}>{feature}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* No payment due now - when selected plan has free trial */}
-        {(() => {
-          const hasTrial = selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays;
-          return hasTrial ? (
-            <View style={styles.trialInfoRow}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-              <Text style={styles.trialInfoText}>No payment due now.</Text>
-            </View>
-          ) : null;
-        })()}
-
-        {/* Primary CTA — trial days sourced from RevenueCat/App Store Connect */}
-        <TouchableOpacity
-          style={styles.ctaButtonWrap}
-          onPress={() => handleSubscribe(selectedPlanId)}
-          disabled={isLoading}
-          activeOpacity={0.9}
-        >
-          {LinearGradient ? (
-            <LinearGradient
-              colors={['#4ccaba', '#3db8a8', '#2fa89a']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.ctaButton, styles.ctaButtonGradient]}
-            >
-              <Text style={styles.ctaButtonText}>
-                {trialCtaLabel(
-                  selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
-                )}
-              </Text>
-            </LinearGradient>
-          ) : (
-            <View style={[styles.ctaButton, styles.ctaButtonSolid]}>
-              <Text style={styles.ctaButtonText}>
-                {trialCtaLabel(
-                  selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
-                )}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* Billing disclaimer */}
-        <Text style={styles.billingDisclaimer}>
-          {trialBillingDisclaimer(
-            selectedPlan?.hasFreeTrial ? selectedPlan?.freeTrialDays : null
-          )}
-        </Text>
+            <Text style={{ fontSize: 14, lineHeight: 20, color: colors.textSecondary, textAlign: 'center' }}>
+              Support services and emergency information are always free.
+            </Text>
+          </View>
+        )}
 
         {/* Restore Purchases Button - Only show if user is logged in */}
         {hasUserId && (
@@ -1482,9 +1548,6 @@ export default function SubscriptionScreen() {
               <Ionicons name="log-out-outline" size={22} color="#f87171" />
               <Text style={styles.signOutButtonText}>Sign out</Text>
             </TouchableOpacity>
-            <Text style={styles.signOutHint}>
-              Stuck here? Sign out to return to the welcome screen, use another account, or subscribe later.
-            </Text>
           </>
         )}
 
@@ -1636,7 +1699,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.faqQuestion}>What happens after my free trial?</Text>
             <Text style={styles.faqAnswer}>
               {selectedPlan?.hasFreeTrial && selectedPlan?.freeTrialDays
-                ? `After your ${selectedPlan.freeTrialDays}-day free trial, you'll be automatically charged for your chosen plan. You can cancel anytime during the trial period without being charged. We'll send you a reminder 24 hours before your trial ends.`
+                ? `After your ${selectedPlan.freeTrialDays}-day free trial, you'll be charged for your chosen plan unless you cancel at least 24 hours before the trial ends. You won't be charged if you cancel during the trial.`
                 : "If a free trial is offered for your plan, you'll be charged when it ends unless you cancel first. You can cancel anytime in your Apple ID Subscriptions settings."}
             </Text>
           </View>

@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { authService } from '@/lib/authService';
+import { profileService } from '@/lib/profileService';
 
 export default function AnonymousPinSetupScreen() {
   const { isDark } = useTheme();
@@ -77,12 +78,12 @@ export default function AnonymousPinSetupScreen() {
       setIsCreating(false);
 
       if (result.success) {
-        console.log('Anonymous account created successfully, navigating to onboarding');
-        // Clear onboarding flag to show onboarding
-        await AsyncStorage.removeItem('onboarding_completed');
-        
-        // Navigate directly to onboarding screen
-        router.replace('/onboarding-route');
+        // Onboarding (O2 to O6) already ran before this screen, so go to the plan choice (O7).
+        const ageBand = await AsyncStorage.getItem('user_age_range');
+        if (ageBand) {
+          await profileService.updateProfile({ age_range: ageBand }).catch(() => undefined);
+        }
+        router.replace('/subscription');
       } else {
         console.error('Anonymous account creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create account');

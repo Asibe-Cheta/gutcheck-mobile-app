@@ -586,6 +586,7 @@ export default function ChatScreen() {
     }
     const ageRange = await AsyncStorage.getItem('user_age_range');
     if (!ageRange) return false;
+    if (ageRange === 'prefer-not-to-say') return true;
     const firstNumber = Number((ageRange.match(/\d+/) || [])[0]);
     return Number.isFinite(firstNumber) && firstNumber < 18;
   };

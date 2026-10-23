@@ -48,14 +48,9 @@ export default function WelcomeScreen() {
     ]).start();
   }, []);
 
-  const handleAnonymousAccess = () => {
-    // Navigate to anonymous PIN setup
-    router.push('/(auth)/anonymous-pin-setup');
-  };
-
-  const handleUsernameSignUp = () => {
-    // Navigate to username creation screen
-    router.push('/(auth)/username');
+  const handleGetStarted = () => {
+    // Value first: onboarding comes before account creation (PRD O1 to O6)
+    router.push('/onboarding-route');
   };
 
   // Check if user is already logged in on mount
@@ -160,55 +155,42 @@ export default function WelcomeScreen() {
           />
         </View>
         
-        {/* Main heading with new branding */}
-        <Text style={[styles.mainHeading, { color: currentTheme.textPrimary }]}>
-          GutChecks: Red Flags & Safety
+        {/* Headline (PRD O1) */}
+        <Text style={[styles.mainHeading, { color: currentTheme.textPrimary }]} accessibilityRole="header">
+          Something feels off? That's reason enough to check.
         </Text>
-        
-        <Text style={[styles.tagline, { color: currentTheme.primary }]}>
-          Visualize your intuition
-        </Text>
-        
+
         {/* Description */}
         <Text style={[styles.description, { color: currentTheme.textSecondary }]}>
-          Your private space to decode everyday interactions and spot red flags early. Get evidence-based analysis of manipulation, bullying, grooming, and predatory patterns with complete anonymity.
+          GutChecks helps you spot possible warning signs in messages, relationships and everyday situations, online or offline, and think through what to do next. You don't need to be sure. You don't need proof.
         </Text>
-        
+
         {/* Action buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.primaryButton, { backgroundColor: currentTheme.primary }]}
-            onPress={() => handleAnonymousAccess()}
+            onPress={handleGetStarted}
             activeOpacity={0.8}
+            accessibilityRole="button"
           >
-            <Text style={[styles.primaryButtonText, { color: currentTheme.background }]}>Get Started Anonymously</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.secondaryButton, { 
-              backgroundColor: `${currentTheme.primary}20`,
-              borderColor: `${currentTheme.primary}50`
-            }]}
-            onPress={() => handleUsernameSignUp()}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.secondaryButtonText, { color: currentTheme.primary }]}>Create Username Only</Text>
+            <Text style={[styles.primaryButtonText, { color: currentTheme.background }]}>Get started</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.tertiaryButton}
             onPress={() => router.push('/(auth)/login-pin')}
             activeOpacity={0.8}
+            accessibilityRole="button"
           >
             <Text style={[styles.tertiaryButtonText, { color: currentTheme.primary }]}>
-              Already have an account? Login
+              I already have an account
             </Text>
           </TouchableOpacity>
         </View>
-        
+
         {/* Footer text */}
-        <Text style={[styles.footerText, { color: '#43B897' }]}>
-          100% private • Your data never leaves your device unless you choose to share it
+        <Text style={[styles.footerText, { color: currentTheme.textSecondary }]}>
+          No name or email needed.
         </Text>
       </Animated.View>
     </View>
@@ -251,22 +233,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter',
   },
   mainHeading: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: -0.5,
     marginTop: 16,
-    lineHeight: 40,
-  },
-  tagline: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 8,
     marginBottom: 16,
-    letterSpacing: 0.5,
-    marginBottom: 16, // mt-4
-    fontFamily: 'Inter',
+    lineHeight: 36,
   },
   description: {
     fontSize: 18, // text-lg

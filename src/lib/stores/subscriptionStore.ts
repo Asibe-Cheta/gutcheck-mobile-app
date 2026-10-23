@@ -7,6 +7,14 @@ import { create } from 'zustand';
 import { sanitizeSubscriptionDescription } from '@/lib/subscriptionTrialUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/** What a subscriber gets (PRD 9.1); shown on the paywall before the plan choice. */
+export const PLAN_BENEFITS = [
+  'Unlimited checks',
+  'Screenshot and document checks',
+  'Your full History of past checks',
+  'Clear next steps after every check',
+];
+
 // Lazy import lifetimeProService to prevent crash if module fails
 let lifetimeProService: any = null;
 let trialTrackingService: any = null;
@@ -206,12 +214,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         console.warn('[IAP] ⚠️ Yearly product NOT found in App Store Connect. Using fallback data.');
       }
       
-      const plans: AppleSubscriptionPlan[] = [
+      const allPlans: AppleSubscriptionPlan[] = [
         {
           id: 'monthly',
           name: 'Premium Monthly', // Force correct name (not from App Store Connect which might be wrong)
-          price: monthlyProduct?.price || 6.99,
-          currency: monthlyProduct?.currency || 'GBP',
+          price: monthlyProduct?.price ?? 0,
+          currency: monthlyProduct?.currency ?? '',
           interval: 'month',
           productId: productIds.PREMIUM_MONTHLY,
           description: sanitizeSubscriptionDescription(
@@ -220,20 +228,14 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           ),
           hasFreeTrial: monthlyProduct?.hasFreeTrial || false,
           freeTrialDays: monthlyProduct?.freeTrialDays || null,
-          features: [
-            'Unlimited AI conversations',
-            'Image and document analysis',
-            'Personalized guidance',
-            'Priority support',
-            'Advanced insights'
-          ],
+          features: PLAN_BENEFITS,
           popular: false,
         },
         {
           id: 'yearly',
           name: 'Premium Yearly', // Force correct name - FIXES APPLE REVIEW ISSUE
-          price: yearlyProduct?.price || 59.99,
-          currency: yearlyProduct?.currency || 'GBP',
+          price: yearlyProduct?.price ?? 0,
+          currency: yearlyProduct?.currency ?? '',
           interval: 'year',
           productId: productIds.PREMIUM_YEARLY,
           description: sanitizeSubscriptionDescription(
@@ -242,18 +244,17 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
           ),
           hasFreeTrial: yearlyProduct?.hasFreeTrial || false,
           freeTrialDays: yearlyProduct?.freeTrialDays || null,
-          features: [
-            'Unlimited AI conversations',
-            'Image and document analysis',
-            'Personalized guidance',
-            'Priority support',
-            'Advanced insights',
-            'Exclusive yearly features'
-          ],
+          features: PLAN_BENEFITS,
           popular: true,
         },
       ];
       
+      // Prices and trials come only from the store. A plan whose product did not load is
+      // left out rather than shown with a made-up price (PRD 9.4).
+      const plans = allPlans.filter((p) =>
+        p.id === 'monthly' ? !!monthlyProduct : !!yearlyProduct
+      );
+
       const monthlyTrial = plans.find((p) => p.id === 'monthly')?.freeTrialDays;
       const yearlyTrial = plans.find((p) => p.id === 'yearly')?.freeTrialDays;
       if (
@@ -515,12 +516,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
         
         // Record trial start for tracking (if this was a trial)
         const userId = await AsyncStorage.getItem('user_id');
-        if (userId && getTrialTrackingService()) {
+        if (userId && getTrialTrackingService() && plan.hasFreeTrial && plan.freeTrialDays) {
           await getTrialTrackingService().recordTrialStart(
             userId,
             planId,
             plan.productId,
-            plan.freeTrialDays ?? 3
+            plan.freeTrialDays
           );
         }
         

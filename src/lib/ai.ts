@@ -129,6 +129,7 @@ class AIAnalysisService {
       const ageRange = await AsyncStorage.getItem('user_age_range');
       const ageStr = (profile?.age?.toString() || profile?.age_range || ageRange || '').toLowerCase();
       if (!ageStr) return false;
+      if (ageStr === 'prefer-not-to-say') return true;
       if (ageStr.includes('13') || ageStr.includes('14') || ageStr.includes('15') || ageStr.includes('16') || ageStr.includes('17') || ageStr.includes('18')) {
         return true;
       }
