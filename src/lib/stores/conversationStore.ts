@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { ConversationState } from '@/lib/ai';
 import type { CrisisCardPayload, SafeguardCategory, PatternResponsePayload } from '@/lib/ai';
+import type { SupportPlan } from '@/lib/supportRules';
 
 export type ConversationMessage = {
   role: 'user' | 'assistant';
@@ -14,6 +15,8 @@ export type ConversationMessage = {
   crisisCard?: CrisisCardPayload;
   patternCard?: PatternResponsePayload;
   safeguardCategory?: SafeguardCategory;
+  /** Support cards shown under this result (service IDs only, PRD 12.6). */
+  support?: SupportPlan;
 };
 
 interface ConversationStore {
@@ -29,6 +32,7 @@ interface ConversationStore {
       crisisCard?: CrisisCardPayload;
       patternCard?: PatternResponsePayload;
       safeguardCategory?: SafeguardCategory;
+      support?: SupportPlan;
     }
   ) => void;
   updateConversationState: (newState: Partial<ConversationState>) => void;
@@ -101,6 +105,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         crisisCard: meta?.crisisCard,
         patternCard: meta?.patternCard,
         safeguardCategory: meta?.safeguardCategory,
+        support: meta?.support,
       },
     ];
     

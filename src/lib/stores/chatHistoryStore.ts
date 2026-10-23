@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { SupportPlan } from '@/lib/supportRules';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  /** Support service IDs and tier shown under this result; cards re-render from the directory. */
+  support?: SupportPlan;
 }
 
 export interface SavedChat {

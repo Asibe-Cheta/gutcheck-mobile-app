@@ -79,12 +79,13 @@ const ChatHistoryItem = ({
         </View>
         <View style={styles.chatContent}>
           <Text style={styles.chatTitle} numberOfLines={1}>{chat.title}</Text>
-          <Text style={styles.chatSubtitle} numberOfLines={2}>
-            {chat.messages[0]?.content || 'No messages'}
-          </Text>
+          {/* No preview text by default (PRD 13.2) */}
           <View style={styles.chatMeta}>
             <Text style={styles.chatDate}>{formatDate(chat.createdAt)}</Text>
-            {chat.analysisData?.riskLevel && (
+            {chat.messages.some((m) => (m.support?.serviceIds.length ?? 0) > 0 || m.support?.tier === 3) && (
+              <Text style={[styles.riskLevel, { color: colors.primary }]}>Support options</Text>
+            )}
+            {chat.analysisData?.riskLevel && chat.analysisData.riskLevel !== 'unknown' && (
               <Text style={[styles.riskLevel, { color: getRiskColor(chat.analysisData.riskLevel) }]}>
                 {chat.analysisData.riskLevel.toUpperCase()}
               </Text>
@@ -295,8 +296,17 @@ export default function HistoryScreen() {
           {savedChats.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="chatbubbles-outline" size={48} color={currentTheme.textSecondary} />
-              <Text style={styles.emptyTitle}>No conversations yet</Text>
-              <Text style={styles.emptySubtitle}>Start a conversation to see your history here</Text>
+              <Text style={styles.emptyTitle}>Your checks will appear here</Text>
+              <Text style={styles.emptySubtitle}>
+                Everything you check is saved privately so you can come back to it.
+              </Text>
+              <TouchableOpacity
+                style={{ marginTop: 16, minHeight: 44, paddingHorizontal: 20, borderRadius: 12, backgroundColor: currentTheme.primary, justifyContent: 'center' }}
+                onPress={() => router.push('/chat')}
+                accessibilityRole="button"
+              >
+                <Text style={{ fontSize: 16, fontWeight: '700', color: currentTheme.background }}>Start a check</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.chatList}>

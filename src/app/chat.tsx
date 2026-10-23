@@ -40,6 +40,10 @@ import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
 import { aiService, SAFEGUARD_READBACK_TEMPLATES, type ConversationResponse } from '@/lib/ai';
 import CrisisHelplineCards from '@/components/CrisisHelplineCards';
 import PatternResponseCard from '@/components/PatternResponseCard';
+import { ResultSupportCards } from '@/components/support/ResultSupportCards';
+import { EmergencyBlock } from '@/components/support/SupportServiceCard';
+import { planSupport } from '@/lib/supportRules';
+import { ONBOARDING_KEYS } from '@/lib/onboardingContent';
 import type { ConversationMessage } from '@/lib/stores/conversationStore';
 import { shareNudgeService } from '@/lib/shareNudgeService';
 import { revenueCatService } from '@/lib/revenueCatService';
@@ -181,11 +185,36 @@ export default function ChatScreen() {
   const VOICE_INPUT_RATIONALE_KEY = '@chat_voice_input_rationale_v1';
   const HUB_AGE_BAND_KEY = '@awareness_hub_age_band_v1';
 
+  // Age band and parent/carer flag drive which support cards a result shows (PRD 12.2)
+  const supportContextRef = useRef<{ ageBand: string | null; isParentCarer: boolean }>({
+    ageBand: null,
+    isParentCarer: false,
+  });
+  useEffect(() => {
+    AsyncStorage.multiGet([ONBOARDING_KEYS.ageBand, ONBOARDING_KEYS.parentCarer])
+      .then(([[, ageBand], [, parentCarer]]) => {
+        supportContextRef.current = { ageBand, isParentCarer: parentCarer === 'true' };
+      })
+      .catch(() => undefined);
+  }, []);
+
   const applyAssistantFromResponse = (response: ConversationResponse) => {
+    // Crisis replies already carry their own static crisis card (tier 3 via Layer A).
+    const userTexts = useConversationStore
+      .getState()
+      .conversationHistory.filter((m) => m.role === 'user')
+      .map((m) => m.content);
+    const support = response.crisisCard
+      ? undefined
+      : planSupport(userTexts, {
+          ...supportContextRef.current,
+          hasConcern: (response.patternCard?.red_flags?.length ?? 0) > 0,
+        });
     addAssistantResponse(response.response, {
       crisisCard: response.crisisCard,
       patternCard: response.patternCard,
       safeguardCategory: response.safeguardCategory,
+      support,
     });
     if (response.safeguardCategory === 'A') {
       setCrisisSessionActive(true);
@@ -378,7 +407,15 @@ export default function ChatScreen() {
     void loadChats();
   }, [loadChats]);
 
+  // The History entry this conversation saves to. A ref, so back-to-back saves reuse one ID
+  // instead of each creating a new entry before the first save has returned.
+  const savedChatIdRef = useRef<string | null>(
+    activeSavedChatId ?? (typeof chatId === 'string' ? chatId : null)
+  );
+  const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+
   const buildPersistPayload = () => {
+    const { conversationHistory, conversationState } = useConversationStore.getState();
     const firstUserMessage = conversationHistory.find((msg) => msg.role === 'user');
     let title = 'Untitled Conversation';
     if (firstUserMessage?.content) {
@@ -388,12 +425,13 @@ export default function ChatScreen() {
     }
 
     return {
-      id: activeSavedChatId ?? (typeof chatId === 'string' ? chatId : undefined),
+      id: savedChatIdRef.current ?? undefined,
       title,
       messages: conversationHistory.map((msg) => ({
         role: msg.role,
         content: msg.content,
         timestamp: new Date(),
+        support: msg.support,
       })),
       hasImage: conversationState.hasImage || false,
       analysisData: {
@@ -404,12 +442,38 @@ export default function ChatScreen() {
     };
   };
 
-  const persistConversationToHistory = async (): Promise<string | null> => {
-    if (conversationHistory.length === 0) return null;
-    const savedId = await upsertChat(buildPersistPayload());
-    setActiveSavedChatId(savedId);
-    return savedId;
+  const persistConversationToHistory = (): Promise<string | null> => {
+    const run = async (): Promise<string | null> => {
+      if (useConversationStore.getState().conversationHistory.length === 0) return null;
+      const savedId = await upsertChat(buildPersistPayload());
+      savedChatIdRef.current = savedId;
+      setActiveSavedChatId(savedId);
+      return savedId;
+    };
+    // Saves run one after another so they always target the same History entry.
+    const next = saveChainRef.current.then(run, run);
+    saveChainRef.current = next.catch(() => undefined);
+    return next;
   };
+
+  // Save after every reply, so every check reaches History even if the user leaves with
+  // "+", a tab, a swipe or by closing the app (previously only the back arrow saved).
+  const lastSavedLengthRef = useRef<number | null>(null);
+  useEffect(() => {
+    const length = conversationHistory.length;
+    if (lastSavedLengthRef.current === null) {
+      // First render: a chat opened from History is already saved; don't bump its date.
+      lastSavedLengthRef.current = length;
+      return;
+    }
+    const last = conversationHistory[length - 1];
+    if (length > lastSavedLengthRef.current && last?.role === 'assistant') {
+      lastSavedLengthRef.current = length;
+      persistConversationToHistory().catch((error) => {
+        console.error('[CHAT] Auto-save to History failed:', error);
+      });
+    }
+  }, [conversationHistory.length]);
 
   // Handle loading saved chat or initial message
   useEffect(() => {
@@ -418,8 +482,11 @@ export default function ChatScreen() {
 
       if (isFromHistory === 'true' && chatId) {
         setActiveSavedChatId(chatId as string);
+        savedChatIdRef.current = chatId as string;
         const savedChat = getChatById(chatId as string);
         if (savedChat) {
+          // Already in History: only new replies should trigger a save.
+          lastSavedLengthRef.current = savedChat.messages.length;
           console.log('Loading saved chat:', {
             chatId,
             messageCount: savedChat.messages.length,
@@ -430,6 +497,7 @@ export default function ChatScreen() {
             conversationHistory: savedChat.messages.map((msg) => ({
               role: msg.role,
               content: msg.content,
+              support: msg.support,
             })),
             conversationState: {
               ...rest.conversationState,
@@ -939,8 +1007,16 @@ export default function ChatScreen() {
     }
   };
 
-  const startNewChat = () => {
-    // Start a fresh conversation, clear image, and navigate to home
+  const startNewChat = async () => {
+    // Keep the finished conversation in History, then start a fresh one with a new History entry
+    if (useConversationStore.getState().conversationHistory.length > 0) {
+      await persistConversationToHistory().catch((error) => {
+        console.error('[CHAT] Saving before new chat failed:', error);
+      });
+    }
+    savedChatIdRef.current = null;
+    setActiveSavedChatId(null);
+    lastSavedLengthRef.current = 0;
     startNewConversation();
     setUploadedImage(null);
     setCrisisSessionActive(false);
@@ -1188,6 +1264,12 @@ export default function ChatScreen() {
             />
           </View>
         ) : (
+          <>
+          {!isUser && msg.support?.tier === 3 ? (
+            <View style={{ marginBottom: 8, alignSelf: 'stretch' }}>
+              <EmergencyBlock />
+            </View>
+          ) : null}
           <View style={[
             styles.messageBubble,
             isUser ? styles.userBubble : styles.assistantBubble
@@ -1225,6 +1307,10 @@ export default function ChatScreen() {
               </TouchableOpacity>
             )}
           </View>
+          {!isUser && msg.support ? (
+            <ResultSupportCards tier={msg.support.tier} serviceIds={msg.support.serviceIds} hideEmergency />
+          ) : null}
+          </>
         )}
       </View>
     );
