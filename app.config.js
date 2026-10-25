@@ -3,7 +3,7 @@
 // These fallback to process.env for local development
 const APP_VERSION = '2.2.7';
 const IOS_BUILD_NUMBER = '222';
-const ANDROID_VERSION_CODE = 55;
+const ANDROID_VERSION_CODE = 56;
 
 // EAS project @bervic-digital/gutcheck. The previous project (@justice_asibe/gutcheck,
 // 8e8f5512-18b9-489d-9b05-ee5c0379ea29) is unusable while that account is disabled.
