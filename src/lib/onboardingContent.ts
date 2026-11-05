@@ -208,6 +208,19 @@ export const PRIVACY_POINTS = [
   'Schools, parents and partners never see what you check.',
 ];
 
+/** O9: a gentle opening line for the first check, from the O2 reason. The user can edit or clear it. */
+export const FIRST_CHECK_PROMPTS: Record<ReasonId, string> = {
+  message: 'I got a message that ',
+  relationship: 'In my relationship, ',
+  friendship: 'With a friend, ',
+  school: 'At school, ',
+  work: 'At work, ',
+  family: 'At home, ',
+  'someone-else': "I'm worried about someone because ",
+  earlier: '',
+  looking: '',
+};
+
 /** On-device storage keys. The reason never leaves the phone. */
 export const ONBOARDING_KEYS = {
   completed: 'onboarding_completed',

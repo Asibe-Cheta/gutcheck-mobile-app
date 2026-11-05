@@ -408,8 +408,8 @@ export default function SubscriptionScreen() {
             await AsyncStorage.setItem('_skip_sub_check', 'true');
             await AsyncStorage.removeItem('_sub_nav_from_home');
             
-            // Navigate - subscription already confirmed in store
-            router.replace('/(tabs)');
+            // Subscription confirmed in store: show the O8 confirmation
+            router.replace('/purchase-confirmation');
             
             setTimeout(() => {
               isNavigatingRef.current = false;
@@ -469,10 +469,10 @@ export default function SubscriptionScreen() {
           // This ensures the home screen will see the bypass flags
           await new Promise(resolve => setTimeout(resolve, 200));
           
-          console.log('[SUB] ✅ Navigating to home screen...');
+          console.log('[SUB] ✅ Navigating to confirmation screen...');
           
-          // Navigate - home screen will check bypass flags first
-          router.replace('/(tabs)');
+          // O8: confirm the plan, trial end and renewal before the first check (PRD section 8)
+          router.replace('/purchase-confirmation');
           
           // Reset navigation flag after navigation completes
           setTimeout(() => {

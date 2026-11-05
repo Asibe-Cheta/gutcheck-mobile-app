@@ -26,6 +26,8 @@ export interface AppleSubscription {
   transactionId: string;
   purchaseDate: string;
   expirationDate?: string;
+  /** 'TRIAL' while in a free trial, 'NORMAL' when paying (from the store's verified entitlement). */
+  periodType?: string;
   isActive: boolean;
 }
 
@@ -426,6 +428,7 @@ class RevenueCatService {
           transactionId: entitlement.transactionIdentifier || '',
           purchaseDate: entitlement.latestPurchaseDate || new Date().toISOString(),
           expirationDate: entitlement.expirationDate || undefined,
+          periodType: entitlement.periodType || undefined,
           isActive: true,
         };
         

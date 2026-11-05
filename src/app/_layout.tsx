@@ -213,6 +213,7 @@ function AppContent() {
           <Stack.Screen name="privacy" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding-route" options={{ headerShown: false }} />
           <Stack.Screen name="free-support" options={{ headerShown: false, gestureEnabled: false }} />
+          <Stack.Screen name="purchase-confirmation" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="notification-detail" options={{ headerShown: false }} />
           <Stack.Screen name="contact" options={{ headerShown: false }} />

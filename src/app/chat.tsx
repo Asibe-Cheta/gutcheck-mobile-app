@@ -43,7 +43,7 @@ import PatternResponseCard from '@/components/PatternResponseCard';
 import { ResultSupportCards } from '@/components/support/ResultSupportCards';
 import { EmergencyBlock } from '@/components/support/SupportServiceCard';
 import { planSupport } from '@/lib/supportRules';
-import { ONBOARDING_KEYS } from '@/lib/onboardingContent';
+import { FIRST_CHECK_PROMPTS, ONBOARDING_KEYS, type ReasonId } from '@/lib/onboardingContent';
 import type { ConversationMessage } from '@/lib/stores/conversationStore';
 import { shareNudgeService } from '@/lib/shareNudgeService';
 import { revenueCatService } from '@/lib/revenueCatService';
@@ -131,8 +131,10 @@ export default function ChatScreen() {
     notificationTitle,
     notificationBody,
     notificationType,
-    chatPrompt
+    chatPrompt,
+    firstCheck
   } = useLocalSearchParams();
+  const isFirstCheck = firstCheck === 'true';
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
@@ -198,7 +200,20 @@ export default function ChatScreen() {
       .catch(() => undefined);
   }, []);
 
+  // O9: start the first check with a gentle prompt from the onboarding reason (PRD section 8)
+  useEffect(() => {
+    if (!isFirstCheck || useConversationStore.getState().conversationHistory.length > 0) return;
+    AsyncStorage.getItem(ONBOARDING_KEYS.reason)
+      .then((reason) => {
+        const prompt = reason ? FIRST_CHECK_PROMPTS[reason as ReasonId] : '';
+        if (prompt) setMessage((current) => current || prompt);
+      })
+      .catch(() => undefined);
+  }, [isFirstCheck]);
+
   const applyAssistantFromResponse = (response: ConversationResponse) => {
+    // The onboarding reason is only kept until the first check completes (PRD 7.3).
+    AsyncStorage.removeItem(ONBOARDING_KEYS.reason).catch(() => undefined);
     // Crisis replies already carry their own static crisis card (tier 3 via Layer A).
     const userTexts = useConversationStore
       .getState()
@@ -1866,7 +1881,19 @@ export default function ChatScreen() {
           contentInsetAdjustmentBehavior="automatic"
           automaticallyAdjustContentInsets={false}
         >
-          {conversationHistory.length === 0 && (
+          {conversationHistory.length === 0 && isFirstCheck && (
+            <View style={styles.welcomeContainer}>
+              <Ionicons name="chatbubbles" size={48} color={colors.primary} />
+              <Text style={styles.welcomeTitle} accessibilityRole="header">What's on your mind?</Text>
+              <Text style={styles.welcomeText}>
+                Describe what happened, or paste a message. You don't need to name anyone.
+              </Text>
+              <Text style={styles.welcomeText}>Tip: remove names, phone numbers and addresses if you can.</Text>
+              <Text style={styles.welcomeText}>You can delete any check from History at any time.</Text>
+            </View>
+          )}
+
+          {conversationHistory.length === 0 && !isFirstCheck && (
             <View style={styles.welcomeContainer}>
               <Ionicons name="chatbubbles" size={48} color={colors.primary} />
               <Text style={styles.welcomeTitle}>Hey there! 👋</Text>
@@ -1979,7 +2006,11 @@ export default function ChatScreen() {
             
             <TextInput
               style={styles.textInput}
-              placeholder="Ask follow up"
+              placeholder={
+                conversationHistory.length === 0
+                  ? "Describe what happened, or paste a message"
+                  : 'Ask follow up'
+              }
               placeholderTextColor={colors.textSecondary}
               value={message}
               onChangeText={setMessage}
