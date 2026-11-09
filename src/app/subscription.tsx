@@ -27,6 +27,7 @@ import {
   planSubLine,
   trialBadgeLabel,
   yearlySavingPercent,
+  formatLongDate,
 } from '@/lib/subscriptionTrialUtils';
 import { isUnder18Band } from '@/lib/supportDirectory';
 
@@ -1334,7 +1335,9 @@ export default function SubscriptionScreen() {
               <Text style={styles.statusDescription}>
                 {isLifetimePro 
                   ? 'You have lifetime access to all premium features as one of the first 20 users!'
-                  : 'You have access to all premium features'
+                  : subscription?.willRenew === false && subscription.expirationDate
+                    ? `Your access runs until ${formatLongDate(new Date(subscription.expirationDate))}. It won't renew and you won't be charged.`
+                    : 'You have access to all premium features'
                 }
               </Text>
             </View>

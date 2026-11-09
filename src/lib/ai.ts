@@ -192,10 +192,7 @@ class AIAnalysisService {
       // Always include basic information
       let context = `\n\nUSER PROFILE CONTEXT:\n`;
       
-      if (profile?.username) {
-        context += `- Username: ${profile.username}\n`;
-      }
-      
+      // The username is never sent to the AI: it isn't needed and could be a real name.
       if (userAge) {
         context += `- Age: ${userAge}\n`;
       }

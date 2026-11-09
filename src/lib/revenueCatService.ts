@@ -29,6 +29,8 @@ export interface AppleSubscription {
   expirationDate?: string;
   /** 'TRIAL' while in a free trial, 'NORMAL' when paying (from the store's verified entitlement). */
   periodType?: string;
+  /** False for free offer-code access and for cancelled plans. */
+  willRenew?: boolean;
   isActive: boolean;
 }
 

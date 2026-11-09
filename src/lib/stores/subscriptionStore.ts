@@ -312,6 +312,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const { appleIAPService: iapService } = getIAPService();
       
       try {
+        // Access belongs to the GutChecks account, so always ask about the signed-in user.
+        if (userId) await iapService.setAppUserID(userId);
+
         // Check if user has active subscription via RevenueCat
         const hasActive = await iapService.hasActiveSubscription();
         console.log('[STORE] loadSubscription: hasActiveSubscription result:', hasActive);
@@ -327,6 +330,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
                 transactionId: entitlement.transactionIdentifier || '',
                 purchaseDate: entitlement.latestPurchaseDate || new Date().toISOString(),
                 expirationDate: entitlement.expirationDate || undefined,
+                periodType: entitlement.periodType,
+                willRenew: entitlement.willRenew,
                 isActive: true,
               };
               
