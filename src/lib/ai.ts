@@ -92,6 +92,7 @@ import {
   LAYER_B_CLASSIFIER_SYSTEM_PROMPT,
   PATTERN_RESPONSE_SYSTEM_PROMPT,
   parseAndValidatePatternResponse,
+  parseConversationReply,
   formatPatternResponseText,
   formatCrisisResponseText,
   RISK_CLASSIFIER_VERSION,
@@ -1772,17 +1773,19 @@ CRITICAL: USER INFORMATION RULES:
         ? filteredHistory.slice(-MAX_CONVERSATION_HISTORY)
         : filteredHistory;
 
-    const messages = [
-      ...recentHistory,
-      { role: 'user', content: userMessage.trim() },
-    ].filter((msg) => msg.content && msg.content.length > 0);
+    // The chat screen's history already ends with this message; don't send it to the AI twice.
+    const lastTurn = recentHistory[recentHistory.length - 1];
+    const historyHasMessage = lastTurn?.role === 'user' && lastTurn.content === userMessage.trim();
+    const messages = (
+      historyHasMessage ? recentHistory : [...recentHistory, { role: 'user', content: userMessage.trim() }]
+    ).filter((msg) => msg.content && msg.content.length > 0);
 
     if (messages.length === 0) {
       messages.push({ role: 'user', content: userMessage.trim() });
     }
 
     try {
-      const response = await this.getDirectClaudeResponse(
+      let response = await this.getDirectClaudeResponse(
         messages,
         systemPrompt,
         hasImage,
@@ -1790,36 +1793,30 @@ CRITICAL: USER INFORMATION RULES:
         undefined
       );
 
-      // ── Stage 4 — validate schema and format (frontend owns visual structure)
-      const patternCard = parseAndValidatePatternResponse(response, userMessage);
+      // A greeting or small talk: a friendly reply, not a check.
+      let conversationReply = parseConversationReply(response);
+      let patternCard = conversationReply ? null : parseAndValidatePatternResponse(response, userMessage);
+
+      // An unreadable reply gets one retry.
+      if (!conversationReply && !patternCard) {
+        console.warn('[PIPELINE] Stage 3 reply unreadable; retrying once');
+        response = await this.getDirectClaudeResponse(messages, systemPrompt, hasImage, imageData, undefined);
+        conversationReply = parseConversationReply(response);
+        patternCard = conversationReply ? null : parseAndValidatePatternResponse(response, userMessage);
+      }
+
+      if (conversationReply) {
+        if (onStreamChunk && !hasImage) onStreamChunk(conversationReply);
+        return { response: conversationReply, nextStage: 'initial' };
+      }
+
+      // Never show red flags we didn't get from analysing this person's own words.
       if (!patternCard) {
-        console.warn('[PIPELINE] Stage 3 JSON invalid; using safe fallback pattern card');
-        const fallbackCard: PatternResponsePayload = {
-          validation:
-            'This situation is worth checking carefully with someone you trust in real life.',
-          red_flags: ['Pressure to keep something private', 'Unclear motives'],
-          why_it_matters:
-            'Secrets and pressure can be used to control or isolate someone. A trusted adult can help you work out what is safe.',
-          recommended_actions: [
-            {
-              action:
-                'Talk to a trusted adult (parent, teacher, school counsellor, or another adult you trust)',
-              priority: 'primary',
-            },
-            {
-              action: 'Write down what happened and when, if it feels safe to do so',
-              priority: 'secondary',
-            },
-          ],
-          reality_check:
-            'You do not have to handle this alone, and you are allowed to ask for help.',
-        };
-        const finalText = formatPatternResponseText(fallbackCard);
-        if (onStreamChunk && !hasImage) onStreamChunk(finalText);
+        console.warn('[PIPELINE] Stage 3 reply still unreadable; asking the user to try again');
         return {
-          response: finalText,
-          nextStage: 'gathering',
-          patternCard: fallbackCard,
+          response:
+            "GutChecks couldn't finish this check, so there's no result to show. Please try sending it again. If you're in danger right now, call 999.",
+          nextStage: 'initial',
         };
       }
 

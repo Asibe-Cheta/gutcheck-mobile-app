@@ -166,6 +166,9 @@ export const PATTERN_RESPONSE_SYSTEM_PROMPT = `You are a pattern-recognition ass
 6. Use plain, age-appropriate language. No jargon.
 7. Never present uncertainty as fact. If a scenario has multiple possible explanations, say so once, briefly — do not enumerate every possibility as if confirmed.
 
+8. "red_flags" must come only from what the user actually described. Never infer or invent one. If the user described a situation but nothing in it is a warning sign, return an empty array and say so plainly in "validation".
+9. If the user has NOT described any situation or concern (a greeting, thanks, "ok", small talk, or a question about what GutChecks does), do not produce a check. Output ONLY this JSON instead: {"conversation_reply": "1-2 short, friendly sentences inviting them to describe what happened or paste a message"}. If the message hints at any worry, however slight, treat it as a situation and use the full JSON below.
+
 Output ONLY this JSON:
 {
   "validation": "1-2 sentences acknowledging the situation factually",
@@ -199,6 +202,21 @@ function truncateWords(phrase: string, maxWords: number): string {
   const words = phrase.trim().split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return phrase.trim();
   return words.slice(0, maxWords).join(' ');
+}
+
+/** Reply to a greeting or small talk (no situation described), or null if this is not one. */
+export function parseConversationReply(raw: string): string | null {
+  try {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start === -1 || end <= start) return null;
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as { conversation_reply?: unknown; validation?: unknown };
+    if (parsed.validation !== undefined) return null;
+    const reply = typeof parsed.conversation_reply === 'string' ? parsed.conversation_reply.trim() : '';
+    return reply || null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseAndValidatePatternResponse(
@@ -263,7 +281,7 @@ export function parseAndValidatePatternResponse(
 
     return {
       validation,
-      red_flags: redFlags.length > 0 ? redFlags : ['Something in this situation needs a closer look'],
+      red_flags: redFlags, // Never padded: a warning sign the AI didn't find must not be shown.
       why_it_matters: why,
       recommended_actions: actions.slice(0, 4),
       reality_check: reality,
@@ -283,9 +301,7 @@ export function formatPatternResponseText(payload: PatternResponsePayload): stri
   return [
     payload.validation,
     '',
-    '🚩 RED FLAGS',
-    flags,
-    '',
+    ...(payload.red_flags.length > 0 ? ['🚩 RED FLAGS', flags, ''] : []),
     'WHY THIS MATTERS',
     payload.why_it_matters,
     '',

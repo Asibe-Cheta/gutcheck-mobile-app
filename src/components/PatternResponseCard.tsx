@@ -21,12 +21,16 @@ export default function PatternResponseCard({ payload, colors }: Props) {
     <View style={styles.wrap}>
       <Text style={[styles.validation, { color: colors.textPrimary }]}>{payload.validation}</Text>
 
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>🚩 RED FLAGS</Text>
-      {payload.red_flags.map((flag) => (
-        <Text key={flag} style={[styles.bullet, { color: colors.textPrimary }]}>
-          • {flag}
-        </Text>
-      ))}
+      {payload.red_flags.length > 0 ? (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>🚩 RED FLAGS</Text>
+          {payload.red_flags.map((flag) => (
+            <Text key={flag} style={[styles.bullet, { color: colors.textPrimary }]}>
+              • {flag}
+            </Text>
+          ))}
+        </>
+      ) : null}
 
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>WHY THIS MATTERS</Text>
       <Text style={[styles.body, { color: colors.textPrimary }]}>{payload.why_it_matters}</Text>
