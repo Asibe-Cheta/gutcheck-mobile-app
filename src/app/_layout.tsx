@@ -43,7 +43,9 @@ function AppContent() {
   const router = useRouter();
   const { isDark } = useTheme();
   const currentTheme = getThemeColors(isDark);
-  const lastSubscriptionCheck = useRef<number>(0);
+  // Starts at launch time: the start screen already routes by access on launch, and checking
+  // again here opened the paywall a second time (it slid in twice).
+  const lastSubscriptionCheck = useRef<number>(Date.now());
   // Screens that must stay reachable without a plan: help is never behind the paywall, and
   // someone coming back from a helpline call must not land on the paywall.
   const pathname = usePathname();

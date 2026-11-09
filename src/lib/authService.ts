@@ -225,6 +225,49 @@ class AuthService {
   }
 
   /**
+   * For phones that were logged in before PINs were saved on the device: confirming the PIN once
+   * connects this phone to the account on the server (History sync, profile) without logging out.
+   */
+  async confirmPinForSync(pin: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!PIN_PATTERN.test(pin)) {
+        return { success: false, error: 'PIN must be exactly 4 digits' };
+      }
+      const [userId, username] = await Promise.all([
+        AsyncStorage.getItem('user_id'),
+        AsyncStorage.getItem('username'),
+      ]);
+      if (!userId || !username) {
+        return { success: false, error: 'Please log out and log in again.' };
+      }
+
+      const { data, error } = await supabase.rpc('gc_login', {
+        p_username: username,
+        p_pin_hash: await this.hashPin(pin),
+      });
+      if (error) {
+        return { success: false, error: 'Please check your connection and try again.' };
+      }
+      if (!data?.ok) {
+        return {
+          success: false,
+          error: data?.error === 'invalid_credentials' ? "That PIN didn't match. Please try again." : messageFor(data?.error, 'Please try again.'),
+        };
+      }
+      if (data.user_id !== userId) {
+        return { success: false, error: 'Please log out and log in again.' };
+      }
+
+      await saveSessionToken(data.token);
+      await savePinForReveal(userId, pin);
+      return { success: true };
+    } catch (error) {
+      console.error('[AUTH] confirmPinForSync error:', error);
+      return { success: false, error: 'Please try again.' };
+    }
+  }
+
+  /**
    * Logout current user
    */
   async logout(): Promise<{ success: boolean; error?: string }> {

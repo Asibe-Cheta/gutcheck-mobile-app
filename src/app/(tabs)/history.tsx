@@ -5,7 +5,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, Modal, TextInput } from 'react-native';
+import { authService } from '@/lib/authService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
@@ -173,6 +174,25 @@ export default function HistoryScreen() {
     serverState,
   } = useChatHistoryStore();
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  // Phones logged in before PINs were saved on the device need the PIN once to sync History.
+  const [pinPromptOpen, setPinPromptOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+
+  const submitPin = async () => {
+    setPinBusy(true);
+    setPinError(null);
+    const result = await authService.confirmPinForSync(pinInput);
+    setPinBusy(false);
+    if (result.success) {
+      setPinPromptOpen(false);
+      setPinInput('');
+      void loadChats();
+    } else {
+      setPinError(result.error || 'Please try again.');
+    }
+  };
 
   // Authentication check only
   useEffect(() => {
@@ -292,6 +312,62 @@ export default function HistoryScreen() {
   
   return (
     <SafeAreaView style={styles.container}>
+      <Modal visible={pinPromptOpen} transparent animationType="fade" onRequestClose={() => setPinPromptOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: currentTheme.surface, borderRadius: 16, padding: 20, gap: 12 }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: currentTheme.textPrimary }} accessibilityRole="header">
+              Confirm your PIN
+            </Text>
+            <Text style={{ fontSize: 15, lineHeight: 22, color: currentTheme.textSecondary }}>
+              Enter the 4-digit PIN you use to log in. You only need to do this once on this phone.
+            </Text>
+            <TextInput
+              value={pinInput}
+              onChangeText={(t) => setPinInput(t.replace(/\D/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+              autoFocus
+              accessibilityLabel="PIN"
+              style={{
+                minHeight: 52,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: currentTheme.textSecondary,
+                color: currentTheme.textPrimary,
+                fontSize: 24,
+                letterSpacing: 12,
+                textAlign: 'center',
+              }}
+            />
+            {pinError ? <Text style={{ fontSize: 15, color: currentTheme.warning }}>{pinError}</Text> : null}
+            <TouchableOpacity
+              onPress={submitPin}
+              disabled={pinBusy || pinInput.length !== 4}
+              accessibilityRole="button"
+              style={{
+                minHeight: 52,
+                borderRadius: 12,
+                backgroundColor: currentTheme.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pinBusy || pinInput.length !== 4 ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: '700', color: currentTheme.background }}>
+                {pinBusy ? 'Checking…' : 'Confirm'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setPinPromptOpen(false)}
+              accessibilityRole="button"
+              style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '600', color: currentTheme.primary }}>Not now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -319,6 +395,20 @@ export default function HistoryScreen() {
         {/* Chat History Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Conversations</Text>
+          {serverState === 'unavailable' && (
+            <TouchableOpacity
+              onPress={() => setPinPromptOpen(true)}
+              accessibilityRole="button"
+              style={{ marginBottom: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: currentTheme.primary }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '700', color: currentTheme.textPrimary }}>
+                Keep your checks saved to your account
+              </Text>
+              <Text style={[styles.emptySubtitle, { marginTop: 4, textAlign: 'left' }]}>
+                Confirm your PIN once so your History is safe if you change phones.
+              </Text>
+            </TouchableOpacity>
+          )}
           {serverState === 'offline' && (
             <Text style={[styles.emptySubtitle, { marginBottom: 12 }]} accessibilityRole="alert">
               You're offline. Showing checks saved on this phone.
