@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, getThemeColors } from '@/lib/theme';
@@ -544,6 +544,16 @@ export default function SettingsScreen() {
             styles={styles}
             colors={currentTheme}
           />
+          {Platform.OS === 'ios' && (
+            <SettingsItem
+              icon="gift"
+              title="Have an access code?"
+              description="Redeem a code from a school or organisation"
+              onPress={() => router.push('/access-code')}
+              styles={styles}
+              colors={currentTheme}
+            />
+          )}
           <SettingsItem
             icon="keypad"
             title="Show my PIN"

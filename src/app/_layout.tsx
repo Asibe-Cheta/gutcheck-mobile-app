@@ -37,7 +37,7 @@ if (typeof ErrorUtils !== 'undefined') {
 }
 
 // Inner component that uses theme context
-const FREE_ROUTES = ['/free-support', '/crisis-resources', '/onboarding', '/subscription'];
+const FREE_ROUTES = ['/free-support', '/crisis-resources', '/onboarding', '/subscription', '/access-code', '/purchase-confirmation'];
 
 function AppContent() {
   const router = useRouter();
@@ -216,6 +216,7 @@ function AppContent() {
           <Stack.Screen name="onboarding-route" options={{ headerShown: false }} />
           <Stack.Screen name="free-support" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="purchase-confirmation" options={{ headerShown: false, gestureEnabled: false }} />
+          <Stack.Screen name="access-code" options={{ headerShown: false }} />
           <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="notification-detail" options={{ headerShown: false }} />
           <Stack.Screen name="contact" options={{ headerShown: false }} />

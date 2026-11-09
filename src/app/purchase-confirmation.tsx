@@ -1,18 +1,19 @@
 /**
- * O8 Confirmation (PRD section 8).
+ * O8 Confirmation (PRD section 8), and the access-code success screen (PRD 11.4, source=code).
  * Dates come from the store's verified entitlement (expirationDate, periodType), never the phone's
  * clock; prices come from the purchased plan as the store reported it.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Linking, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
+import { revenueCatService } from '@/lib/revenueCatService';
 import { formatLongDate, formatPrice } from '@/lib/subscriptionTrialUtils';
 
 const MANAGE_SUBSCRIPTION_URL =
@@ -20,22 +21,56 @@ const MANAGE_SUBSCRIPTION_URL =
     ? 'https://play.google.com/store/account/subscriptions?package=org.mygutcheck.app'
     : 'https://apps.apple.com/account/subscriptions';
 const STORE_ACCOUNT = Platform.OS === 'android' ? 'Google Play' : 'Apple Account';
-const REMINDER_DAYS_BEFORE_END = 2;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type CodeAccess = { endDate: Date; durationLabel: string | null } | null;
 
 export default function PurchaseConfirmationScreen() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const { source } = useLocalSearchParams<{ source?: string }>();
+  const isCode = source === 'code';
   const subscription = useSubscriptionStore((s) => s.subscription);
   const currentPlan = useSubscriptionStore((s) => s.currentPlan);
   const [reminderSet, setReminderSet] = useState(false);
+  const [codeAccess, setCodeAccess] = useState<CodeAccess>(null);
 
-  const endDate = subscription?.expirationDate ? new Date(subscription.expirationDate) : null;
-  const isTrial = subscription?.periodType === 'TRIAL' && !!endDate;
+  // Access codes: read the end date straight from the store's entitlement.
+  useEffect(() => {
+    if (!isCode) return;
+    void (async () => {
+      const entitlement = await revenueCatService.getPremiumEntitlement();
+      if (!entitlement?.expirationDate) return;
+      const end = new Date(entitlement.expirationDate);
+      const start = entitlement.latestPurchaseDate ? new Date(entitlement.latestPurchaseDate) : null;
+      const days = start ? (end.getTime() - start.getTime()) / DAY_MS : null;
+      const durationLabel = days === null ? null : days >= 300 ? '1 year' : days >= 25 ? '1 month' : null;
+      setCodeAccess({ endDate: end, durationLabel });
+    })();
+  }, [isCode]);
+
+  const endDate = isCode
+    ? codeAccess?.endDate ?? null
+    : subscription?.expirationDate
+      ? new Date(subscription.expirationDate)
+      : null;
+  const isTrial = !isCode && subscription?.periodType === 'TRIAL' && !!endDate;
   const isYearly = currentPlan?.interval === 'year';
   const price = currentPlan ? formatPrice(currentPlan.price, currentPlan.currency) : null;
   const dateText = endDate ? formatLongDate(endDate) : null;
 
+  const headline = isCode
+    ? codeAccess?.durationLabel
+      ? `You have ${codeAccess.durationLabel} of free access`
+      : 'You have free access'
+    : "You're all set";
+
   const body = (() => {
+    if (isCode) {
+      return dateText
+        ? `Your access ends on ${dateText}. It won't renew and you won't be charged.`
+        : "Your free access is active. It won't renew and you won't be charged.";
+    }
     if (isTrial && price && dateText) {
       return `Your free ${isYearly ? 'week' : 'trial'} has started. It ends on ${dateText}. After that, ${price} ${isYearly ? 'a year' : 'a month'} is charged unless you cancel before ${dateText}. You can cancel any time in your ${STORE_ACCOUNT} settings.`;
     }
@@ -47,11 +82,15 @@ export default function PurchaseConfirmationScreen() {
     return `Your plan is active. You can see your renewal date and cancel any time in your ${STORE_ACCOUNT} settings.`;
   })();
 
+  // Trial: remind 2 days before it ends. Free access: remind 7 days before it ends (PRD 11.4).
+  const reminderDays = isCode ? 7 : 2;
+  const showReminder = (isTrial || (isCode && !!endDate)) && !!endDate;
+
   const handleReminder = async () => {
     if (!endDate) return;
-    const remindAt = new Date(endDate.getTime() - REMINDER_DAYS_BEFORE_END * 24 * 60 * 60 * 1000);
+    const remindAt = new Date(endDate.getTime() - reminderDays * DAY_MS);
     if (remindAt.getTime() <= Date.now()) {
-      Alert.alert('Your trial ends soon', `It ends on ${dateText}.`);
+      Alert.alert(isCode ? 'Your free access ends soon' : 'Your trial ends soon', `It ends on ${dateText}.`);
       return;
     }
     try {
@@ -63,16 +102,22 @@ export default function PurchaseConfirmationScreen() {
         return;
       }
       await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Your free trial ends in 2 days',
-          body: `It ends on ${dateText}. After that, ${price} a year is charged unless you cancel.`,
-          data: { type: 'trial-reminder' },
-        },
+        content: isCode
+          ? {
+              title: 'Your free access ends in 7 days',
+              body: `It ends on ${dateText}. You won't be charged.`,
+              data: { type: 'access-code-reminder' },
+            }
+          : {
+              title: 'Your free trial ends in 2 days',
+              body: `It ends on ${dateText}. After that, ${price} a year is charged unless you cancel.`,
+              data: { type: 'trial-reminder' },
+            },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: remindAt },
       });
       setReminderSet(true);
     } catch (error) {
-      console.error('[O8] Could not schedule trial reminder:', error);
+      console.error('[O8] Could not schedule reminder:', error);
       Alert.alert('Reminder not set', 'Please try again.');
     }
   };
@@ -102,7 +147,7 @@ export default function PurchaseConfirmationScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Ionicons name="checkmark-circle" size={64} color={colors.primary} style={styles.icon} />
         <Text style={styles.headline} accessibilityRole="header">
-          You're all set
+          {headline}
         </Text>
         <Text style={styles.body}>{body}</Text>
       </ScrollView>
@@ -113,26 +158,32 @@ export default function PurchaseConfirmationScreen() {
           onPress={() => router.replace({ pathname: '/chat', params: { firstCheck: 'true' } })}
           accessibilityRole="button"
         >
-          <Text style={styles.primaryButtonText}>Start my first check</Text>
+          <Text style={styles.primaryButtonText}>{isCode ? 'Start a check' : 'Start my first check'}</Text>
         </TouchableOpacity>
 
-        {isTrial ? (
+        {showReminder ? (
           reminderSet ? (
-            <Text style={styles.confirmed}>We'll remind you 2 days before your trial ends.</Text>
+            <Text style={styles.confirmed}>
+              {isCode ? "We'll remind you 7 days before your access ends." : "We'll remind you 2 days before your trial ends."}
+            </Text>
           ) : (
             <TouchableOpacity style={styles.textButton} onPress={handleReminder} accessibilityRole="button">
-              <Text style={styles.textButtonLabel}>Remind me 2 days before my trial ends</Text>
+              <Text style={styles.textButtonLabel}>
+                {isCode ? 'Remind me 7 days before it ends' : 'Remind me 2 days before my trial ends'}
+              </Text>
             </TouchableOpacity>
           )
         ) : null}
 
-        <TouchableOpacity
-          style={styles.textButton}
-          onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL).catch(() => undefined)}
-          accessibilityRole="link"
-        >
-          <Text style={styles.textButtonLabel}>Manage subscription</Text>
-        </TouchableOpacity>
+        {!isCode ? (
+          <TouchableOpacity
+            style={styles.textButton}
+            onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL).catch(() => undefined)}
+            accessibilityRole="link"
+          >
+            <Text style={styles.textButtonLabel}>Manage subscription</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </SafeAreaView>
   );

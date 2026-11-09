@@ -605,6 +605,65 @@ class RevenueCatService {
   }
 
   /**
+   * The active Premium entitlement as the store reports it (fresh, cache bypassed), or null.
+   * willRenew is false for free offer-code access and for cancelled plans.
+   */
+  async getPremiumEntitlement(): Promise<{
+    productId: string;
+    periodType: string;
+    willRenew: boolean;
+    latestPurchaseDate: string | null;
+    expirationDate: string | null;
+  } | null> {
+    try {
+      if (this.isInitialized && this.apiKey) {
+        await Purchases.invalidateCustomerInfoCache().catch(() => undefined);
+      }
+      const customerInfo = await this.getCustomerInfo();
+      const entitlement = customerInfo?.entitlements.active['GutCheck Premium'];
+      if (!entitlement) return null;
+      return {
+        productId: entitlement.productIdentifier,
+        periodType: entitlement.periodType,
+        willRenew: entitlement.willRenew,
+        latestPurchaseDate: entitlement.latestPurchaseDate || null,
+        expirationDate: entitlement.expirationDate || null,
+      };
+    } catch (error) {
+      console.error('[RevenueCat] getPremiumEntitlement failed:', error);
+      return null;
+    }
+  }
+
+  /** iOS only: Apple's own offer-code sheet (App Store guideline 3.1.1 compliant). */
+  async presentCodeRedemptionSheet(userId: string): Promise<void> {
+    if (Platform.OS !== 'ios') return;
+    // The redeemed access must attach to this GutChecks account, never to an anonymous store user.
+    await this.setAppUserID(userId);
+    if (this.currentAppUserID !== userId) {
+      throw new Error('Store not ready');
+    }
+    await Purchases.presentCodeRedemptionSheet();
+  }
+
+  /** Calls back whenever the store reports new purchase or redemption info. Returns an unsubscribe. */
+  onCustomerInfoUpdate(callback: () => void): () => void {
+    const listener = () => callback();
+    try {
+      Purchases.addCustomerInfoUpdateListener(listener);
+    } catch {
+      return () => undefined;
+    }
+    return () => {
+      try {
+        Purchases.removeCustomerInfoUpdateListener(listener);
+      } catch {
+        // already removed
+      }
+    };
+  }
+
+  /**
    * Check if user has active subscription
    * Always invalidates the local RevenueCat cache first so we get a fresh
    * network response. This prevents stale "active" data from granting access

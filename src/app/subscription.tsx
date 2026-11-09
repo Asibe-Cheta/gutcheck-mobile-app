@@ -1505,6 +1505,17 @@ export default function SubscriptionScreen() {
           </View>
         )}
 
+        {/* Access codes (PRD 11): Apple offer codes, iPhone only */}
+        {hasUserId && Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => router.push('/access-code')}
+            accessibilityRole="button"
+          >
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.primary }}>Have an access code?</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Restore Purchases Button - Only show if user is logged in */}
         {hasUserId && (
           <TouchableOpacity 
