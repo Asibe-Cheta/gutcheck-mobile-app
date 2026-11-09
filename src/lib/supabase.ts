@@ -6,22 +6,13 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { getPublicEnv } from './publicEnv';
 
 // SAFE: Get environment variables with comprehensive null checks
 // This prevents crashes if Constants.expoConfig is undefined/null
 export function readPublicEnv(key: string, defaultValue: string = ''): string {
   try {
-    // First try process.env (works in development and EAS builds)
-    if (process.env[key]) {
-      return process.env[key] as string;
-    }
-    
-    // Then try Constants.expoConfig.extra (EAS builds inject here)
-    if (Constants?.expoConfig?.extra?.[key]) {
-      return Constants.expoConfig.extra[key] as string;
-    }
-    
-    return defaultValue;
+    return getPublicEnv(key) ?? defaultValue;
   } catch (error) {
     console.error(`[SUPABASE] Error reading env var ${key}:`, error);
     return defaultValue;

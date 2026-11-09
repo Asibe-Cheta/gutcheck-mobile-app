@@ -1,4 +1,4 @@
-import Constants from 'expo-constants';
+import { getPublicEnv } from './publicEnv';
 
 /**
  * Public URLs used in-app and in Play Console (Data safety → account deletion link).
@@ -18,9 +18,7 @@ export const GOOGLE_PLAY_APP_TITLE = 'GutChecks: Red Flags & Safety';
 
 function getEnvVar(key: string, defaultValue = ''): string {
   try {
-    if (process.env[key]) return process.env[key] as string;
-    if (Constants?.expoConfig?.extra?.[key]) return Constants.expoConfig.extra[key] as string;
-    return defaultValue;
+    return getPublicEnv(key) ?? defaultValue;
   } catch {
     return defaultValue;
   }

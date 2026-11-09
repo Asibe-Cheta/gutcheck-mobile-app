@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
-import Constants from 'expo-constants';
+import { getPublicEnv } from './publicEnv';
 import { isSupabaseConfigured } from './supabase';
 
 type FeedbackStatus = 'acted_upon' | 'not_acted_upon' | 'skipped';
@@ -250,14 +250,7 @@ class ActionStepTrackerService {
 
   /** Match `getEnvVar` in `supabase.ts` so ingest runs whenever the client is configured. */
   private readPublicEnv(key: string): string | undefined {
-    try {
-      if (process.env[key]) return process.env[key] as string;
-      const fromExtra = Constants?.expoConfig?.extra?.[key];
-      if (typeof fromExtra === 'string' && fromExtra.length > 0) return fromExtra;
-    } catch {
-      /* ignore */
-    }
-    return undefined;
+    return getPublicEnv(key);
   }
 
   private async syncAnonymisedFeedbackToEdge(ev: ActionStepFeedbackEvent): Promise<void> {

@@ -12,6 +12,7 @@ import Purchases, {
   PurchaseError,
 } from 'react-native-purchases';
 import Constants from 'expo-constants';
+import { getPublicEnv } from './publicEnv';
 import { Platform } from 'react-native';
 import { hasFreeTrialIntro, parseFreeTrialDays } from './subscriptionTrialUtils';
 
@@ -64,9 +65,7 @@ class RevenueCatService {
       const isIOS = Platform.OS === 'ios';
       const apiKeyEnvName = isIOS ? 'EXPO_PUBLIC_REVENUECAT_IOS_API_KEY' : 'EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY';
       
-      const apiKey = 
-        Constants.expoConfig?.extra?.[apiKeyEnvName] ||
-        process.env[apiKeyEnvName];
+      const apiKey = getPublicEnv(apiKeyEnvName);
 
       if (!apiKey) {
         console.warn(`[RevenueCat] No API key found for ${Platform.OS}. Set ${apiKeyEnvName} in EAS environment variables.`);
@@ -124,7 +123,13 @@ class RevenueCatService {
         await this.initialize();
       }
 
-      // If no API key, return mock products
+      if (!this.apiKey && !__DEV__) {
+        // Never show made-up prices to real users; the paywall shows "couldn't load prices".
+        console.error('[RevenueCat] No API key in a production bundle');
+        return { success: false, error: 'Store not configured' };
+      }
+
+      // Development only: mock products
       if (!this.apiKey) {
         console.log('[RevenueCat] No API key - returning mock products');
         return {
@@ -288,16 +293,9 @@ class RevenueCatService {
           : 'EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY';
         
         // Try to get the key directly as a fallback
-        const apiKey = 
-          Constants.expoConfig?.extra?.[apiKeyEnvName] ||
-          process.env[apiKeyEnvName];
-        
-        console.log(`[RevenueCat] purchaseProduct: Platform.OS = ${Platform.OS}`);
-        console.log(`[RevenueCat] purchaseProduct: Looking for key: ${apiKeyEnvName}`);
-        console.log(`[RevenueCat] purchaseProduct: Key found in Constants: ${!!Constants.expoConfig?.extra?.[apiKeyEnvName]}`);
-        console.log(`[RevenueCat] purchaseProduct: Key found in process.env: ${!!process.env[apiKeyEnvName]}`);
-        console.log(`[RevenueCat] purchaseProduct: Available keys in extra:`, Object.keys(Constants.expoConfig?.extra || {}));
-        
+        const apiKey = getPublicEnv(apiKeyEnvName);
+
+
         if (!apiKey) {
           return {
             success: false,

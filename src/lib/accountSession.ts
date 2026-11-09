@@ -79,10 +79,29 @@ async function loginWithSavedCredentials(): Promise<string | null> {
     const pin = await getPinForReveal(userId);
     if (!pin) return null;
 
+    const pinHash = await sha256Hex(pin);
     const { data, error } = await supabase.rpc('gc_login', {
       p_username: username,
-      p_pin_hash: await sha256Hex(pin),
+      p_pin_hash: pinHash,
     });
+
+    // Accounts made while the app couldn't reach the server exist only on this phone: create the
+    // server copy now. This can't touch another account: an existing user ID or username is refused.
+    if (!error && data?.error === 'invalid_credentials') {
+      const userType = (await AsyncStorage.getItem('user_type')) === 'username' ? 'username' : 'anonymous';
+      const created = await supabase.rpc('gc_create_account', {
+        p_user_id: userId,
+        p_username: username,
+        p_user_type: userType,
+        p_pin_hash: pinHash,
+      });
+      if (!created.error && created.data?.ok) {
+        await saveSessionToken(created.data.token);
+        return created.data.token as string;
+      }
+      return null;
+    }
+
     if (error || !data?.ok || data.user_id !== userId) {
       if (error) console.warn('[SESSION] Silent login failed:', error.message);
       return null;
