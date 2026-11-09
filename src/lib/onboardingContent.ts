@@ -201,7 +201,8 @@ export const AGE_BANDS: { id: AgeBand; label: string }[] = [
 
 export const PRIVACY_POINTS = [
   'No name, email or phone number needed.',
-  'Your checks are encrypted and linked to an anonymous account.',
+  // History is not encrypted on the device, so no encryption claim here (PRD 5.3).
+  'Your checks are linked to an anonymous account, not your name.',
   // CONFIRM against the AI provider's terms before release.
   'To analyse a check, what you share is sent securely to our AI provider and is not used to train its models.',
   'You can delete any check at any time.',
