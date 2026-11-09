@@ -82,7 +82,8 @@ const ChatHistoryItem = ({
           {/* No preview text by default (PRD 13.2) */}
           <View style={styles.chatMeta}>
             <Text style={styles.chatDate}>{formatDate(chat.createdAt)}</Text>
-            {chat.messages.some((m) => (m.support?.serviceIds.length ?? 0) > 0 || m.support?.tier === 3) && (
+            {(chat.supportShown ||
+              chat.messages.some((m) => (m.support?.serviceIds.length ?? 0) > 0 || m.support?.tier === 3)) && (
               <Text style={[styles.riskLevel, { color: colors.primary }]}>Support options</Text>
             )}
             {chat.analysisData?.riskLevel && chat.analysisData.riskLevel !== 'unknown' && (
@@ -161,7 +162,16 @@ export default function HistoryScreen() {
   
   // App lock state - show lock screen when app is locked
   const { isLocked, shouldShowLock } = useAppLock();
-  const { savedChats, isLoading, loadChats, deleteChat } = useChatHistoryStore();
+  const {
+    savedChats,
+    loadChats,
+    loadMore,
+    deleteChat,
+    fetchChat,
+    hasMore,
+    isLoadingMore,
+    serverState,
+  } = useChatHistoryStore();
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
   // Authentication check only
@@ -214,8 +224,14 @@ export default function HistoryScreen() {
     );
   };
 
-  const handleExportChat = async (chat: SavedChat) => {
+  const handleExportChat = async (listed: SavedChat) => {
     try {
+      // Checks from another device are downloaded before export.
+      const chat = listed.remoteOnly ? await fetchChat(listed.id) : listed;
+      if (!chat || chat.messages.length === 0) {
+        Alert.alert("Couldn't open this check", 'Please check your connection and try again.');
+        return;
+      }
       // Show confirmation dialog first
       Alert.alert(
         'Export Conversation as Evidence',
@@ -289,11 +305,30 @@ export default function HistoryScreen() {
       </View>
 
       {/* Main Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={200}
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 400) {
+            void loadMore();
+          }
+        }}
+      >
         {/* Chat History Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Conversations</Text>
-          {savedChats.length === 0 ? (
+          {serverState === 'offline' && (
+            <Text style={[styles.emptySubtitle, { marginBottom: 12 }]} accessibilityRole="alert">
+              You're offline. Showing checks saved on this phone.
+            </Text>
+          )}
+          {savedChats.length === 0 && serverState === 'loading' ? (
+            <View style={styles.emptyState} accessibilityLabel="Loading your History">
+              <Text style={styles.emptySubtitle}>Loading your History…</Text>
+            </View>
+          ) : savedChats.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="chatbubbles-outline" size={48} color={currentTheme.textSecondary} />
               <Text style={styles.emptyTitle}>Your checks will appear here</Text>
@@ -322,6 +357,15 @@ export default function HistoryScreen() {
                   styles={styles}
                 />
               ))}
+              {isLoadingMore ? (
+                <Text style={[styles.emptySubtitle, { paddingVertical: 12 }]}>Loading more…</Text>
+              ) : hasMore ? (
+                <TouchableOpacity onPress={() => void loadMore()} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <Text style={[styles.emptySubtitle, { color: currentTheme.primary }]}>Show more</Text>
+                </TouchableOpacity>
+              ) : serverState === 'ready' ? (
+                <Text style={[styles.emptySubtitle, { paddingVertical: 12 }]}>That's everything.</Text>
+              ) : null}
             </View>
           )}
         </View>

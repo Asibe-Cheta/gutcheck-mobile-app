@@ -1,10 +1,12 @@
 /**
  * Profile Service
- * Handles user profile data operations with Supabase
+ * Reads and writes the signed-in user's profile through the gc_get_profile / gc_update_profile
+ * database functions. Only profile fields can be changed; subscription and lifetime fields are
+ * server-controlled.
  */
 
-import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { callWithSession } from './accountSession';
 
 /** Synced Awareness Hub fields (see database/migration_awareness_hub_profile.sql). */
 export interface AwarenessHubStateBlob {
@@ -33,253 +35,108 @@ export interface ProfileData {
   updated_at?: string;
 }
 
+const EDITABLE_FIELDS = [
+  'username',
+  'age',
+  'region',
+  'avatar_url',
+  'struggles',
+  'goals',
+  'age_range',
+  'goal',
+] as const;
+
+function editablePatch(updates: Partial<ProfileData>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const key of EDITABLE_FIELDS) {
+    if (updates[key] !== undefined) patch[key] = updates[key];
+  }
+  return patch;
+}
+
+async function cacheProfileLocally(profile: ProfileData): Promise<void> {
+  await AsyncStorage.setItem(
+    'user_profile',
+    JSON.stringify({
+      username: profile.username,
+      age: profile.age ? profile.age.toString() : '',
+      region: profile.region,
+      avatarUri: profile.avatar_url,
+      struggles: profile.struggles,
+      goals: profile.goals,
+    }),
+  );
+  // Age and region are also kept in their own keys for AI context.
+  if (profile.age) {
+    await AsyncStorage.setItem('user_age_range', profile.age.toString());
+  }
+  if (profile.region) {
+    await AsyncStorage.setItem('user_region', profile.region);
+  }
+}
+
+async function readCachedProfile(): Promise<ProfileData | null> {
+  try {
+    const localProfile = await AsyncStorage.getItem('user_profile');
+    if (!localProfile) return null;
+    const parsed = JSON.parse(localProfile);
+    return {
+      username: parsed.username,
+      age: parsed.age ? parseInt(parsed.age, 10) : undefined,
+      region: parsed.region,
+      avatar_url: parsed.avatarUri,
+      struggles: parsed.struggles,
+      goals: parsed.goals,
+    };
+  } catch (localError) {
+    console.error('Error getting local profile:', localError);
+    return null;
+  }
+}
+
+async function applyUpdate(updates: Partial<ProfileData>): Promise<ProfileData> {
+  const result = await callWithSession<{ ok: boolean; error?: string; profile?: ProfileData }>(
+    'gc_update_profile',
+    { p_patch: editablePatch(updates) },
+  );
+  if (!result?.ok || !result.profile) {
+    throw new Error(result?.error === 'username_taken' ? 'Username already taken' : 'Failed to save profile data');
+  }
+  await cacheProfileLocally(result.profile);
+  return result.profile;
+}
+
 class ProfileService {
   /**
-   * Create anonymous profile
-   */
-  async createAnonymousProfile(anonymousId: string): Promise<void> {
-    try {
-      // First check if the profiles table exists by trying to select from it
-      const { data: testData, error: testError } = await supabase
-        .from('profiles')
-        .select('id')
-        .limit(1);
-
-      if (testError && testError.code === 'PGRST116') {
-        console.log('Profiles table does not exist, skipping database profile creation');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: anonymousId,
-          user_type: 'anonymous',
-          username: `Anonymous_${anonymousId.slice(-6)}`, // Generate a unique anonymous username
-          age: null,
-          region: null,
-          avatar_url: null,
-          struggles: null,
-          goals: null,
-          age_range: null,
-          goal: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        console.error('Error creating anonymous profile:', error);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error creating anonymous profile:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Create username-only profile
-   */
-  async createUsernameProfile(userId: string, username: string): Promise<void> {
-    try {
-      // First check if the profiles table exists by trying to select from it
-      const { data: testData, error: testError } = await supabase
-        .from('profiles')
-        .select('id')
-        .limit(1);
-
-      if (testError && testError.code === 'PGRST116') {
-        console.log('Profiles table does not exist, skipping database profile creation');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: userId,
-          user_type: 'username',
-          username: username,
-          age: null,
-          region: null,
-          avatar_url: null,
-          struggles: null,
-          goals: null,
-          age_range: null,
-          goal: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        console.error('Error creating username profile:', error);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error creating username profile:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get or create anonymous user ID
-   */
-  private async getAnonymousUserId(): Promise<string> {
-    try {
-      let userId = await AsyncStorage.getItem('anonymous_user_id');
-      
-      if (!userId) {
-        // Generate new anonymous user ID
-        userId = `anonymous_user_${Date.now()}`;
-        await AsyncStorage.setItem('anonymous_user_id', userId);
-      }
-      
-      return userId;
-    } catch (error) {
-      console.error('Error getting anonymous user ID:', error);
-      throw new Error('Failed to get user ID');
-    }
-  }
-
-  /**
-   * Save profile data to database
+   * Save profile data
    */
   async saveProfile(profileData: Omit<ProfileData, 'id' | 'user_id'>): Promise<ProfileData> {
     try {
-      // Get user ID from auth system (works for both anonymous and username users)
-      const userId = await AsyncStorage.getItem('user_id');
-      if (!userId) {
-        throw new Error('No user ID found. Please log in again.');
-      }
-      
-      // Check if profile already exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      let result;
-      
-      if (existingProfile) {
-        // Update existing profile
-        const { data, error } = await supabase
-          .from('profiles')
-          .update({
-            username: profileData.username,
-            age: profileData.age,
-            region: profileData.region,
-            avatar_url: profileData.avatar_url,
-            struggles: profileData.struggles,
-            goals: profileData.goals,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-          .select()
-          .single();
-
-        if (error) throw error;
-        result = data;
-      } else {
-        // Create new profile
-        const { data, error } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: userId,
-            username: profileData.username,
-            age: profileData.age,
-            region: profileData.region,
-            avatar_url: profileData.avatar_url,
-            struggles: profileData.struggles,
-            goals: profileData.goals
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        result = data;
-      }
-
-      // Also save to local storage for offline access
-      await AsyncStorage.setItem('user_profile', JSON.stringify({
-        username: result.username,
-        age: result.age ? result.age.toString() : '',
-        region: result.region,
-        avatarUri: result.avatar_url,
-        struggles: result.struggles,
-        goals: result.goals
-      }));
-      
-      // Also save age and region to separate AsyncStorage keys for AI context
-      // This ensures the AI always has access to age and region
-      if (result.age) {
-        await AsyncStorage.setItem('user_age_range', result.age.toString());
-      }
-      if (result.region) {
-        await AsyncStorage.setItem('user_region', result.region);
-      }
-
-      return result;
+      return await applyUpdate(profileData);
     } catch (error) {
       console.error('Error saving profile:', error);
-      throw new Error('Failed to save profile data');
+      throw error instanceof Error && error.message === 'Username already taken'
+        ? error
+        : new Error('Failed to save profile data');
     }
   }
 
   /**
-   * Get profile data from database
+   * Get profile data (falls back to the copy on this phone when offline)
    */
   async getProfile(): Promise<ProfileData | null> {
     try {
-      // Get user ID from storage (works for both anonymous and username users)
       const userId = await AsyncStorage.getItem('user_id');
-      if (!userId) {
-        console.log('No user ID found in storage');
-        return null;
-      }
-      
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      if (!userId) return null;
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        throw error;
-      }
-
+      const data = await callWithSession<ProfileData | null>('gc_get_profile');
       if (data) {
-        // Also save to local storage for offline access
-        await AsyncStorage.setItem('user_profile', JSON.stringify({
-          username: data.username,
-          age: data.age ? data.age.toString() : '',
-          region: data.region,
-          avatarUri: data.avatar_url,
-          struggles: data.struggles,
-          goals: data.goals
-        }));
+        await cacheProfileLocally(data);
       }
-
       return data;
     } catch (error) {
-      console.error('Error getting profile:', error);
-      // Fallback to local storage
-      try {
-        const localProfile = await AsyncStorage.getItem('user_profile');
-        if (localProfile) {
-          const parsed = JSON.parse(localProfile);
-          return {
-            username: parsed.username,
-            age: parsed.age ? parseInt(parsed.age) : undefined,
-            region: parsed.region,
-            avatar_url: parsed.avatarUri,
-            struggles: parsed.struggles,
-            goals: parsed.goals
-          };
-        }
-      } catch (localError) {
-        console.error('Error getting local profile:', localError);
-      }
-      return null;
+      console.warn('[Profile] getProfile from server failed, using local copy:', error);
+      return readCachedProfile();
     }
   }
 
@@ -288,49 +145,12 @@ class ProfileService {
    */
   async updateProfile(updates: Partial<ProfileData>): Promise<void> {
     try {
-      const userId = await AsyncStorage.getItem('user_id');
-      if (!userId) {
-        throw new Error('No user ID found. Please log in again.');
+      await applyUpdate(updates);
+      if (updates.age !== undefined) {
+        await AsyncStorage.setItem('user_age_range', String(updates.age));
       }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error updating profile:', error);
-        throw error;
-      }
-
-      // Also update local storage
-      const currentProfile = await this.getProfile();
-      if (currentProfile) {
-        const updatedProfile = { ...currentProfile, ...updates };
-        await AsyncStorage.setItem('user_profile', JSON.stringify({
-          username: updatedProfile.username,
-          age: updatedProfile.age ? updatedProfile.age.toString() : '',
-          region: updatedProfile.region,
-          avatarUri: updatedProfile.avatar_url,
-          struggles: updatedProfile.struggles,
-          goals: updatedProfile.goals
-        }));
-        
-        // Also update age and region in separate AsyncStorage keys for AI context
-        if (updates.age !== undefined) {
-          await AsyncStorage.setItem('user_age_range', updates.age.toString());
-        } else if (updatedProfile.age) {
-          await AsyncStorage.setItem('user_age_range', updatedProfile.age.toString());
-        }
-        
-        if (updates.region !== undefined) {
-          await AsyncStorage.setItem('user_region', updates.region);
-        } else if (updatedProfile.region) {
-          await AsyncStorage.setItem('user_region', updatedProfile.region);
-        }
+      if (updates.region !== undefined) {
+        await AsyncStorage.setItem('user_region', updates.region);
       }
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -339,51 +159,12 @@ class ProfileService {
   }
 
   /**
-   * Delete profile data
-   */
-  async deleteProfile(): Promise<void> {
-    try {
-      const userId = await this.getAnonymousUserId();
-      
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('user_id', userId);
-
-      if (error) throw error;
-
-      // Also clear local storage
-      await AsyncStorage.removeItem('user_profile');
-    } catch (error) {
-      console.error('Error deleting profile:', error);
-      throw new Error('Failed to delete profile data');
-    }
-  }
-
-  /**
    * Load Awareness Hub snapshot from the signed-in user's profile (cross-device).
    */
   async getAwarenessHubState(): Promise<AwarenessHubStateBlob | null> {
     try {
-      const userId = await AsyncStorage.getItem('user_id');
-      if (!userId) return null;
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('awareness_hub_state')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) {
-        const msg = error.message || '';
-        if (error.code === 'PGRST116' || msg.includes('awareness_hub_state') || msg.includes('schema cache')) {
-          return null;
-        }
-        console.warn('[Profile] getAwarenessHubState:', msg);
-        return null;
-      }
-
-      const raw = data?.awareness_hub_state as AwarenessHubStateBlob | null | undefined;
+      const data = await callWithSession<{ awareness_hub_state?: AwarenessHubStateBlob } | null>('gc_get_profile');
+      const raw = data?.awareness_hub_state;
       if (!raw || typeof raw !== 'object' || !raw.updatedAt) return null;
       return raw;
     } catch (e) {
@@ -393,23 +174,14 @@ class ProfileService {
   }
 
   /**
-   * Persist Awareness Hub snapshot (best-effort; column may be missing until migration runs).
+   * Persist Awareness Hub snapshot (best-effort).
    */
   async setAwarenessHubState(blob: AwarenessHubStateBlob): Promise<boolean> {
     try {
-      const userId = await AsyncStorage.getItem('user_id');
-      if (!userId) return false;
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({ awareness_hub_state: blob })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.warn('[Profile] setAwarenessHubState:', error.message);
-        return false;
-      }
-      return true;
+      const result = await callWithSession<{ ok: boolean }>('gc_update_profile', {
+        p_patch: { awareness_hub_state: blob },
+      });
+      return !!result?.ok;
     } catch (e) {
       console.warn('[Profile] setAwarenessHubState failed:', e);
       return false;

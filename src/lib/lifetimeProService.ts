@@ -1,267 +1,54 @@
-import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { callWithSession } from './accountSession';
 
-export interface LifetimeProUser {
-  id: string;
-  user_id: string;
-  granted_at: string;
-  is_active: boolean;
-}
-
+/**
+ * Lifetime Pro status. Granting is server-only (the old client-side grant and the public
+ * grant_lifetime_pro function let anyone give themselves Premium); the app can only read its own
+ * status and, for IAP testing, remove itself.
+ */
 class LifetimeProService {
-  private readonly MAX_LIFETIME_PRO_USERS = 20;
-  private readonly LIFETIME_PRO_KEY = 'lifetime_pro_users_count';
-  
-  // TEMPORARY: Set to true to disable lifetime pro feature entirely (for testing IAP)
-  // This prevents ALL lifetime pro grants and checks
-  // TODO: Set back to false after IAP testing is complete
-  private readonly DISABLE_LIFETIME_PRO = false; // Set to true to temporarily disable for testing
-
-  /**
-   * Check if a user is eligible for lifetime pro (within first 20 users)
-   */
-  async checkLifetimeProEligibility(userId: string): Promise<{ isEligible: boolean; isLifetimePro: boolean; count: number }> {
-    // If lifetime pro is disabled, return false for everything
-    if (this.DISABLE_LIFETIME_PRO) {
-      return { isEligible: false, isLifetimePro: false, count: 0 };
-    }
-    
+  private async cache(userId: string, isLifetimePro: boolean): Promise<void> {
     try {
-      // Get current count of lifetime pro users
-      const { data: lifetimeProUsers, error: countError } = await supabase
-        .from('lifetime_pro_users')
-        .select('id')
-        .eq('is_active', true);
-
-      if (countError) {
-        // Log as warn so dev overlay doesn't treat network/Supabase errors as critical
-        console.warn('Lifetime pro count fetch failed (network/backend):', countError.message || countError);
-        return { isEligible: false, isLifetimePro: false, count: 0 };
-      }
-
-      const currentCount = lifetimeProUsers?.length || 0;
-
-      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
-      if (profileError || !profile?.id) {
-        console.warn('[LIFETIME_PRO] Profile not found for user_id:', userId);
-        return { isEligible: false, isLifetimePro: false, count: currentCount };
-      }
-      
-      const profileId = profile.id; // UUID needed for lifetime_pro_users
-      
-      // Check if user is already a lifetime pro user (using UUID)
-      const { data: existingUser, error: userError } = await supabase
-        .from('lifetime_pro_users')
-        .select('*')
-        .eq('user_id', profileId) // Use UUID, not TEXT
-        .eq('is_active', true)
-        .single();
-
-      if (userError && userError.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error('Error checking existing lifetime pro user:', userError);
-        return { isEligible: false, isLifetimePro: false, count: currentCount };
-      }
-
-      const isLifetimePro = !!existingUser;
-      const isEligible = currentCount < this.MAX_LIFETIME_PRO_USERS && !isLifetimePro;
-
-      return { isEligible, isLifetimePro, count: currentCount };
-    } catch (error: any) {
-      console.warn('Lifetime pro check failed (e.g. network):', error?.message || error);
-      return { isEligible: false, isLifetimePro: false, count: 0 };
-    }
-  }
-
-  /**
-   * Grant lifetime pro status to a user (if eligible)
-   */
-  async grantLifetimePro(userId: string): Promise<{ success: boolean; error?: string; isLifetimePro?: boolean }> {
-    try {
-      // Check eligibility first
-      const { isEligible, isLifetimePro, count } = await this.checkLifetimeProEligibility(userId);
-
+      await AsyncStorage.setItem(`lifetime_pro_${userId}`, isLifetimePro.toString());
       if (isLifetimePro) {
-        return { success: true, isLifetimePro: true };
+        await AsyncStorage.setItem('subscription_status', 'active');
+        await AsyncStorage.setItem('subscription_plan', 'lifetime_pro');
       }
-
-      if (!isEligible) {
-        return { 
-          success: false, 
-          error: `Lifetime pro limit reached (${this.MAX_LIFETIME_PRO_USERS} users). Current count: ${count}` 
-        };
-      }
-
-      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
-      if (profileError || !profile?.id) {
-        console.error('[LIFETIME_PRO] Profile not found for user_id:', userId);
-        return { success: false, error: 'Profile not found' };
-      }
-      
-      const profileId = profile.id; // UUID needed for lifetime_pro_users
-      
-      // Grant lifetime pro status (using UUID)
-      const { data, error } = await supabase
-        .from('lifetime_pro_users')
-        .insert({
-          user_id: profileId, // Use UUID, not TEXT
-          granted_at: new Date().toISOString(),
-          is_active: true
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error granting lifetime pro:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Update user profile to reflect lifetime pro status
-      await this.updateUserProfileForLifetimePro(userId);
-
-      // Save to local storage
-      await this.saveLifetimeProStatus(userId, true);
-
-      console.log(`Lifetime pro granted to user ${userId}. Total lifetime pro users: ${count + 1}`);
-      return { success: true, isLifetimePro: true };
     } catch (error) {
-      console.error('Error granting lifetime pro:', error);
-      return { success: false, error: 'Failed to grant lifetime pro status' };
+      console.error('Error saving lifetime pro status:', error);
     }
   }
 
-  /**
-   * Check if current user has lifetime pro status
-   * Always checks database to ensure accuracy (doesn't trust cache if database says false)
-   */
+  /** Eligibility is decided on the server; the app never grants. */
+  async checkLifetimeProEligibility(userId: string): Promise<{ isEligible: boolean; isLifetimePro: boolean; count: number }> {
+    const isLifetimePro = await this.checkUserLifetimeProStatus(userId);
+    return { isEligible: false, isLifetimePro, count: 0 };
+  }
+
+  async grantLifetimePro(_userId: string): Promise<{ success: boolean; error?: string; isLifetimePro?: boolean }> {
+    return { success: false, error: 'Lifetime Pro can only be granted by GutChecks.' };
+  }
+
+  /** Server status for the signed-in account; falls back to the last known value when offline. */
   async checkUserLifetimeProStatus(userId: string): Promise<boolean> {
-    // If lifetime pro is disabled, always return false
-    if (this.DISABLE_LIFETIME_PRO) {
-      return false;
-    }
-    
     try {
-      // CRITICAL FIX: lifetime_pro_users.user_id is UUID (references profiles.id)
-      // but userId parameter is TEXT (profiles.user_id). Need to get profiles.id first.
-      // First, get the profiles.id (UUID) from profiles.user_id (TEXT)
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
-      if (profileError || !profile?.id) {
-        console.warn('[LIFETIME_PRO] Profile not found for user_id:', userId);
-        return false;
-      }
-      
-      const profileId = profile.id; // This is the UUID we need
-      
-      // Now query lifetime_pro_users using profiles.id (UUID)
-      const { data, error } = await supabase
-        .from('lifetime_pro_users')
-        .select('is_active')
-        .eq('user_id', profileId) // Use UUID, not TEXT
-        .eq('is_active', true)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking lifetime pro status:', error);
-        // On error, check local storage as fallback
-        const localStatus = await AsyncStorage.getItem(`lifetime_pro_${userId}`);
-        return localStatus === 'true';
-      }
-
-      const isLifetimePro = !!data?.is_active;
-      
-      // Always update local storage to match database (cache should reflect truth)
-      await this.saveLifetimeProStatus(userId, isLifetimePro);
-      
+      const isLifetimePro = (await callWithSession<boolean>('gc_lifetime_pro_status')) === true;
+      await this.cache(userId, isLifetimePro);
       return isLifetimePro;
     } catch (error) {
-      console.error('Error checking user lifetime pro status:', error);
-      // On error, check local storage as fallback
+      console.warn('[LIFETIME_PRO] Status check failed, using cached value:', error);
       try {
-        const localStatus = await AsyncStorage.getItem(`lifetime_pro_${userId}`);
-        return localStatus === 'true';
+        return (await AsyncStorage.getItem(`lifetime_pro_${userId}`)) === 'true';
       } catch {
         return false;
       }
     }
   }
 
-  /**
-   * Get lifetime pro users count
-   */
   async getLifetimeProCount(): Promise<number> {
-    try {
-      const { data, error } = await supabase
-        .from('lifetime_pro_users')
-        .select('id')
-        .eq('is_active', true);
-
-      if (error) {
-        console.error('Error getting lifetime pro count:', error);
-        return 0;
-      }
-
-      return data?.length || 0;
-    } catch (error) {
-      console.error('Error getting lifetime pro count:', error);
-      return 0;
-    }
+    return 0;
   }
 
-  /**
-   * Update user profile to reflect lifetime pro status
-   */
-  private async updateUserProfileForLifetimePro(userId: string): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          subscription_plan: 'lifetime_pro',
-          subscription_status: 'active',
-          is_lifetime_pro: true,
-          lifetime_pro_granted_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error updating user profile for lifetime pro:', error);
-      }
-    } catch (error) {
-      console.error('Error updating user profile for lifetime pro:', error);
-    }
-  }
-
-  /**
-   * Save lifetime pro status to local storage
-   */
-  private async saveLifetimeProStatus(userId: string, isLifetimePro: boolean): Promise<void> {
-    try {
-      await AsyncStorage.setItem(`lifetime_pro_${userId}`, isLifetimePro.toString());
-      await AsyncStorage.setItem('subscription_status', isLifetimePro ? 'active' : 'inactive');
-      await AsyncStorage.setItem('subscription_plan', isLifetimePro ? 'lifetime_pro' : '');
-    } catch (error) {
-      console.error('Error saving lifetime pro status:', error);
-    }
-  }
-
-  /**
-   * Clear lifetime pro status (for testing purposes)
-   */
   async clearLifetimeProStatus(userId: string): Promise<void> {
     try {
       await AsyncStorage.removeItem(`lifetime_pro_${userId}`);
@@ -272,56 +59,11 @@ class LifetimeProService {
     }
   }
 
-  /**
-   * Remove user from lifetime pro users table (for testing IAP subscriptions)
-   * This allows testing subscriptions even if you're in the first 20 users
-   */
+  /** For IAP testing: remove the signed-in account's own Lifetime Pro. */
   async removeUserFromLifetimePro(userId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // CRITICAL FIX: Get profiles.id (UUID) from profiles.user_id (TEXT)
-      const { data: profile, error: profileFetchError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', userId)
-        .single();
-      
-      if (profileFetchError || !profile?.id) {
-        console.error('[LIFETIME_PRO] Profile not found for user_id:', userId);
-        return { success: false, error: 'Profile not found' };
-      }
-      
-      const profileId = profile.id; // UUID needed for lifetime_pro_users
-      
-      // Remove from database (using UUID)
-      const { error: deleteError } = await supabase
-        .from('lifetime_pro_users')
-        .delete()
-        .eq('user_id', profileId); // Use UUID, not TEXT
-
-      if (deleteError) {
-        console.error('Error removing user from lifetime pro:', deleteError);
-        return { success: false, error: deleteError.message };
-      }
-
-      // Update profile - use user_id column (TEXT), not id column (UUID)
-      const { error: profileUpdateError } = await supabase
-        .from('profiles')
-        .update({
-          is_lifetime_pro: false,
-          subscription_plan: null,
-          subscription_status: 'inactive'
-        })
-        .eq('user_id', userId);
-      
-      if (profileUpdateError) {
-        console.error('Error updating profile:', profileUpdateError);
-        // Don't fail, but log the error
-      }
-
-      // Clear local storage
+      await callWithSession('gc_lifetime_pro_remove');
       await this.clearLifetimeProStatus(userId);
-
-      console.log(`User ${userId} removed from lifetime pro for testing`);
       return { success: true };
     } catch (error) {
       console.error('Error removing user from lifetime pro:', error);

@@ -179,7 +179,7 @@ export default function ChatScreen() {
   } = useConversationStore();
   
   const { handleConversation, isLoading, error } = useAnalysisStore();
-  const { upsertChat, loadChats, getChatById } = useChatHistoryStore();
+  const { upsertChat, loadChats, fetchChat } = useChatHistoryStore();
   const [activeSavedChatId, setActiveSavedChatId] = useState<string | null>(
     typeof chatId === 'string' ? chatId : null
   );
@@ -498,8 +498,9 @@ export default function ChatScreen() {
       if (isFromHistory === 'true' && chatId) {
         setActiveSavedChatId(chatId as string);
         savedChatIdRef.current = chatId as string;
-        const savedChat = getChatById(chatId as string);
-        if (savedChat) {
+        // Downloads the check if it was made on another device and isn't on this phone yet.
+        const savedChat = await fetchChat(chatId as string);
+        if (savedChat && savedChat.messages.length > 0) {
           // Already in History: only new replies should trigger a save.
           lastSavedLengthRef.current = savedChat.messages.length;
           console.log('Loading saved chat:', {
