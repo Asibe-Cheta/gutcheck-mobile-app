@@ -64,6 +64,7 @@ const ChatHistoryItem = ({
   onDelete,
   onExport,
   isLast = false,
+  showPreview = false,
   colors,
   styles,
 }: {
@@ -72,9 +73,13 @@ const ChatHistoryItem = ({
   onDelete: () => void;
   onExport: () => void;
   isLast?: boolean;
+  showPreview?: boolean;
   colors: any;
   styles: any;
 }) => {
+  const preview = showPreview
+    ? (chat.messages.find((m) => m.role === 'user')?.content || '').replace(/\s+/g, ' ').trim().slice(0, 60)
+    : '';
   const meta = chat.category ? CATEGORY_META[chat.category] : null;
   return (
     <TouchableOpacity
@@ -89,7 +94,10 @@ const ChatHistoryItem = ({
         </View>
         <View style={styles.chatContent}>
           <Text style={styles.chatTitle} numberOfLines={1}>{chat.title}</Text>
-          {/* No preview text by default (PRD 13.2) */}
+          {/* No preview text unless turned on in Settings (PRD 13.2) */}
+          {preview ? (
+            <Text style={styles.chatDate} numberOfLines={1}>{preview}</Text>
+          ) : null}
           <View style={styles.chatMeta}>
             <Text style={styles.chatDate}>
               {meta ? `${meta.label} · ` : ''}
@@ -141,6 +149,14 @@ export default function HistoryScreen() {
     isLoadingMore,
     serverState,
   } = useChatHistoryStore();
+  const [showPreviews, setShowPreviews] = useState(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      AsyncStorage.getItem('history_show_previews')
+        .then((v) => setShowPreviews(v === 'true'))
+        .catch(() => undefined);
+    }, [])
+  );
   const [categoryFilter, setCategoryFilter] = useState<CheckCategory | 'all'>('all');
   // Delete is confirmed, then held for 5 seconds so it can be undone (PRD 13.3).
   const [pendingDelete, setPendingDelete] = useState<SavedChat | null>(null);
@@ -487,6 +503,7 @@ export default function HistoryScreen() {
                         onDelete={() => handleDeleteChat(chat)}
                         onExport={() => handleExportChat(chat)}
                         isLast={index === group.chats.length - 1}
+                        showPreview={showPreviews}
                         colors={currentTheme}
                         styles={styles}
                       />

@@ -23,6 +23,9 @@ import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 import * as Clipboard from 'expo-clipboard';
 import { getPinForReveal } from '@/lib/pinRevealStorage';
 import { externalUrls, GOOGLE_PLAY_APP_TITLE } from '@/lib/externalUrls';
+import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+
+const HISTORY_PREVIEWS_KEY = 'history_show_previews';
 
 // Settings Item Component
 const SettingsItem = ({ 
@@ -73,6 +76,34 @@ export default function SettingsScreen() {
   const { isLocked, shouldShowLock } = useAppLock();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  // Settings > Privacy > Show previews in History (off by default, PRD 13.2)
+  const [previewsEnabled, setPreviewsEnabled] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(HISTORY_PREVIEWS_KEY)
+      .then((v) => setPreviewsEnabled(v === 'true'))
+      .catch(() => undefined);
+  }, []);
+  const handlePreviewsToggle = async (value: boolean) => {
+    setPreviewsEnabled(value);
+    await AsyncStorage.setItem(HISTORY_PREVIEWS_KEY, value ? 'true' : 'false').catch(() => undefined);
+  };
+  const handleDeleteAllHistory = () => {
+    Alert.alert(
+      'Delete all History?',
+      "This deletes every check on this phone and in your account. It can't be undone.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete all',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await useChatHistoryStore.getState().deleteAllChats();
+            Alert.alert(result.success ? 'History deleted' : 'History not deleted', result.success ? 'All your checks have been deleted.' : result.error);
+          },
+        },
+      ],
+    );
+  };
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('Biometric');
   const [panicButtonEnabled, setPanicButtonEnabled] = useState(false);
@@ -683,28 +714,32 @@ export default function SettingsScreen() {
 
         {/* Data & Storage Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Data & Storage</Text>
-          <SettingsItem
-            icon="download"
-            title="Export Data"
-            description="Download your conversation history"
-            onPress={() => Alert.alert('Export Data', 'Data export features coming soon!')}
-            styles={styles}
-            colors={currentTheme}
-          />
+          <Text style={styles.sectionTitle}>Privacy & data</Text>
+          <View style={styles.settingsItem}>
+            <View style={styles.settingsItemContent}>
+              <View style={styles.settingsIcon}>
+                <Ionicons name="eye-off" size={24} color={currentTheme.primary} />
+              </View>
+              <View style={styles.settingsTextContainer}>
+                <Text style={styles.settingsTitle}>Show previews in History</Text>
+                <Text style={styles.settingsDescription}>
+                  {previewsEnabled ? 'Shows the start of each check in your History list' : 'Off: History shows titles only'}
+                </Text>
+              </View>
+              <Switch
+                value={previewsEnabled}
+                onValueChange={handlePreviewsToggle}
+                accessibilityLabel="Show previews in History"
+                trackColor={{ false: '#767577', true: 'rgba(79, 209, 199, 0.5)' }}
+                thumbColor={previewsEnabled ? currentTheme.primary : '#f4f3f4'}
+              />
+            </View>
+          </View>
           <SettingsItem
             icon="trash"
-            title="Clear Cache"
-            description="Free up storage space"
-            onPress={() => Alert.alert('Clear Cache', 'Cache clearing features coming soon!')}
-            styles={styles}
-            colors={currentTheme}
-          />
-          <SettingsItem
-            icon="cloud"
-            title="Sync Settings"
-            description="Manage cloud synchronization"
-            onPress={() => Alert.alert('Sync Settings', 'Cloud sync features coming soon!')}
+            title="Delete all History"
+            description="Delete every check on this phone and in your account"
+            onPress={handleDeleteAllHistory}
             styles={styles}
             colors={currentTheme}
           />

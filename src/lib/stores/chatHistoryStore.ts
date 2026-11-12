@@ -287,6 +287,8 @@ interface ChatHistoryStoreState {
   fetchChat: (chatId: string) => Promise<SavedChat | undefined>;
   /** Clears this phone's copy (used on logout). The server copy is kept. */
   clearAllChats: () => Promise<void>;
+  /** Settings > Delete all History: removes every check here and on the server. */
+  deleteAllChats: () => Promise<{ success: boolean; error?: string }>;
 }
 
 let refreshInFlight: Promise<void> | null = null;
@@ -484,6 +486,23 @@ export const useChatHistoryStore = create<ChatHistoryStoreState>((set, get) => {
         console.warn('[CHAT_HISTORY] Could not download check:', error);
         return existing;
       }
+    },
+
+    deleteAllChats: async () => {
+      const userId = await currentUserId();
+      try {
+        await callWithSession('gc_history_delete_all');
+      } catch (error) {
+        if (!(error instanceof NoSessionError)) {
+          return { success: false, error: "Couldn't reach GutChecks. Check your connection and try again." };
+        }
+        // No server copy for this phone yet: deleting the phone's copy deletes everything.
+      }
+      await get().clearAllChats();
+      if (userId) {
+        await AsyncStorage.multiRemove([syncedKey(userId), pendingDeletesKey(userId)]);
+      }
+      return { success: true };
     },
 
     clearAllChats: async () => {

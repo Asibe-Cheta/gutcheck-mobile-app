@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, View, Image, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { biometricAuthService } from '@/lib/biometricAuth';
 
@@ -22,6 +22,12 @@ const AppLockContext = createContext<AppLockContextType | undefined>(undefined);
 export function AppLockProvider({ children }: { children: React.ReactNode }) {
   const [isLocked, setIsLocked] = useState(false);
   const [shouldShowLock, setShouldShowLock] = useState(false);
+  // Covers the screen in the app switcher so a check can't be read over someone's shoulder (PRD 13.2).
+  const [obscured, setObscured] = useState(false);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => setObscured(state !== 'active'));
+    return () => sub.remove();
+  }, []);
   const appStateRef = useRef(AppState.currentState);
   const lastUnlockTimeRef = useRef<number>(0);
   const isAuthenticatingRef = useRef(false); // Track if we're currently authenticating
@@ -127,6 +133,11 @@ export function AppLockProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppLockContext.Provider value={{ isLocked, setIsLocked, shouldShowLock, checkAndLock, unlock, setAuthenticating }}>
       {children}
+      {obscured ? (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1a1d29', alignItems: 'center', justifyContent: 'center' }]}>
+          <Image source={require('../../assets/new-gut-logo.jpeg')} style={{ width: 96, height: 96, borderRadius: 20 }} />
+        </View>
+      ) : null}
     </AppLockContext.Provider>
   );
 }
