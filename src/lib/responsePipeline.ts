@@ -37,12 +37,18 @@ export type PatternAction = {
   priority: 'primary' | 'secondary';
 };
 
+export const CHECK_CATEGORIES = ['messages', 'relationships', 'friends', 'school_work', 'family', 'other'] as const;
+export type CheckCategory = (typeof CHECK_CATEGORIES)[number];
+
 export type PatternResponsePayload = {
   validation: string;
   red_flags: string[];
   why_it_matters: string;
   recommended_actions: PatternAction[];
   reality_check: string;
+  /** Privacy-safe History title (PRD 13.5): no names or details that identify anyone. */
+  title_suggestion?: string;
+  category?: CheckCategory;
 };
 
 const TRUSTED_ADULT_ACTION =
@@ -179,7 +185,9 @@ Output ONLY this JSON:
     {"action": "...", "priority": "secondary"},
     {"action": "...", "priority": "secondary"}
   ],
-  "reality_check": "1 sentence, factual, no false reassurance"
+  "reality_check": "1 sentence, factual, no false reassurance",
+  "title_suggestion": "3-6 word neutral label for History, e.g. Message from a new contact. Never include names, places, ages, numbers or quotes from the user",
+  "category": "messages" | "relationships" | "friends" | "school_work" | "family" | "other"
 }`;
 
 function userAlreadySpokeToTrustedAdult(message: string): boolean {
@@ -196,6 +204,28 @@ function userAlreadySpokeToTrustedAdult(message: string): boolean {
     text.includes('talked to a trusted adult') ||
     text.includes('already told')
   );
+}
+
+/** A short neutral title, or undefined if the AI's suggestion looks like it carries personal details. */
+function safeTitle(raw: unknown, userMessage: string): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const title = raw.replace(/["“”'‘’]/g, '').replace(/\s+/g, ' ').trim();
+  if (!title || title.length > 60) return undefined;
+  if (/\d|@|https?:/i.test(title)) return undefined; // numbers, handles and links can identify someone
+  // A capitalised word the user wrote (other than at a sentence start) is likely a name or place.
+  const userProperNouns = new Set<string>();
+  for (const sentence of userMessage.split(/[.!?\n]+/)) {
+    sentence
+      .trim()
+      .split(/\s+/)
+      .slice(1)
+      .forEach((word) => {
+        const clean = word.replace(/[^A-Za-z]/g, '');
+        if (clean.length >= 3 && /^[A-Z][a-z]/.test(clean)) userProperNouns.add(clean.toLowerCase());
+      });
+  }
+  if (title.split(' ').some((word) => userProperNouns.has(word.toLowerCase()))) return undefined;
+  return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
 function truncateWords(phrase: string, maxWords: number): string {
@@ -279,8 +309,14 @@ export function parseAndValidatePatternResponse(
     const secondary = actions.filter((a) => a !== primary);
     actions = primary ? [primary, ...secondary] : actions;
 
+    const category = CHECK_CATEGORIES.includes(parsed.category as CheckCategory)
+      ? (parsed.category as CheckCategory)
+      : 'other';
+
     return {
       validation,
+      title_suggestion: safeTitle(parsed.title_suggestion, userMessage),
+      category,
       red_flags: redFlags, // Never padded: a warning sign the AI didn't find must not be shown.
       why_it_matters: why,
       recommended_actions: actions.slice(0, 4),

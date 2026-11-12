@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import type { SupportPlan } from '@/lib/supportRules';
+import type { CheckCategory } from '@/lib/responsePipeline';
 import { callWithSession, NoSessionError } from '@/lib/accountSession';
 
 export interface ChatMessage {
@@ -37,6 +38,7 @@ export interface SavedChat {
   remoteOnly?: boolean;
   /** Support cards were shown for this check (set for server-listed entries). */
   supportShown?: boolean;
+  category?: CheckCategory;
 }
 
 const PAGE_SIZE = 20;
@@ -124,6 +126,7 @@ interface ServerListItem {
   id: string;
   client_id: string;
   title: string | null;
+  category: string | null;
   risk_tier: number | null;
   support_service_ids: string[] | null;
   has_image: boolean;
@@ -136,6 +139,7 @@ interface ServerChat {
   title: string | null;
   messages: { role: 'user' | 'assistant'; content: string; timestamp?: string; support?: SupportPlan }[];
   has_image: boolean;
+  category?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +153,7 @@ function stubFromServer(item: ServerListItem): SavedChat {
     updatedAt: new Date(item.updated_at),
     hasImage: item.has_image,
     remoteOnly: true,
+    category: (item.category as CheckCategory) || undefined,
     supportShown: (item.support_service_ids?.length ?? 0) > 0 || item.risk_tier === 3,
   };
 }
@@ -166,6 +171,7 @@ function chatFromServer(row: ServerChat): SavedChat {
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     hasImage: row.has_image,
+    category: (row.category as CheckCategory) || undefined,
     analysisData: { patterns: [], severity: 'unknown', riskLevel: 'unknown' },
   };
 }
@@ -200,7 +206,7 @@ async function uploadChat(chat: SavedChat): Promise<boolean> {
     p_support_service_ids: support.serviceIds,
     p_directory_version: support.directory,
     p_ruleset_version: support.ruleset,
-    p_category: null,
+    p_category: chat.category ?? null,
   });
   // 'deleted' means it was deleted on another device: treat as done so it isn't re-sent.
   return !!result?.ok || result?.error === 'deleted';

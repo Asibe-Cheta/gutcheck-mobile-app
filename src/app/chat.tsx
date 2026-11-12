@@ -431,13 +431,11 @@ export default function ChatScreen() {
 
   const buildPersistPayload = () => {
     const { conversationHistory, conversationState } = useConversationStore.getState();
-    const firstUserMessage = conversationHistory.find((msg) => msg.role === 'user');
-    let title = 'Untitled Conversation';
-    if (firstUserMessage?.content) {
-      title =
-        firstUserMessage.content.substring(0, 30) +
-        (firstUserMessage.content.length > 30 ? '...' : '');
-    }
+    // Privacy-safe title from the first result (PRD 13.5), never the user's own words.
+    const firstCard = conversationHistory.find((msg) => msg.role === 'assistant' && msg.patternCard)?.patternCard;
+    const title =
+      firstCard?.title_suggestion ||
+      `Check on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
 
     return {
       id: savedChatIdRef.current ?? undefined,
@@ -449,6 +447,7 @@ export default function ChatScreen() {
         support: msg.support,
       })),
       hasImage: conversationState.hasImage || false,
+      category: firstCard?.category,
       analysisData: {
         patterns: [] as string[],
         severity: 'unknown',

@@ -1,19 +1,18 @@
 /**
- * History Screen
- * Custom design based on provided HTML
- * Shows analysis history and pattern tracking
+ * History (PRD 13): every check, newest first, grouped by date, with privacy-safe titles,
+ * category filter, loading/offline/error/empty/end states and a 5-second undo on delete.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, Modal, TextInput } from 'react-native';
 import { authService } from '@/lib/authService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
-import Svg, { Path } from 'react-native-svg';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useChatHistoryStore, SavedChat } from '@/lib/stores/chatHistoryStore';
+import type { CheckCategory } from '@/lib/responsePipeline';
 import { exportService } from '@/lib/exportService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,88 +21,99 @@ import { BiometricLockScreen } from '@/components/BiometricLockScreen';
 
 const { width } = Dimensions.get('window');
 
-// Chat History Item Component
-const ChatHistoryItem = ({ 
-  chat, 
-  onPress, 
+const CATEGORY_META: Record<CheckCategory, { label: string; icon: string }> = {
+  messages: { label: 'Messages', icon: 'chatbubble-ellipses' },
+  relationships: { label: 'Relationships', icon: 'heart' },
+  friends: { label: 'Friends', icon: 'people' },
+  school_work: { label: 'School or work', icon: 'school' },
+  family: { label: 'Family', icon: 'home' },
+  other: { label: 'Other', icon: 'ellipsis-horizontal-circle' },
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+/** Date header: Today, Yesterday, This week, then month and year (PRD 13.2). */
+function groupLabel(date: Date): string {
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / DAY_MS);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return 'This week';
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+function rowDate(date: Date): string {
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / DAY_MS);
+  if (days <= 0) return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function showsSupport(chat: SavedChat): boolean {
+  return (
+    !!chat.supportShown ||
+    chat.messages.some((m) => (m.support?.serviceIds.length ?? 0) > 0 || m.support?.tier === 3)
+  );
+}
+
+const ChatHistoryItem = ({
+  chat,
+  onPress,
   onDelete,
-  onExport, 
+  onExport,
   isLast = false,
   colors,
-  styles
-}: { 
-  chat: SavedChat; 
-  onPress: () => void; 
+  styles,
+}: {
+  chat: SavedChat;
+  onPress: () => void;
   onDelete: () => void;
   onExport: () => void;
   isLast?: boolean;
   colors: any;
   styles: any;
 }) => {
-  const getRiskColor = (riskLevel?: string) => {
-    switch (riskLevel) {
-      case 'high': return colors.warning;
-      case 'critical': return '#ff4444';
-      case 'medium': return colors.primary;
-      case 'low': return colors.success;
-      default: return colors.textSecondary;
-    }
-  };
-
-  const getRiskIcon = (riskLevel?: string) => {
-    switch (riskLevel) {
-      case 'high': return 'warning';
-      case 'critical': return 'alert-circle';
-      case 'medium': return 'information-circle';
-      case 'low': return 'checkmark-circle';
-      default: return 'chatbubble';
-    }
-  };
-
-  const formatDate = (date: Date) => {
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return 'Today';
-    if (diffDays === 2) return 'Yesterday';
-    if (diffDays <= 7) return `${diffDays - 1}d ago`;
-    if (diffDays <= 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return `${Math.floor(diffDays / 30)}mo ago`;
-  };
-
+  const meta = chat.category ? CATEGORY_META[chat.category] : null;
   return (
-    <TouchableOpacity style={styles.chatItem} onPress={onPress}>
+    <TouchableOpacity
+      style={styles.chatItem}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${chat.title}, ${meta?.label ?? 'Check'}, ${rowDate(chat.createdAt)}`}
+    >
       <View style={styles.chatItemContent}>
-        <View style={[styles.chatIcon, { backgroundColor: getRiskColor(chat.analysisData?.riskLevel) }]}>
-          <Ionicons name={getRiskIcon(chat.analysisData?.riskLevel) as any} size={20} color="white" />
+        <View style={[styles.chatIcon, { backgroundColor: colors.surface }]}>
+          <Ionicons name={(meta?.icon ?? 'chatbubble') as any} size={20} color={colors.primary} />
         </View>
         <View style={styles.chatContent}>
           <Text style={styles.chatTitle} numberOfLines={1}>{chat.title}</Text>
           {/* No preview text by default (PRD 13.2) */}
           <View style={styles.chatMeta}>
-            <Text style={styles.chatDate}>{formatDate(chat.createdAt)}</Text>
-            {(chat.supportShown ||
-              chat.messages.some((m) => (m.support?.serviceIds.length ?? 0) > 0 || m.support?.tier === 3)) && (
+            <Text style={styles.chatDate}>
+              {meta ? `${meta.label} · ` : ''}
+              {rowDate(chat.createdAt)}
+            </Text>
+            {showsSupport(chat) && (
               <Text style={[styles.riskLevel, { color: colors.primary }]}>Support options</Text>
-            )}
-            {chat.analysisData?.riskLevel && chat.analysisData.riskLevel !== 'unknown' && (
-              <Text style={[styles.riskLevel, { color: getRiskColor(chat.analysisData.riskLevel) }]}>
-                {chat.analysisData.riskLevel.toUpperCase()}
-              </Text>
             )}
           </View>
         </View>
         <View style={styles.chatActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={onExport}
+            accessibilityRole="button"
+            accessibilityLabel="Export as PDF"
           >
             <Ionicons name="document-text-outline" size={18} color={colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={onDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Delete check"
           >
             <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -113,48 +123,6 @@ const ChatHistoryItem = ({
     </TouchableOpacity>
   );
 };
-
-// Pattern Chart Component
-const PatternChart = ({ styles, colors }: { styles: any; colors: any }) => (
-  <View style={styles.chartContainer}>
-    <Svg width="100%" height={160} viewBox="0 0 300 100" preserveAspectRatio="none">
-      <Path
-        d="M 0 50 C 50 20, 50 80, 100 60 S 150 0, 200 40 S 250 100, 300 80"
-        fill="none"
-        stroke={colors.primary}
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <Path
-        d="M 0 100 V 50 C 50 20, 50 80, 100 60 S 150 0, 200 40 S 250 100, 300 80 V 100 Z"
-        fill={`${colors.primary}20`}
-      />
-    </Svg>
-    <View style={styles.chartLabels}>
-      <Text style={styles.chartLabel}>Jan</Text>
-      <Text style={styles.chartLabel}>Feb</Text>
-      <Text style={styles.chartLabel}>Mar</Text>
-    </View>
-  </View>
-);
-
-// Stat Card Component
-const StatCard = ({ 
-  label, 
-  value, 
-  isFullWidth = false,
-  styles
-}: {
-  label: string;
-  value: string;
-  isFullWidth?: boolean;
-  styles: any;
-}) => (
-  <View style={[styles.statCard, isFullWidth && styles.statCardFull]}>
-    <Text style={styles.statLabel}>{label}</Text>
-    <Text style={styles.statValue}>{value}</Text>
-  </View>
-);
 
 export default function HistoryScreen() {
   const router = useRouter();
@@ -173,7 +141,35 @@ export default function HistoryScreen() {
     isLoadingMore,
     serverState,
   } = useChatHistoryStore();
-  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CheckCategory | 'all'>('all');
+  // Delete is confirmed, then held for 5 seconds so it can be undone (PRD 13.3).
+  const [pendingDelete, setPendingDelete] = useState<SavedChat | null>(null);
+  const pendingDeleteRef = useRef<SavedChat | null>(null);
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    pendingDeleteRef.current = pendingDelete;
+  }, [pendingDelete]);
+
+  const finishPendingDelete = () => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+    deleteTimer.current = null;
+    setPendingDelete((current) => {
+      if (current) void deleteChat(current.id);
+      return null;
+    });
+  };
+
+  const undoDelete = () => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+    deleteTimer.current = null;
+    setPendingDelete(null);
+  };
+
+  // Leaving the screen completes a pending delete.
+  useEffect(() => () => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+    if (pendingDeleteRef.current) void deleteChat(pendingDeleteRef.current.id);
+  }, [deleteChat]);
   // Phones logged in before PINs were saved on the device need the PIN once to sync History.
   const [pinPromptOpen, setPinPromptOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -230,18 +226,22 @@ export default function HistoryScreen() {
   };
 
   const handleDeleteChat = (chat: SavedChat) => {
-    Alert.alert(
-      'Delete Chat',
-      `Are you sure you want to delete "${chat.title}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: () => deleteChat(chat.id)
-        }
-      ]
-    );
+    Alert.alert('Delete this check?', "This can't be undone after 5 seconds.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          if (pendingDelete) finishPendingDelete();
+          setPendingDelete(chat);
+          deleteTimer.current = setTimeout(() => {
+            deleteTimer.current = null;
+            setPendingDelete(null);
+            void deleteChat(chat.id);
+          }, 5000);
+        },
+      },
+    ]);
   };
 
   const handleExportChat = async (listed: SavedChat) => {
@@ -286,22 +286,19 @@ export default function HistoryScreen() {
     }
   };
 
-  const getStats = () => {
-    const totalChats = savedChats.length;
-    const highRiskChats = savedChats.filter(chat => 
-      chat.analysisData?.riskLevel === 'high' || chat.analysisData?.riskLevel === 'critical'
-    ).length;
-    const patterns = savedChats.reduce((acc, chat) => {
-      chat.analysisData?.patterns?.forEach(pattern => {
-        acc[pattern] = (acc[pattern] || 0) + 1;
-      });
-      return acc;
-    }, {} as Record<string, number>);
-    
-    return { totalChats, highRiskChats, patterns };
-  };
-
-  const stats = getStats();
+  const visibleChats = savedChats
+    .filter((c) => c.id !== pendingDelete?.id)
+    .filter((c) => categoryFilter === 'all' || c.category === categoryFilter);
+  const presentCategories = (Object.keys(CATEGORY_META) as CheckCategory[]).filter((cat) =>
+    savedChats.some((c) => c.category === cat)
+  );
+  const groups: { label: string; chats: SavedChat[] }[] = [];
+  for (const chat of visibleChats) {
+    const label = groupLabel(chat.createdAt);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.chats.push(chat);
+    else groups.push({ label, chats: [chat] });
+  }
 
   const styles = createStyles(currentTheme);
   
@@ -394,7 +391,6 @@ export default function HistoryScreen() {
       >
         {/* Chat History Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Conversations</Text>
           {serverState === 'unavailable' && (
             <TouchableOpacity
               onPress={() => setPinPromptOpen(true)}
@@ -409,16 +405,60 @@ export default function HistoryScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          {serverState === 'offline' && (
+          {serverState === 'offline' && savedChats.length > 0 && (
             <Text style={[styles.emptySubtitle, { marginBottom: 12 }]} accessibilityRole="alert">
               You're offline. Showing checks saved on this phone.
             </Text>
           )}
+
+          {presentCategories.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
+              {(['all', ...presentCategories] as (CheckCategory | 'all')[]).map((cat) => {
+                const selected = categoryFilter === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => setCategoryFilter(cat)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    style={{
+                      minHeight: 36,
+                      paddingHorizontal: 14,
+                      borderRadius: 18,
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: selected ? currentTheme.primary : currentTheme.border,
+                      backgroundColor: selected ? currentTheme.primary : 'transparent',
+                    }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: selected ? currentTheme.background : currentTheme.textPrimary }}>
+                      {cat === 'all' ? 'All' : CATEGORY_META[cat].label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
           {savedChats.length === 0 && serverState === 'loading' ? (
-            <View style={styles.emptyState} accessibilityLabel="Loading your History">
-              <Text style={styles.emptySubtitle}>Loading your History…</Text>
+            <View accessibilityLabel="Loading your History" style={{ gap: 12 }}>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <View key={i} style={{ height: 64, borderRadius: 12, backgroundColor: currentTheme.surface, opacity: 0.6 }} />
+              ))}
             </View>
-          ) : savedChats.length === 0 ? (
+          ) : savedChats.length === 0 && serverState === 'offline' ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>We couldn't load your History.</Text>
+              <Text style={styles.emptySubtitle}>Your checks are safe.</Text>
+              <TouchableOpacity
+                style={{ marginTop: 16, minHeight: 44, paddingHorizontal: 20, borderRadius: 12, borderWidth: 1, borderColor: currentTheme.primary, justifyContent: 'center' }}
+                onPress={() => void loadChats()}
+                accessibilityRole="button"
+              >
+                <Text style={{ fontSize: 16, fontWeight: '700', color: currentTheme.primary }}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : visibleChats.length === 0 && !pendingDelete && categoryFilter === 'all' ? (
             <View style={styles.emptyState}>
               <Ionicons name="chatbubbles-outline" size={48} color={currentTheme.textSecondary} />
               <Text style={styles.emptyTitle}>Your checks will appear here</Text>
@@ -434,63 +474,56 @@ export default function HistoryScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.chatList}>
-              {savedChats.map((chat, index) => (
-                <ChatHistoryItem
-                  key={chat.id}
-                  chat={chat}
-                  onPress={() => handleChatPress(chat)}
-                  onDelete={() => handleDeleteChat(chat)}
-                  onExport={() => handleExportChat(chat)}
-                  isLast={index === savedChats.length - 1}
-                  colors={currentTheme}
-                  styles={styles}
-                />
+            <View>
+              {groups.map((group) => (
+                <View key={group.label} style={{ marginBottom: 16 }}>
+                  <Text style={styles.sectionTitle} accessibilityRole="header">{group.label}</Text>
+                  <View style={styles.chatList}>
+                    {group.chats.map((chat, index) => (
+                      <ChatHistoryItem
+                        key={chat.id}
+                        chat={chat}
+                        onPress={() => handleChatPress(chat)}
+                        onDelete={() => handleDeleteChat(chat)}
+                        onExport={() => handleExportChat(chat)}
+                        isLast={index === group.chats.length - 1}
+                        colors={currentTheme}
+                        styles={styles}
+                      />
+                    ))}
+                  </View>
+                </View>
               ))}
+              {visibleChats.length === 0 && categoryFilter !== 'all' ? (
+                <Text style={[styles.emptySubtitle, { paddingVertical: 12 }]}>No checks in this category yet.</Text>
+              ) : null}
               {isLoadingMore ? (
                 <Text style={[styles.emptySubtitle, { paddingVertical: 12 }]}>Loading more…</Text>
               ) : hasMore ? (
-                <TouchableOpacity onPress={() => void loadMore()} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <TouchableOpacity onPress={() => void loadMore()} style={{ minHeight: 44, justifyContent: 'center' }} accessibilityRole="button">
                   <Text style={[styles.emptySubtitle, { color: currentTheme.primary }]}>Show more</Text>
                 </TouchableOpacity>
-              ) : serverState === 'ready' ? (
+              ) : serverState === 'ready' && visibleChats.length > 0 ? (
                 <Text style={[styles.emptySubtitle, { paddingVertical: 12 }]}>That's everything.</Text>
               ) : null}
             </View>
           )}
         </View>
-
-        {/* Pattern Tracking Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Pattern Tracking</Text>
-          <View style={styles.patternCard}>
-            <View style={styles.patternHeader}>
-              <View>
-                <Text style={styles.patternTitle}>Relationship Health</Text>
-                <Text style={styles.patternSubtitle}>Last 3 Months</Text>
-              </View>
-              <View style={styles.patternStats}>
-                <Text style={styles.patternPercentage}>75%</Text>
-                <View style={styles.patternTrend}>
-                  <Ionicons name="arrow-up" size={16} color={currentTheme.success} />
-                  <Text style={styles.patternTrendText}>10%</Text>
-                </View>
-              </View>
-            </View>
-            <PatternChart styles={styles} colors={currentTheme} />
-          </View>
-        </View>
-
-        {/* Quick Stats Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Stats</Text>
-          <View style={styles.statsGrid}>
-            <StatCard label="Total Chats" value={stats.totalChats.toString()} styles={styles} />
-            <StatCard label="High Risk" value={stats.highRiskChats.toString()} styles={styles} />
-            <StatCard label="Patterns Found" value={Object.keys(stats.patterns).length.toString()} isFullWidth styles={styles} />
-          </View>
-        </View>
       </ScrollView>
+      {pendingDelete ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={{
+            position: 'absolute', left: 16, right: 16, bottom: 24, borderRadius: 12, padding: 14,
+            backgroundColor: currentTheme.textPrimary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          }}
+        >
+          <Text style={{ fontSize: 16, color: currentTheme.background }}>Check deleted.</Text>
+          <TouchableOpacity onPress={undoDelete} accessibilityRole="button" style={{ minHeight: 44, minWidth: 64, alignItems: 'flex-end', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: currentTheme.background }}>Undo</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
