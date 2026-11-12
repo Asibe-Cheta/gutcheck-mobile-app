@@ -30,6 +30,7 @@ import {
   formatLongDate,
 } from '@/lib/subscriptionTrialUtils';
 import { isUnder18Band } from '@/lib/supportDirectory';
+import { track } from '@/lib/analytics';
 
 console.log('[SUB_FILE] ✅ All basic imports completed successfully');
 
@@ -329,6 +330,17 @@ export default function SubscriptionScreen() {
     checkOrigin();
   }, []);
 
+  // Paywall shown, with whether the store offers this person a trial (PRD 17.1)
+  const paywallTracked = React.useRef(false);
+  useEffect(() => {
+    if (paywallTracked.current || plans.length === 0) return;
+    paywallTracked.current = true;
+    const eligible = plans.some((p: SubscriptionPlan) => p.hasFreeTrial);
+    track('paywall_viewed', { source: cameFromScreen === 'settings' ? 'settings' : 'flow', trial_eligible: eligible });
+    track('trial_eligibility_shown', { eligible });
+  }, [plans.length, cameFromScreen]);
+
+
   // Check subscription status when screen comes into focus (ONLY when returning from purchase flow)
   // This should NOT run on normal navigation to the subscription screen
   useFocusEffect(
@@ -437,7 +449,9 @@ export default function SubscriptionScreen() {
       if (!subscribeToPlan) {
         throw new Error('subscribeToPlan method not available');
       }
+      track('purchase_started', { plan: planId });
       const result = await subscribeToPlan(planId);
+      track(result.success ? 'purchase_completed' : 'purchase_failed', { plan: planId });
       
       if (result.success) {
         // Purchase successful - subscription is already set in store by subscribeToPlan()
@@ -527,7 +541,12 @@ export default function SubscriptionScreen() {
         return;
       }
       
+      track('restore_started');
       const result = await restorePurchases();
+      {
+        const restored = useSubscriptionStore.getState();
+        track('restore_completed', { result: !result.success ? 'failed' : restored.subscription || restored.isLifetimePro ? 'found' : 'none' });
+      }
       
       if (result.success) {
         // Check if subscription was actually restored
@@ -1310,7 +1329,10 @@ export default function SubscriptionScreen() {
         <Text style={styles.title}>{subscription || isLifetimePro ? 'Subscription' : 'Choose a plan'}</Text>
         {!(subscription || isLifetimePro) && cameFromScreen !== 'settings' ? (
           <TouchableOpacity
-            onPress={() => router.replace('/free-support')}
+            onPress={() => {
+              track('paywall_dismissed');
+              router.replace('/free-support');
+            }}
             style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }}
             accessibilityRole="button"
             accessibilityLabel="Not now"
@@ -1424,7 +1446,10 @@ export default function SubscriptionScreen() {
                 return (
                   <TouchableOpacity
                     key={plan.id}
-                    onPress={() => setSelectedPlanId(plan.id)}
+                    onPress={() => {
+                      setSelectedPlanId(plan.id);
+                      track('plan_selected', { plan: plan.id });
+                    }}
                     activeOpacity={0.85}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: isSelected }}

@@ -83,6 +83,13 @@ function parseStoredChats(raw: string): SavedChat[] {
 const byNewest = (a: SavedChat, b: SavedChat) =>
   b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id);
 
+/** Checks older than the account's retention setting are removed from the phone too (PRD 13.6). */
+async function retentionCutoff(): Promise<number | null> {
+  const cached = await AsyncStorage.getItem('history_retention_days').catch(() => null);
+  const days = cached && cached !== 'none' ? Number(cached) : null;
+  return days ? Date.now() - days * 24 * 60 * 60 * 1000 : null;
+}
+
 /** Always read from disk and merge user + legacy keys so saves never wipe existing history. */
 async function readAllChatsFromDisk(): Promise<SavedChat[]> {
   const userId = await currentUserId();
@@ -107,7 +114,10 @@ async function readAllChatsFromDisk(): Promise<SavedChat[]> {
     }
   }
 
-  return Array.from(byId.values()).sort(byNewest);
+  const cutoff = await retentionCutoff();
+  return Array.from(byId.values())
+    .filter((chat) => cutoff === null || chat.createdAt.getTime() >= cutoff)
+    .sort(byNewest);
 }
 
 async function persistChatsToDisk(chats: SavedChat[]): Promise<void> {

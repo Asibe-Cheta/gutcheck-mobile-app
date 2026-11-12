@@ -106,7 +106,41 @@ async function applyUpdate(updates: Partial<ProfileData>): Promise<ProfileData> 
   return result.profile;
 }
 
+/** History retention in days; null means "until I delete" (PRD 13.6). Cached for offline pruning. */
+export type RetentionDays = 30 | 90 | 365 | null;
+export const RETENTION_CACHE_KEY = 'history_retention_days';
+
+async function cacheRetention(days: RetentionDays): Promise<void> {
+  await AsyncStorage.setItem(RETENTION_CACHE_KEY, days === null ? 'none' : String(days)).catch(() => undefined);
+}
+
 class ProfileService {
+  async getRetention(): Promise<RetentionDays | undefined> {
+    try {
+      const data = await callWithSession<{ history_retention_days?: number | null } | null>('gc_get_profile');
+      if (!data) return undefined;
+      const days = (data.history_retention_days ?? null) as RetentionDays;
+      await cacheRetention(days);
+      return days;
+    } catch {
+      const cached = await AsyncStorage.getItem(RETENTION_CACHE_KEY).catch(() => null);
+      if (!cached) return undefined;
+      return cached === 'none' ? null : (Number(cached) as RetentionDays);
+    }
+  }
+
+  async setRetention(days: RetentionDays): Promise<boolean> {
+    try {
+      const result = await callWithSession<{ ok: boolean }>('gc_set_retention', { p_days: days });
+      if (!result?.ok) return false;
+      await cacheRetention(days);
+      return true;
+    } catch (e) {
+      console.warn('[Profile] setRetention failed:', e);
+      return false;
+    }
+  }
+
   /**
    * Save profile data
    */

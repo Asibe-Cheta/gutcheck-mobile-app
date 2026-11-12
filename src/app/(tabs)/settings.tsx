@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Switch, Linking, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, getThemeColors } from '@/lib/theme';
@@ -13,7 +13,7 @@ import { notificationService } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/lib/themeContext';
-import { profileService } from '@/lib/profileService';
+import { profileService, type RetentionDays } from '@/lib/profileService';
 import { authService } from '@/lib/authService';
 import { biometricAuthService } from '@/lib/biometricAuth';
 import { panicButtonService } from '@/lib/panicButtonService';
@@ -24,6 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import { getPinForReveal } from '@/lib/pinRevealStorage';
 import { externalUrls, GOOGLE_PLAY_APP_TITLE } from '@/lib/externalUrls';
 import { useChatHistoryStore } from '@/lib/stores/chatHistoryStore';
+import { track } from '@/lib/analytics';
 
 const HISTORY_PREVIEWS_KEY = 'history_show_previews';
 
@@ -87,6 +88,44 @@ export default function SettingsScreen() {
     setPreviewsEnabled(value);
     await AsyncStorage.setItem(HISTORY_PREVIEWS_KEY, value ? 'true' : 'false').catch(() => undefined);
   };
+  const RETENTION_OPTIONS: { days: RetentionDays; label: string }[] = [
+    { days: 30, label: '30 days' },
+    { days: 90, label: '90 days' },
+    { days: 365, label: '1 year' },
+    { days: null, label: 'Until I delete' },
+  ];
+  const [retention, setRetention] = useState<RetentionDays | undefined>(undefined);
+  const [retentionOpen, setRetentionOpen] = useState(false);
+  useEffect(() => {
+    profileService.getRetention().then(setRetention).catch(() => undefined);
+  }, []);
+  const retentionLabel =
+    retention === undefined ? 'Not set yet' : RETENTION_OPTIONS.find((o) => o.days === retention)?.label ?? 'Not set yet';
+  const chooseRetention = (days: RetentionDays) => {
+    const apply = async () => {
+      setRetentionOpen(false);
+      const ok = await profileService.setRetention(days);
+      if (ok) {
+        setRetention(days);
+        void useChatHistoryStore.getState().loadChats();
+      } else {
+        Alert.alert('Not saved', "Couldn't reach GutChecks. Check your connection and try again.");
+      }
+    };
+    if (days !== null && (retention === undefined || retention === null || days < retention)) {
+      Alert.alert(
+        `Keep History for ${RETENTION_OPTIONS.find((o) => o.days === days)?.label}?`,
+        "Checks older than this will be deleted now and from then on. This can't be undone.",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete older checks', style: 'destructive', onPress: apply },
+        ],
+      );
+    } else {
+      void apply();
+    }
+  };
+
   const handleDeleteAllHistory = () => {
     Alert.alert(
       'Delete all History?',
@@ -98,6 +137,7 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             const result = await useChatHistoryStore.getState().deleteAllChats();
+            if (result.success) track('inquiry_deleted', { scope: 'all' });
             Alert.alert(result.success ? 'History deleted' : 'History not deleted', result.success ? 'All your checks have been deleted.' : result.error);
           },
         },
@@ -735,6 +775,44 @@ export default function SettingsScreen() {
               />
             </View>
           </View>
+          <SettingsItem
+            icon="time"
+            title="Keep History for"
+            description={retentionLabel}
+            onPress={() => setRetentionOpen(true)}
+            styles={styles}
+            colors={currentTheme}
+          />
+          <Modal visible={retentionOpen} transparent animationType="fade" onRequestClose={() => setRetentionOpen(false)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>
+              <View style={{ backgroundColor: currentTheme.surface, borderRadius: 16, padding: 20, gap: 8 }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: currentTheme.textPrimary }} accessibilityRole="header">
+                  Keep History for
+                </Text>
+                <Text style={{ fontSize: 15, lineHeight: 21, color: currentTheme.textSecondary, marginBottom: 4 }}>
+                  Older checks are deleted automatically, on this phone and in your account.
+                </Text>
+                {RETENTION_OPTIONS.map((option) => {
+                  const selected = option.days === retention;
+                  return (
+                    <TouchableOpacity
+                      key={option.label}
+                      onPress={() => chooseRetention(option.days)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                    >
+                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={22} color={selected ? currentTheme.primary : currentTheme.textSecondary} />
+                      <Text style={{ fontSize: 17, color: currentTheme.textPrimary }}>{option.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                <TouchableOpacity onPress={() => setRetentionOpen(false)} accessibilityRole="button" style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: currentTheme.primary }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
           <SettingsItem
             icon="trash"
             title="Delete all History"

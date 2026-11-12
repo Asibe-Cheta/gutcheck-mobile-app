@@ -29,6 +29,11 @@ export interface AuthUser {
 }
 
 const PIN_PATTERN = /^\d{4}$/;
+/** Logging in accepts the original 4-digit PINs and the 6-digit passcodes (PRD 6). */
+const LOGIN_PIN_PATTERN = /^(\d{4}|\d{6})$/;
+const PASSCODE_PATTERN = /^\d{6}$/;
+/** Set on accounts created without a passcode; cleared once one is saved. */
+export const NEEDS_PASSCODE_KEY = 'needs_passcode';
 
 function messageFor(error: string | undefined, fallback: string): string {
   switch (error) {
@@ -105,6 +110,8 @@ class AuthService {
       await revenueCatService.setAppUserID(userId);
       if (pin) {
         await savePinForReveal(userId, pin);
+      } else {
+        await AsyncStorage.setItem(NEEDS_PASSCODE_KEY, 'true');
       }
 
       return { success: true, user: { id: userId, username, userType: 'anonymous', createdAt } };
@@ -230,8 +237,8 @@ class AuthService {
    */
   async confirmPinForSync(pin: string): Promise<{ success: boolean; error?: string }> {
     try {
-      if (!PIN_PATTERN.test(pin)) {
-        return { success: false, error: 'PIN must be exactly 4 digits' };
+      if (!LOGIN_PIN_PATTERN.test(pin)) {
+        return { success: false, error: 'Enter your 4-digit PIN or 6-digit passcode' };
       }
       const [userId, username] = await Promise.all([
         AsyncStorage.getItem('user_id'),
@@ -268,6 +275,39 @@ class AuthService {
   }
 
   /**
+   * "Protect your History": set a 6-digit passcode on an account created without one, so the
+   * account can be used on another phone.
+   */
+  async setFirstPasscode(passcode: string): Promise<{ success: boolean; username?: string; error?: string }> {
+    try {
+      if (!PASSCODE_PATTERN.test(passcode)) {
+        return { success: false, error: 'Your passcode must be 6 digits' };
+      }
+      const userId = await AsyncStorage.getItem('user_id');
+      if (!userId) return { success: false, error: 'Please log in again.' };
+      const result = await callWithSession<{ ok: boolean; error?: string; username?: string }>('gc_set_first_passcode', {
+        p_pin_hash: await this.hashPin(passcode),
+      });
+      if (!result?.ok && result?.error !== 'already_set') {
+        return { success: false, error: 'Your passcode was not saved. Please try again.' };
+      }
+      if (result?.error === 'already_set') {
+        await AsyncStorage.removeItem(NEEDS_PASSCODE_KEY);
+        return { success: false, error: 'This account already has a passcode.' };
+      }
+      await savePinForReveal(userId, passcode);
+      await AsyncStorage.removeItem(NEEDS_PASSCODE_KEY);
+      return { success: true, username: result.username };
+    } catch (error) {
+      console.error('[AUTH] setFirstPasscode error:', error);
+      if (error instanceof NoSessionError) {
+        return { success: false, error: "Couldn't reach GutChecks. Check your connection and try again." };
+      }
+      return { success: false, error: 'Your passcode was not saved. Please try again.' };
+    }
+  }
+
+  /**
    * Logout current user
    */
   async logout(): Promise<{ success: boolean; error?: string }> {
@@ -291,6 +331,7 @@ class AuthService {
         'is_logged_in',
         'subscription_status',
         'subscription_plan',
+        NEEDS_PASSCODE_KEY,
         'user_profile',
         'user_age_range',
         'user_goal',

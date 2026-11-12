@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { availabilityText, SupportService, SUPPORT_SERVICES } from '@/lib/supportDirectory';
+import { track } from '@/lib/analytics';
 
 const telUrl = (phone: string) => `tel:${phone.replace(/\s/g, '')}`;
 
@@ -57,7 +58,10 @@ export function SupportServiceCard({ service, label, showCopyNumber, extraLink }
         {service.phone ? (
           <TouchableOpacity
             style={[styles.primaryAction, { backgroundColor: colors.primary }]}
-            onPress={() => openUrl(telUrl(service.phone!))}
+            onPress={() => {
+              track('support_link_clicked', { service_id: service.serviceId, action: 'call' });
+              openUrl(telUrl(service.phone!));
+            }}
             accessibilityRole="button"
             accessibilityLabel={`Call ${service.name} on ${service.phone}`}
           >
@@ -68,7 +72,10 @@ export function SupportServiceCard({ service, label, showCopyNumber, extraLink }
         {service.reportUrl ? (
           <TouchableOpacity
             style={[styles.secondaryAction, { borderColor: colors.primary }]}
-            onPress={() => openUrl(service.reportUrl!)}
+            onPress={() => {
+              track('support_link_clicked', { service_id: service.serviceId, action: 'report' });
+              openUrl(service.reportUrl!);
+            }}
             accessibilityRole="link"
           >
             <Text style={[styles.secondaryActionText, { color: colors.primary }]}>Report</Text>
@@ -77,7 +84,10 @@ export function SupportServiceCard({ service, label, showCopyNumber, extraLink }
         {service.webUrl ? (
           <TouchableOpacity
             style={[styles.secondaryAction, { borderColor: colors.primary }]}
-            onPress={() => openUrl(service.webUrl!)}
+            onPress={() => {
+              track('support_link_clicked', { service_id: service.serviceId, action: 'web' });
+              openUrl(service.webUrl!);
+            }}
             accessibilityRole="link"
           >
             <Text style={[styles.secondaryActionText, { color: colors.primary }]}>
@@ -126,7 +136,10 @@ export function EmergencyBlock() {
       </Text>
       <TouchableOpacity
         style={styles.emergencyButton}
-        onPress={() => openUrl(telUrl(emergency.phone!))}
+        onPress={() => {
+          track('emergency_action_clicked');
+          openUrl(telUrl(emergency.phone!));
+        }}
         accessibilityRole="button"
         accessibilityLabel="Call 999"
       >

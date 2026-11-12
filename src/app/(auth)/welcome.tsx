@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator, Animated, Platform, Alert } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,6 +47,16 @@ export default function WelcomeScreen() {
       }),
     ]).start();
   }, []);
+
+  // Access codes from O1 (PRD 11.4): an anonymous account is created so the free access attaches to it.
+  const handleAccessCode = async () => {
+    const result = await authService.createAnonymousAccount();
+    if (!result.success) {
+      Alert.alert("Couldn't continue", 'Please check your connection and try again.');
+      return;
+    }
+    router.push('/access-code');
+  };
 
   const handleGetStarted = () => {
     // Value first: onboarding comes before account creation (PRD O1 to O6)
@@ -186,6 +196,16 @@ export default function WelcomeScreen() {
               I already have an account
             </Text>
           </TouchableOpacity>
+          {Platform.OS === 'ios' ? (
+            <TouchableOpacity
+              style={styles.tertiaryButton}
+              onPress={handleAccessCode}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.tertiaryButtonText, { color: currentTheme.primary }]}>Have an access code?</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Footer text */}

@@ -31,6 +31,7 @@ import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { revenueCatService } from '@/lib/revenueCatService';
 import { formatLongDate } from '@/lib/subscriptionTrialUtils';
+import { track } from '@/lib/analytics';
 
 type Entitlement = Awaited<ReturnType<typeof revenueCatService.getPremiumEntitlement>>;
 type ScreenState = 'loading' | 'ready' | 'waiting' | 'paid' | 'trial' | 'has-free-access' | 'android' | 'signed-out';
@@ -52,6 +53,10 @@ export default function AccessCodeScreen() {
   const userIdRef = useRef<string | null>(null);
   const waitingRef = useRef(false);
   const finishedRef = useRef(false);
+
+  useEffect(() => {
+    track('access_code_entry_opened', { source: 'app' });
+  }, []);
 
   // Initial state: a paid plan or trial means a code isn't needed (PRD 11.4).
   useEffect(() => {
@@ -77,6 +82,7 @@ export default function AccessCodeScreen() {
     if (current && !finishedRef.current) {
       finishedRef.current = true;
       waitingRef.current = false;
+      track('code_redeemed', { offer_type: current.willRenew ? 'renewing' : 'free' });
       router.replace({ pathname: '/purchase-confirmation', params: { source: 'code' } });
     }
   }, []);
@@ -99,6 +105,7 @@ export default function AccessCodeScreen() {
     try {
       waitingRef.current = true;
       setState('waiting');
+      track('code_redemption_attempted');
       await revenueCatService.presentCodeRedemptionSheet(userId);
     } catch (error) {
       console.error('[ACCESS_CODE] Could not open the redemption sheet:', error);

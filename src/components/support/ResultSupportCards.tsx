@@ -3,13 +3,14 @@
  * Rendered from service IDs so a reopened chat always shows current numbers and links.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { getThemeColors } from '@/lib/theme';
 import { useTheme } from '@/lib/themeContext';
 import { SUPPORT_SERVICES, SupportServiceId } from '@/lib/supportDirectory';
 import type { SupportTier } from '@/lib/supportRules';
 import { EmergencyBlock, SupportServiceCard } from './SupportServiceCard';
+import { track } from '@/lib/analytics';
 
 interface ResultSupportCardsProps {
   tier: SupportTier;
@@ -22,6 +23,11 @@ export function ResultSupportCards({ tier, serviceIds, hideEmergency }: ResultSu
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const services = serviceIds.map((id) => SUPPORT_SERVICES[id]).filter(Boolean);
+  useEffect(() => {
+    for (const id of serviceIds) track('support_card_displayed', { service_id: id, tier });
+    // Once per result as rendered
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (tier === 0 || (services.length === 0 && (tier < 3 || hideEmergency))) return null;
 

@@ -44,6 +44,8 @@ import { ResultSupportCards } from '@/components/support/ResultSupportCards';
 import { EmergencyBlock } from '@/components/support/SupportServiceCard';
 import { planSupport } from '@/lib/supportRules';
 import { FIRST_CHECK_PROMPTS, ONBOARDING_KEYS, type ReasonId } from '@/lib/onboardingContent';
+import ProtectHistoryPrompt, { shouldOfferPasscode } from '@/components/ProtectHistoryPrompt';
+import { track } from '@/lib/analytics';
 import type { ConversationMessage } from '@/lib/stores/conversationStore';
 import { shareNudgeService } from '@/lib/shareNudgeService';
 import { revenueCatService } from '@/lib/revenueCatService';
@@ -211,7 +213,18 @@ export default function ChatScreen() {
       .catch(() => undefined);
   }, [isFirstCheck]);
 
+  // "Protect your History" card after a result, for accounts created without a passcode (PRD 6).
+  const [showProtectHistory, setShowProtectHistory] = useState(false);
+
   const applyAssistantFromResponse = (response: ConversationResponse) => {
+    track('inquiry_completed', {
+      category: response.patternCard?.category ?? (response.crisisCard ? 'crisis' : 'conversation'),
+      tier: response.crisisCard ? 3 : undefined,
+    });
+    if (isFirstCheck && response.patternCard) track('first_inquiry_completed', { has_image: false });
+    if (response.patternCard && !response.crisisCard) {
+      shouldOfferPasscode().then((offer) => offer && setShowProtectHistory(true)).catch(() => undefined);
+    }
     // The onboarding reason is only kept until the first check completes (PRD 7.3).
     AsyncStorage.removeItem(ONBOARDING_KEYS.reason).catch(() => undefined);
     // Crisis replies already carry their own static crisis card (tier 3 via Layer A).
@@ -1988,6 +2001,10 @@ export default function ChatScreen() {
             </View>
           </View>
         )}
+
+        {showProtectHistory && !crisisSessionActive ? (
+          <ProtectHistoryPrompt colors={colors} onDone={() => setShowProtectHistory(false)} />
+        ) : null}
 
         {/* Input Area */}
         <View style={styles.inputContainer}>

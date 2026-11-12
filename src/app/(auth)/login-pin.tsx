@@ -97,7 +97,7 @@ export default function LoginPinScreen() {
 
   const handlePinChange = (value: string) => {
     // Only allow digits
-    const filtered = value.replace(/[^0-9]/g, '').slice(0, 4);
+    const filtered = value.replace(/[^0-9]/g, '').slice(0, 6);
     setPin(filtered);
   };
 
@@ -107,8 +107,8 @@ export default function LoginPinScreen() {
       return;
     }
 
-    if (pin.length !== 4) {
-      Alert.alert('Invalid PIN', 'PIN must be exactly 4 digits');
+    if (pin.length !== 4 && pin.length !== 6) {
+      Alert.alert('Check your PIN', 'Enter your 4-digit PIN or 6-digit passcode');
       return;
     }
 
@@ -132,7 +132,7 @@ export default function LoginPinScreen() {
   const renderPinDots = () => {
     return (
       <View style={styles.pinDotsContainer}>
-        {[0, 1, 2, 3].map((index) => (
+        {(pin.length > 4 ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3]).map((index) => (
           <View
             key={index}
             style={[
@@ -297,7 +297,7 @@ export default function LoginPinScreen() {
     },
   });
 
-  const canLogin = username.trim().length > 0 && pin.length === 4 && !isLoggingIn;
+  const canLogin = username.trim().length > 0 && (pin.length === 4 || pin.length === 6) && !isLoggingIn;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -313,7 +313,7 @@ export default function LoginPinScreen() {
         style={styles.content}
       >
         <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Enter your username and PIN to continue</Text>
+        <Text style={styles.subtitle}>Enter your username and PIN or passcode to continue</Text>
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Username</Text>
@@ -345,7 +345,7 @@ export default function LoginPinScreen() {
             value={pin}
             onChangeText={handlePinChange}
             keyboardType="number-pad"
-            maxLength={4}
+            maxLength={6}
             secureTextEntry
             autoFocus={false}
             placeholder=""

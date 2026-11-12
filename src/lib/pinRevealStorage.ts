@@ -13,7 +13,7 @@ function keyFor(userId: string) {
 }
 
 export async function savePinForReveal(userId: string, pin: string): Promise<void> {
-  if (!userId || !pin || pin.length !== 4) return;
+  if (!userId || !pin || !/^(\d{4}|\d{6})$/.test(pin)) return;
   try {
     await SecureStore.setItemAsync(keyFor(userId), pin, {
       keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,

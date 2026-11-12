@@ -4,7 +4,7 @@
  * then privacy and age. Under-13s are signposted to Childline and never reach the paywall.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Switch, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +30,7 @@ import {
 } from '@/lib/onboardingContent';
 import { generalSupportFor, SUPPORT_SERVICES } from '@/lib/supportDirectory';
 import { EmergencyBlock, SupportServiceCard } from '@/components/support/SupportServiceCard';
+import { track } from '@/lib/analytics';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -63,6 +64,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   );
 
   const goTo = (next: Step) => setStep(next);
+  useEffect(() => {
+    track('onboarding_started');
+  }, []);
+  useEffect(() => {
+    track('onboarding_screen_viewed', { screen: step });
+  }, [step]);
 
   const handleBack = () => {
     switch (step) {
@@ -88,6 +95,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   const chooseReason = (value: ReasonId) => {
+    track('onboarding_reason_selected', { reason_category: value });
     setReason(value);
     setExampleId(exampleForReason(value));
     setFeelings([]);
@@ -112,6 +120,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       return;
     }
 
+    track('age_band_selected', { age_band: ageBand });
+    track('demo_completed', { message_variant: exampleId, matched_count: matchedCount });
     setIsSaving(true);
     try {
       await AsyncStorage.multiSet([

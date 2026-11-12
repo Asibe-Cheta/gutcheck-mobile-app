@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/themeContext';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useChatHistoryStore, SavedChat } from '@/lib/stores/chatHistoryStore';
 import type { CheckCategory } from '@/lib/responsePipeline';
+import { track } from '@/lib/analytics';
 import { exportService } from '@/lib/exportService';
 import { useSubscriptionStore } from '@/lib/stores/subscriptionStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -226,11 +227,13 @@ export default function HistoryScreen() {
   // This ensures chats saved in other screens appear immediately
   useFocusEffect(
     React.useCallback(() => {
+      track('history_opened');
       loadChats();
     }, [loadChats])
   );
 
   const handleChatPress = (chat: SavedChat) => {
+    track('history_item_opened');
     // Navigate to chat with saved conversation
     router.push({
       pathname: '/chat',
@@ -250,6 +253,7 @@ export default function HistoryScreen() {
         onPress: () => {
           if (pendingDelete) finishPendingDelete();
           setPendingDelete(chat);
+          track('inquiry_deleted', { scope: 'one' });
           deleteTimer.current = setTimeout(() => {
             deleteTimer.current = null;
             setPendingDelete(null);
@@ -332,14 +336,14 @@ export default function HistoryScreen() {
               Confirm your PIN
             </Text>
             <Text style={{ fontSize: 15, lineHeight: 22, color: currentTheme.textSecondary }}>
-              Enter the 4-digit PIN you use to log in. You only need to do this once on this phone.
+              Enter the PIN or passcode you use to log in. You only need to do this once on this phone.
             </Text>
             <TextInput
               value={pinInput}
-              onChangeText={(t) => setPinInput(t.replace(/\D/g, '').slice(0, 4))}
+              onChangeText={(t) => setPinInput(t.replace(/\D/g, '').slice(0, 6))}
               keyboardType="number-pad"
               secureTextEntry
-              maxLength={4}
+              maxLength={6}
               autoFocus
               accessibilityLabel="PIN"
               style={{
@@ -356,7 +360,7 @@ export default function HistoryScreen() {
             {pinError ? <Text style={{ fontSize: 15, color: currentTheme.warning }}>{pinError}</Text> : null}
             <TouchableOpacity
               onPress={submitPin}
-              disabled={pinBusy || pinInput.length !== 4}
+              disabled={pinBusy || (pinInput.length !== 4 && pinInput.length !== 6)}
               accessibilityRole="button"
               style={{
                 minHeight: 52,
@@ -364,7 +368,7 @@ export default function HistoryScreen() {
                 backgroundColor: currentTheme.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: pinBusy || pinInput.length !== 4 ? 0.5 : 1,
+                opacity: pinBusy || (pinInput.length !== 4 && pinInput.length !== 6) ? 0.5 : 1,
               }}
             >
               <Text style={{ fontSize: 17, fontWeight: '700', color: currentTheme.background }}>
