@@ -23,13 +23,13 @@ begin
 end $$;
 
 -- ─── 2. History retention (PRD 13.6) ────────────────────────────────────────────────────────
--- null means "until I delete". New accounts default to 90 days (confirmed by GutChecks). Existing
+-- null means "until I delete". New accounts default to 1 year (confirmed by GutChecks). Existing
 -- accounts keep everything until the user chooses a setting, so nobody loses checks because of
 -- this release: the column is added empty first and the default is set afterwards.
 
 alter table public.profiles add column if not exists history_retention_days int
   check (history_retention_days in (30, 90, 365));
-alter table public.profiles alter column history_retention_days set default 90;
+alter table public.profiles alter column history_retention_days set default 365;
 
 create or replace function public.gc_set_retention(p_token text, p_days int)
 returns jsonb language plpgsql security definer set search_path = public, extensions, pg_temp as $$
